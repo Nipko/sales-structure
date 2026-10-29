@@ -47,7 +47,10 @@ const EQUIVALENTS: Record<string, string[]> = {
     // F4300-51 residue (production QA 28-oct): «how can I contact you?», «comment puis-je vous contacter ?», «what documents do I need to
     // buy a property?» never found «¿Cómo puedo contactarlos?» / «¿Qué documentos necesito para arrendar / comprar?».
     contacto: ['contacto', 'contactos', 'contactar', 'contactarlos', 'contactarnos', 'contact', 'contacts', 'contato', 'contatos', 'contatar', 'contacter'],
-    documento: ['documento', 'documentos', 'document', 'documents'],
+    // F4300-53 (production QA 29-oct): «¿necesito pasaporte para viajar?» / «do I need a passport to travel?» missed «¿Qué documentos
+    // necesito para viajar?», and with no FAQ the agent said it cannot give migration requirements. A passport or visa is a travel document.
+    documento: ['documento', 'documentos', 'document', 'documents', 'pasaporte', 'pasaportes', 'passport', 'passports', 'passaporte', 'passaportes', 'passeport', 'passeports', 'visa', 'visas', 'visto'],
+    viajar: ['viajar', 'viaje', 'viajes', 'travel', 'traveling', 'travelling', 'trip', 'viagem', 'viagens', 'viajam', 'voyager', 'voyage', 'voyages'],
     necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut'],
     comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
     arrendar: ['arrendar', 'arriendo', 'alquilar', 'alquiler', 'rent', 'renting', 'rental', 'alugar', 'aluguel', 'louer'],
@@ -57,7 +60,8 @@ const EQUIVALENTS: Record<string, string[]> = {
     // «¿los niños pagan menos?», «do kids pay less?», «paient-ils moins cher ?» ask for the discount (F4300-53, 29-oct).
     descuento: ['descuento', 'descuentos', 'discount', 'discounts', 'desconto', 'descontos', 'reduction', 'reductions', 'remise', 'remises', 'menos', 'less', 'moins', 'cher', 'cheaper'],
     nino: ['nino', 'ninos', 'nina', 'ninas', 'child', 'children', 'kid', 'kids', 'crianca', 'criancas', 'enfant', 'enfants'],
-    producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits'],
+    // «¿qué MARCAS o productos usan en el tinte?» (F4300-53, 29-oct): the brand is what «¿Qué productos usan?» answers.
+    producto: ['producto', 'productos', 'product', 'products', 'produto', 'produtos', 'produit', 'produits', 'marca', 'marcas', 'brand', 'brands', 'marque', 'marques'],
     comision: ['comision', 'comisiones', 'commission', 'commissions', 'comissao', 'comissoes', 'honorarios', 'fee', 'fees', 'honoraires'],
     reserva: ['reserva', 'reservas', 'reservar', 'reservation', 'reservations', 'book', 'booking', 'reserver', 'reservacion'],
     ortodoncia: ['ortodoncia', 'orthodontic', 'orthodontics', 'ortodontia', 'orthodontie', 'braces', 'brackets'],
@@ -176,6 +180,8 @@ const QUESTION_FILLER = new Set([
     'hago', 'hacer', 'hace', 'faco', 'fazer', 'faire', 'fais', 'caso', 'case', 'cas', 'take', 'takes',
     // «what SHOULD I bring…», «qué DEBO llevar», «o que DEVO levar», «que DOIS-je apporter» (F4300-53, 29-oct).
     'should', 'must', 'debo', 'debe', 'devo', 'deve', 'dois', 'doit',
+    // «…para viajar con USTEDES», «with YOU»: who the business is, not a topic.
+    'ustedes', 'voces', 'vous', 'you',
     // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
     'tengo', 'tenho',
 ]);

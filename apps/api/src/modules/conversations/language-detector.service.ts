@@ -96,7 +96,9 @@ export class LanguageDetectorService {
             // Everyday Spanish that Portuguese, English and French spell differently (pt «e/seu/muito/faço/ontem/hoje/noite/já/isso»).
             'y', 'su', 'mi', 'lo', 'ya', 'eso', 'esto', 'mucho', 'mucha', 'muchos', 'muchas', 'hago', 'dime', 'dejas', 'puedes', 'puede', 'pueden', 'quieres', 'ayer', 'hoy', 'manana', 'tiempo', 'noche', 'noches',
             // F4300-16f: quantifiers of a short question (pt «algum/alguma», fr «quelque», en «any»). Not «algo»: Portuguese too.
-            'alguna', 'alguno', 'algun', 'algunas', 'algunos'],
+            'alguna', 'alguno', 'algun', 'algunas', 'algunos',
+            // «hola, sigue alguien ahí?» (production QA 29-oct): pt «alguém/aí/ninguém», fr «quelqu'un/là/personne».
+            'alguien', 'ahi', 'nadie'],
         en: ['the', 'is', 'are', 'was', 'of', 'to', 'in', 'it', 'my', 'with', 'this', 'that', 'for', 'and', 'you', 'your', 'have', 'has', 'be', 'can', 'will', 'about', 'from', 'what', 'how', 'does', 'not', 'want', 'need',
             'much', 'many', 'night', 'there', 'any',
             // F4300-16f: the time and quantity words a short question carries («any promotions today?»).
@@ -249,7 +251,8 @@ export class LanguageDetectorService {
     private readonly predicateWords: Record<string, string[]> = {
         // F4300-16 (production QA 28-oct): «hola, soy vegetariana» after a French case and «hi, I am vegetarian» after a Spanish one kept
         // the stored language — a self-introduction had no verb of either. pt «sou» was there already; fr «suis» too via «je».
-        es: ['soy', 'tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
+        // «hola, sigue alguien ahí?» after a French case was answered in French (production QA 29-oct, RET qa03): pt «segue», fr «suit».
+        es: ['soy', 'sigue', 'siguen', 'tiene', 'tienen', 'tienes', 'tengo', 'tenemos', 'hay', 'cuesta', 'cuestan', 'cuanto', 'cuanta', 'cuantos', 'cuantas', 'puedo',
             'puede', 'puedes', 'pueden', 'quiero', 'quisiera', 'necesito', 'busco', 'debo', 'consultalo', 'consultala', 'consultalos',
             'consultame', 'revisalo', 'revisala', 'confirmalo', 'confirmala', 'confirmame', 'averigualo', 'dime', 'dame', 'mandame',
             'enviame', 'hago', 'estoy', 'incluye', 'incluyen', 'sirve', 'llega', 'quedan', 'hacen', 'aceptan', 'donde', 'cual',

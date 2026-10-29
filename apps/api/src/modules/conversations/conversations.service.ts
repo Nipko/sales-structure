@@ -7802,7 +7802,8 @@ export class ConversationsService {
         }
         // F4300-37: «¿cuánto costarían tres Audífono QA Aurora?» with 2 left is answered with the stock, not only the total.
         // F4300-47: «¿y si me llevo 2?» answered «puedo ayudarle con el pedido de 2 unidades» with no amount: the total is said.
-        const quantityTotal = quantityTotalNote(response, customerText, trustedContext?.catalog as any, lang);
+        const quantityTotal = quantityTotalNote(response, customerText, trustedContext?.catalog as any, lang,
+            [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)]);
         if (quantityTotal) {
             this.logger.log(`[Guardrail] A quantity of a catalogue product without its total: the total is said: "${response.slice(0, 100)}"`);
             response = quantityTotal;

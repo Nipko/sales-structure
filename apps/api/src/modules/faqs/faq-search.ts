@@ -49,7 +49,13 @@ const EQUIVALENTS: Record<string, string[]> = {
     contacto: ['contacto', 'contactos', 'contactar', 'contactarlos', 'contactarnos', 'contact', 'contacts', 'contato', 'contatos', 'contatar', 'contacter'],
     // F4300-53 (production QA 29-oct): «¿necesito pasaporte para viajar?» / «do I need a passport to travel?» missed «¿Qué documentos
     // necesito para viajar?», and with no FAQ the agent said it cannot give migration requirements. A passport or visa is a travel document.
-    documento: ['documento', 'documentos', 'document', 'documents', 'pasaporte', 'pasaportes', 'passport', 'passports', 'passaporte', 'passaportes', 'passeport', 'passeports', 'visa', 'visas', 'visto'],
+    documento: ['documento', 'documentos', 'document', 'documents', 'pasaporte', 'pasaportes', 'passport', 'passports', 'passaporte', 'passaportes', 'passeport', 'passeports', 'visa', 'visas', 'visto',
+        // «¿qué PAPELES necesito para un viaje internacional?», «what PAPERS…», «quels PAPIERS…» (F4300-53, 29-oct).
+        'papeles', 'papers', 'papiers', 'papeis'],
+    // «¿dónde nos ENCONTRAMOS para el tour?», «where do we MEET?» ask for «¿Dónde es el punto de ENCUENTRO?» (F4300-53, 29-oct).
+    encuentro: ['encuentro', 'encontramos', 'encontrarnos', 'encontrar', 'meet', 'meeting', 'encontro', 'retrouve', 'retrouver', 'rejoindre'],
+    // One «where» in the four languages, so «onde…?» does not «ask something else» than «¿Dónde…?».
+    donde: ['donde', 'where', 'onde'],
     viajar: ['viajar', 'viaje', 'viajes', 'travel', 'traveling', 'travelling', 'trip', 'viagem', 'viagens', 'viajam', 'voyager', 'voyage', 'voyages'],
     necesitar: ['necesitar', 'necesito', 'necesita', 'necesitan', 'need', 'needs', 'preciso', 'precisa', 'precisam', 'besoin', 'faut'],
     comprar: ['comprar', 'compra', 'buy', 'buying', 'purchase', 'acheter', 'achat'],
@@ -182,6 +188,10 @@ const QUESTION_FILLER = new Set([
     'should', 'must', 'debo', 'debe', 'devo', 'deve', 'dois', 'doit',
     // «…para viajar con USTEDES», «with YOU»: who the business is, not a topic.
     'ustedes', 'voces', 'vous', 'you',
+    // «el PUNTO de encuentro», «meeting POINT»: the place word adds no topic of its own (F4300-53, 29-oct).
+    'punto', 'point', 'ponto',
+    // «¿DÓNDE…?», «WHERE…?», «ONDE…?» only ask where (the FAQ «¿Dónde es el punto de encuentro?» is about the meeting).
+    'donde', 'where', 'onde',
     // «¿cuánto tiempo TENGO de garantía?», «quanto tempo TENHO…» (F4300-53).
     'tengo', 'tenho',
 ]);

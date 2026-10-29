@@ -300,6 +300,13 @@ const AMENITY_TERMS = ['piscina', 'pool', 'piscine', 'parqueadero', 'estacionami
     'elevador', 'ascenseur', 'bbq', 'parrilla', 'churrasqueira', 'barbecue', 'chimenea', 'fireplace', 'lareira', 'cheminee', 'calefaccion',
     'heating', 'aquecimento', 'chauffage', 'pet friendly', 'mascotas'];
 const NEGATION = / (?:no|sin|ni|tampoco|ningun|ninguna|not|without|nao|sem|nem|pas|sans|aucun|aucune|n) /;
+/**
+ * F4300-54 (production QA 29-oct, hotel, five times in four languages): «La tarifa no incluye desayuno», «The room does not include any
+ * breakfast», «O quarto não inclui café da manhã» — said because the listing does not mention breakfast. A listing that does not list
+ * something is no evidence that it is absent (open world): an absence ASSERTED for a feature the record neither lists nor excludes is
+ * unbacked like an affirmation. «La ficha no registra piscina» (what the record says) is not an assertion of absence.
+ */
+const ASSERTED_ABSENCE = / (?:no (?:se )?(?:incluye|incluyen|tiene|tienen|ofrece|ofrecen|cuenta con|dispone de|hay|esta incluid[oa])|(?:does|do|is|are) not (?:include|have|offer|come with|included)|doesn t (?:include|have|offer)|isn t included|there (?:is|are) no|nao (?:inclui|tem|oferece|possui|esta incluid[oa])|nao ha|n inclut pas|ne comprend pas|ne propose pas|n offre pas|n y a pas|n a pas) /;
 const LODGING_SUBJECT = /propert|listing|room|accommodation|stay|cabin|cabana/;
 
 const PRICE_DENIAL = [
@@ -662,6 +669,9 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const lodgingTurn = live.some(fact => LODGING_SUBJECT.test(fact.subject.type));
     const backedAmenities = norm(live.filter(fact => fact.kind === 'attribute' && /amenit|includ|inclus|feature/i.test(fact.field))
         .map(fact => (Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value))).join(' '));
+    // What the record EXCLUDES in so many words (a package's «excludes», a listing's exclusions): an absence it backs.
+    const backedExclusions = norm(live.filter(fact => fact.kind === 'attribute' && /exclu/i.test(fact.field))
+        .map(fact => (Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value))).join(' '));
 
     const sentenceOut = (sentence: string): { text: string; reason?: FallbackReason } => {
         const tokens = [...sentence.matchAll(FACT_TOKEN_RE)];
@@ -691,7 +701,10 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             .filter(count => !serverCategories.includes(count.category) && !countBacked(stripped, count));
         if (unbacked.length) return { text: fallbackFor(stripped, 'count'), reason: 'unrendered_count' };
         const plain = norm(stripped);
-        if (lodgingTurn && !NEGATION.test(plain) && AMENITY_TERMS.some(term => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `))) {
+        const unbackedAmenityTerm = (term: string) => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `);
+        const assertsUnbackedAbsence = ASSERTED_ABSENCE.test(plain)
+            && AMENITY_TERMS.some(term => unbackedAmenityTerm(term) && !backedExclusions.includes(` ${term} `));
+        if (lodgingTurn && (assertsUnbackedAbsence || (!NEGATION.test(plain) && AMENITY_TERMS.some(unbackedAmenityTerm)))) {
             return { text: amenityTemplate(stripped), reason: 'unbacked_amenity' };
         }
         if (PRICE_DENIAL.some(pattern => pattern.test(plain))) {

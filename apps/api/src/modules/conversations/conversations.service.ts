@@ -71,6 +71,7 @@ import { TURN_OUTCOME_REASONS, resolveTurnOutcome } from './turn-outcome-wait';
 import { ChannelTokenService } from '../channels/channel-token.service';
 import { ConversationsGateway } from './conversations.gateway';
 import { HandoffService } from '../handoff/handoff.service';
+import { queueNoticeDue } from './queue-notice';
 import { complaintIsOfferOnly, isActionOrientedRefundQuestion } from '../handoff/handoff-policy-question';
 import { triggerDecisionNeedsPreviousOutbound } from '../handoff/custom-trigger-negation';
 import { KnowledgeService } from '../knowledge/knowledge.service';
@@ -8892,6 +8893,8 @@ export class ConversationsService {
         const handoff = (conversation?.metadata as any)?.handoff;
         const startedAt = handoff?.startedAt;
         if (!startedAt || handoff?.queueNoticeSent === true || handoff?.queueNoticeSent === 'true') return;
+        // F4300-23: close to the unattended return the sweep answers in a minute; a queue notice now would contradict its return notice.
+        if (!queueNoticeDue(startedAt)) return;
         try {
             const run = (sql: string, params: any[]) => this.prisma.executeInTenantSchema<any[]>(schemaName, sql, params);
             const hasOutbox = await hasDispatchOutbox(run, schemaName);

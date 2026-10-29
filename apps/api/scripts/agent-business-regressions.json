@@ -150,6 +150,7 @@
     "apps/api/src/modules/faqs/faq-search.f4300-53-generic.spec.ts",
     "apps/api/src/modules/faqs/faq-search.f4300-53-time.spec.ts",
     "apps/api/src/modules/faqs/faq-search.f4300-53-real-faqs.spec.ts",
+    "apps/api/src/modules/faqs/faq-search.f4300-53-travel-docs.spec.ts",
     "apps/api/src/modules/conversations/queue-notice.f4300-23.spec.ts",
     "apps/api/src/modules/conversations/tools/restaurants-tools.f4300-58.spec.ts",
     "apps/api/src/modules/conversations/unbacked-payment.f4300-58.spec.ts",

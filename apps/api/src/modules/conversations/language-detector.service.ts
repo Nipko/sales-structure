@@ -200,7 +200,9 @@ export class LanguageDetectorService {
             .sort((a, b) => b[1] - a[1]);
         const [best, evidence] = ranked[0];
         const rival = ranked[1]?.[1] ?? 0;
-        if (rival === 0) return evidence >= 2 || (evidence >= 1 && wordCount >= 4) ? best : null;
+        // F4300-16 (production QA 29-oct): «general consultation price?», «check-in time?», «horário de check-in?» — a telegraphic question
+        // of three words with one clear word of another language and none of the stored one is that language too.
+        if (rival === 0) return evidence >= 2 || (evidence >= 1 && (wordCount >= 4 || (wordCount >= 2 && /\?\s*$/.test(String(text || ''))))) ? best : null;
         return evidence >= rival + 2 ? best : null;
     }
 

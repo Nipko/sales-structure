@@ -219,7 +219,7 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 Las contraseñas **nunca** se almacenan en texto plano. Se usa bcrypt con 12 rounds de salting.
 
 ### Cómo funciona:
-1. Usuario envía contraseña: `Parallext2026!`
+1. Usuario envía contraseña: `<contraseña-del-usuario>`
 2. bcrypt genera salt aleatorio y hashea: `$2b$12$95qKCG/djm1h4pJzpIM3wu...`
 3. Solo el hash se guarda en la tabla `users.password`
 4. Al login, `bcrypt.compare()` verifica sin exponer la contraseña original
@@ -408,20 +408,13 @@ El flujo de onboarding también usa dedupe keys en Redis para evitar que un tena
 
 ### Crear usuario admin (VPS):
 ```bash
-# Opción A: Seed SQL (precargado)
-docker exec -i parallext-postgres psql -U parallext -d parallext \
-  < apps/api/prisma/migrations/005_seed_admin_users.sql
-
-# Opción B: Script TypeScript
-cd apps/api && npx ts-node prisma/seed-admin.ts
+# ADMIN_PASSWORD es obligatoria (12+ caracteres); no hay contraseña por defecto en el repo.
+cd apps/api && ADMIN_PASSWORD='<elige-una>' npx ts-node prisma/seed-admin.ts
 ```
 
 ### Usuarios precargados:
 
-| Email | Password | Rol | Tenant |
-|-------|----------|-----|--------|
-| `admin@parallext.com` | `Parallext2026!` | super_admin | Global |
-| `gecko@parallext.com` | `Parallext2026!` | tenant_admin | Gecko Aventura |
+Ninguno. No se versionan usuarios ni contraseñas; el admin se crea con `seed-admin.ts` y `ADMIN_PASSWORD`.
 
 > ⚠️ **CAMBIAR CONTRASEÑAS DESPUÉS DEL PRIMER LOGIN**
 

@@ -721,7 +721,6 @@ general del tenant recibe señales de refresco, no el contenido sensible del hil
 | 002 | `002_crm_agent_console.sql` | internal_notes, canned_responses, conversation_assignments |
 | 003 | `003_pipeline_automation.sql` | pipeline_stages, deals, automation_rules |
 | 004 | `004_csat_surveys.sql` | csat_surveys |
-| 005 | `005_seed_admin_users.sql` | Seed: admin users |
 
 ---
 

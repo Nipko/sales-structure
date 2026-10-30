@@ -50,13 +50,15 @@ echo "  [OK]"
 
 # ---- 6. Seed admin user ----
 echo "===> [6/10] Creating admin user..."
-ADMIN_HASH=$($COMPOSE run --rm --no-deps api node -e "require('bcrypt').hash('Parallext2026!',12).then(h=>console.log(h))" 2>/dev/null | tail -1)
-if [ -z "$ADMIN_HASH" ] || [[ ! "$ADMIN_HASH" == \$2* ]]; then
-    echo "  [WARN] Could not generate hash via container, using fallback"
-    ADMIN_HASH='$2b$12$68CDeb.iQAWEjSV3aJ2ddeoV6r00RFhBwngpByofvZ8hkzzMsiVZW'
+if [ -z "${ADMIN_PASSWORD:-}" ] || [ ${#ADMIN_PASSWORD} -lt 12 ]; then
+    echo "  [ERROR] Set ADMIN_PASSWORD (12+ characters) before running this script."; exit 1
 fi
-$DB -c "INSERT INTO users (id, email, password, first_name, last_name, role, is_active, created_at, updated_at) VALUES (gen_random_uuid(), 'admin@parallext.com', '$ADMIN_HASH', 'Admin', 'Parallext', 'super_admin', true, NOW(), NOW()) ON CONFLICT (email) DO UPDATE SET password = '$ADMIN_HASH';"
-echo "  [OK] admin@parallext.com / Parallext2026!"
+ADMIN_HASH=$($COMPOSE run --rm --no-deps -e ADMIN_PASSWORD api node -e "require('bcrypt').hash(process.env.ADMIN_PASSWORD,12).then(h=>console.log(h))" 2>/dev/null | tail -1)
+if [ -z "$ADMIN_HASH" ] || [[ ! "$ADMIN_HASH" == \$2* ]]; then
+    echo "  [ERROR] Could not hash ADMIN_PASSWORD in the api container."; exit 1
+fi
+$DB -c "INSERT INTO users (id, email, password, first_name, last_name, role, is_active, created_at, updated_at) VALUES (gen_random_uuid(), 'admin@parallext.com', '$ADMIN_HASH', 'Admin', 'Parallext', 'super_admin', true, NOW(), NOW()) ON CONFLICT (email) DO NOTHING;"
+echo "  [OK] admin@parallext.com / (ADMIN_PASSWORD)"
 
 # ---- 7. Validate restored tenant schema ownership ----
 echo "===> [7/10] Validating restored tenant schemas..."
@@ -104,5 +106,5 @@ echo "=========================================="
 echo ""
 echo "  Dashboard: https://admin.parallly-chat.cloud"
 echo "  API:       https://api.parallly-chat.cloud"
-echo "  Login:     admin@parallext.com / Parallext2026!"
+echo "  Login:     admin@parallext.com / (ADMIN_PASSWORD)"
 echo ""

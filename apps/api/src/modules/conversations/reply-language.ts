@@ -58,6 +58,9 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         'desea', 'desean', 'deseas', 'ayude', 'ayuda', 'ayudo', 'ayudar',
         // Renting a listing (F4300-16 residual, production 24-oct: «Sí, el Spark QA Inmueble está en arriendo» to an English turn).
         'arriendo', 'arriendos', 'alquiler', 'alquileres', 'arrendamiento',
+        // «LA PROPIEDAD a la que se REFIERE tiene 2 chambres et 1 salle de bain» (production QA 29/30-oct, three French replies): a
+        // sentence opened in Spanish and finished in French had one Spanish word on file («tiene») and passed.
+        'propiedad', 'propiedades', 'habitacion', 'habitaciones', 'refiere',
         // Where a listing is (F4300-16, production QA 26-oct: «O Spark QA Inmueble está ubicado en Calle…» to a Portuguese turn).
         'ubicado', 'ubicada', 'encuentra',
         // F4300-16 (production QA 29-oct): the courtesy close «Con mucho gusto. Si necesita algo más, no dude en contactarme. ¡Que tenga un
@@ -78,6 +81,8 @@ const VOCABULARY: Record<ReplyLang, readonly string[]> = {
         'minha', 'meus', 'minhas', 'tenho', 'sinto', 'falo',
         'aluguel', 'alugar', 'locacao'],
     fr: ['carte', 'cartes', 'virement', 'bancaire', 'paiement', 'paiements', 'frais', 'comprises', 'gratuite', 'boutique', 'magasin', 'magasins',
+        // A listing in French («…tiene 2 CHAMBRES et 1 SALLE de BAIN», production QA 29/30-oct): words Spanish never writes.
+        'chambre', 'chambres', 'salle', 'salles', 'bain', 'bains',
         'etage', 'ville', 'zone', 'lien', 'rappel', 'desole', 'comprends', 'equipe', 'examiner', 'couleur', 'couleurs', 'noir', 'bleu', 'rouge',
         'tailles', 'taille', 'moyenne', 'epuise', 'oui', 'deux', 'trois', 'cinq', 'trente', 'quarante', 'jours', 'jour', 'toujours', 'jamais',
         'meilleure', 'meilleur', 'maintenant', 'adresse', 'horaires', 'ouverture', 'forfait', 'coute', 'mois', 'complet', 'seulement', 'simplement',

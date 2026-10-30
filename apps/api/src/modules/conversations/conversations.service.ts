@@ -177,6 +177,9 @@ import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { BusinessFactsReader, renderNotOfferedEntry } from '../readiness/business-facts.reader';
+import { GoLiveService } from '../readiness/go-live.service';
+import { notLiveNotice } from '../readiness/go-live-gate';
+import { ReadinessContextService } from '../readiness/readiness-context.service';
 import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
 import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
@@ -807,6 +810,12 @@ export class ConversationsService {
          * the legacy storage as fallback. Absent in hand-built specs: the turn reads the legacy storage, as before.
          */
         @Optional() private readonly businessFacts?: BusinessFactsReader,
+        /**
+         * R4 (ADR 0010): the turn knowledge contract (<knowledge_status>) and the go-live gate. Absent in hand-built specs:
+         * no block (the previous prompt, byte for byte) and no gate.
+         */
+        @Optional() private readonly readinessContext?: ReadinessContextService,
+        @Optional() private readonly goLive?: GoLiveService,
     ) {}
 
     /**
@@ -1279,6 +1288,18 @@ export class ConversationsService {
             await this.sendAfterHoursMessage(tenantId, normalizedMsg, config, afterHoursMsg,
                 conversation, turnScope);
             return;
+        }
+
+        // 2b. Go-live gate (R4, C0 §1.2, ADR 0010): does the AI answer a real customer of this tenant? Live channels only
+        // (Agent Test, rehearsal and evaluation never come through here). Shadow mode records the decision and changes
+        // nothing; with `readiness.goLiveGate` on, an unpublished tenant answers with a fixed notice and the conversation
+        // goes to the human inbox (C0 §7.1). A conversation already with a person is handled by step 3 as before.
+        if (this.goLive && !draftMode && conversation.status !== 'waiting_human' && conversation.status !== 'with_human') {
+            const gate = await this.goLive.check(tenantId, { channelType, contact: contactId, conversationId: conversation.id });
+            if (gate.blocks) {
+                await this.answerNotLive(tenantId, conversation, normalizedMsg, turnScope, config.language);
+                return;
+            }
         }
 
         // 3. Check if in human handoff mode — skip AI, just save message
@@ -2613,6 +2634,29 @@ export class ConversationsService {
             tenantId, conversation, msg, operationalScope,
             item: { kind: 'text', payload: { text } },
             originKey: `after-hours:${dedupeId}`,
+        });
+    }
+
+    /**
+     * Go-live gate enforced (R4, C0 §7.1): the inbound is kept, the customer gets ONE fixed notice in the language of the
+     * message, and the conversation goes to the human inbox. No model, no tools. Later messages find the conversation
+     * waiting for a person (step 3). The notice rides the same durable outbox as the after-hours notice.
+     */
+    private async answerNotLive(tenantId: string, conversation: any, msg: NormalizedMessage,
+        scope: ServedAgentAuthority | undefined, defaultLanguage?: string): Promise<void> {
+        const saved = await this.saveMessage(tenantId, conversation.id, msg);
+        const language = this.languageDetector.detect(msg.content?.text || '', defaultLanguage || 'es');
+        try {
+            await this.replyOnceThroughOutbox({
+                tenantId, conversation, msg, operationalScope: scope, inboundMessageId: saved.id,
+                item: { kind: 'text', payload: { text: notLiveNotice(language) } },
+                originKey: `go-live-off:${conversation.id}:${saved.id ?? providerMessageId(msg) ?? msg.id}`,
+            });
+        } catch (error: any) {
+            this.logger.warn(`[GoLive] Not-live notice not sent for ${conversation?.id}: ${error?.message}`);
+        }
+        await this.handoffService.executeHandoff(tenantId, conversation.id, msg, 'go_live_off').catch((error: any) => {
+            this.logger.warn(`[GoLive] Handoff to the human inbox failed for ${conversation?.id}: ${error?.message}`);
         });
     }
 
@@ -5662,6 +5706,21 @@ export class ConversationsService {
         const turnFactBase: VerifiedFact[] = renderedFacts
             ? [...ledgerFacts, ...projectedCatalogFacts(turnContext, now), ...extractVerifiedFacts(preExecutedTools, now).facts] : [];
         if (renderedFacts) turnContext.factTokens = factTokenViews(factRegistry(turnFactBase), now);
+        // R4 (C0 §1.2): the turn knowledge contract from the last readiness evaluation, live and in Agent Test alike (the
+        // agent behaves the same in every tenant state). A sealed evaluation replays its frozen inputs: no block there.
+        // `writes` travels only when the WRITE_MODE capability is enforced, so the prompt never contradicts the tools.
+        if (this.readinessContext && !evaluationContext) {
+            const knowledgeStatus = await this.readinessContext.forTurn(tenantId, {
+                writesEnforced: capability.contract?.writeModeDecision?.mode === 'enforce',
+            });
+            if (knowledgeStatus) {
+                turnContext.knowledgeStatus = knowledgeStatus;
+                turnTrace.add('turn_context', 'knowledge_status', {
+                    specVersion: knowledgeStatus.specVersion, verdict: knowledgeStatus.verdict, resultHash: knowledgeStatus.resultHash,
+                    unknown: knowledgeStatus.unknownIds.length,
+                });
+            }
+        }
         let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours);
         if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }
 
@@ -8534,6 +8593,13 @@ export class ConversationsService {
             const demoTurn = options?.trialTurn === true;
             const demoAllowance = demoTurn ? await this.demoAllowance?.get() : null;
             if (demoTurn ? demoAllowance?.enabled === false : plan.widget !== true) return null;
+            // Go-live gate (R4, ADR 0010): the web chat of a real customer is a live channel; the trial link is not.
+            // Shadow mode only records. Enforced, an unpublished tenant gives no AI reply here and the conversation stays
+            // in the inbox for a person (the web chat has no fixed notice yet: docs/domain/business-readiness-runtime.md).
+            if (this.goLive && !draftMode && !demoTurn && !replayTurn) {
+                const gate = await this.goLive.check(tenantId, { channelType: 'web_widget', contact: contactId, conversationId });
+                if (gate.blocks) return null;
+            }
             const concurrentReceipt = await this.widgetAgentReplies.lookup(tenantId, binding);
             if (concurrentReceipt) return concurrentReceipt;
             const replyKey = 'widget:reply:' + tenantId + ':' + inboundMessageId;

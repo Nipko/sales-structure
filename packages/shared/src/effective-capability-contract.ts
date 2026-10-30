@@ -129,6 +129,20 @@ export interface EffectiveCapabilityContract {
     excluded: ExcludedCapability[];
     /** Readiness keys the subtype declares that the tenant does not meet. */
     unmetReadiness: VerticalReadinessKey[];
+    /**
+     * R4 (ADR 0010): the writers the business WRITE_MODE per object would exclude (mode none or undeclared, or an
+     * object whose write preconditions fail), next to the old readiness exclusion. `shadow`: computed and logged, not
+     * applied; `enforce` (flag readiness.writeModeCapability): applied. Per-agent switches can only restrict it.
+     */
+    writeModeDecision?: {
+        mode: 'shadow' | 'enforce';
+        /** Writers excluded by the new rule. */
+        excludedWriters: string[];
+        /** Excluded by the new rule and published by the old one (what enforcing would remove). */
+        onlyNew: string[];
+        /** Objects and their resolved mode (undeclared = none). */
+        objects: Record<string, { mode: string; declared: boolean; preconditionsMet: boolean }>;
+    };
     /** True when a gate could not be evaluated; the turn stays conservative. */
     degraded: boolean;
     /**

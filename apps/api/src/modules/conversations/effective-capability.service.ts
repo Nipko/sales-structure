@@ -29,6 +29,9 @@ import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
 import { buildVerticalOperationContract } from '../verticals/vertical-operation-contract';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
+import { ReadinessService } from '../readiness/readiness.service';
+import { FeatureFlagsService, WRITE_MODE_CAPABILITY_FLAG } from '../throttle/feature-flags.service';
+import { writeModeDecision, type WriteModeDecision } from './write-mode-capability';
 
 /**
  * Lo que se sabe de un proveedor externo en el momento del turno.
@@ -199,7 +202,35 @@ export class EffectiveCapabilityService {
         @Optional() private readonly readiness?: VerticalReadinessService,
         @Optional() private readonly regionalProfile?: RegionalProfileService,
         @Optional() private readonly systemOfRecord?: SystemOfRecordBoundaryService,
+        /** R4: la evaluación del motor (WRITE_MODE y precondiciones por objeto). Ausente en specs a mano: sin decisión nueva. */
+        @Optional() private readonly businessReadiness?: ReadinessService,
+        @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
+
+    /** Última diferencia sombra registrada por tenant: una línea de log por cambio, no una por turno. */
+    private readonly shadowLogged = new Map<string, string>();
+
+    /**
+     * R4 (ADR 0010): la exclusión de escritores por el WRITE_MODE del negocio. En sombra se calcula junto a la vieja y
+     * se registra la diferencia; con `readiness.writeModeCapability` se aplica. Nunca lanza.
+     */
+    private async writeModeFor(tenantId: string, publishedTools: readonly string[]): Promise<WriteModeDecision | null> {
+        if (!this.businessReadiness) return null;
+        try {
+            const enforce = (await this.featureFlags?.isFeatureEnabled(tenantId, WRITE_MODE_CAPABILITY_FLAG)) === true;
+            const view = await this.businessReadiness.getCurrent(tenantId);
+            const decision = writeModeDecision(view.result, publishedTools, enforce ? 'enforce' : 'shadow');
+            const fingerprint = `${decision.mode}:${decision.onlyNew.join(',')}`;
+            if (decision.onlyNew.length && this.shadowLogged.get(tenantId) !== fingerprint) {
+                this.shadowLogged.set(tenantId, fingerprint);
+                this.logger.log(`[capability-write-mode] ${JSON.stringify({ tenantId, mode: decision.mode, onlyNew: decision.onlyNew, objects: decision.objects })}`);
+            }
+            return decision;
+        } catch (error: any) {
+            this.logger.warn(`[Capability] write mode unavailable for ${tenantId}: ${error?.message}`);
+            return null;
+        }
+    }
 
     async resolve(input: {
         executionContext?: ServiceExecutionContext;
@@ -682,6 +713,21 @@ export class EffectiveCapabilityService {
             }
         }
 
+        // R4: el WRITE_MODE del negocio por objeto (sombra: solo se registra; aplicado: saca los escritores). Los
+        // interruptores por agente ya recortaron arriba (staticToolsForAgentConfig): solo pueden restringir.
+        const writeMode = await this.writeModeFor(input.tenantId, publishedTools);
+        if (writeMode?.mode === 'enforce' && writeMode.onlyNew.length) {
+            publishedTools = publishedTools.filter(tool => !writeMode.onlyNew.includes(tool));
+            for (const tool of writeMode.onlyNew) {
+                excluded.push({
+                    subject: tool,
+                    reason: 'readiness_unmet',
+                    detail: CAPABILITY_EXCLUSION_TEXT.readiness_unmet,
+                    repairRoute: '/admin/readiness',
+                });
+            }
+        }
+
         // The shared core already resolved both values (or captured them for
         // evaluation). Only resolve a missing fallback; do not re-read facts
         // that cannot affect this decision.
@@ -731,6 +777,7 @@ export class EffectiveCapabilityService {
             catalogReadGroups,
             excluded,
             unmetReadiness: [...unmet],
+            ...(writeMode ? { writeModeDecision: writeMode } : {}),
             degraded,
             writersBlocked,
             // Las entradas de la decisión viajan con ella: sin esto, "¿por qué

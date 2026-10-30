@@ -197,7 +197,7 @@ describe('invalidación y controlador', () => {
             currentVerdict: jest.fn(async () => 'no_listo'),
             evaluateTenant: jest.fn(async () => ({ result: { verdict: 'limitado', requirements: [{ id: 'CORE.PAYMENT.METHODS', result: 'cumple' }] } })),
         };
-        const controller = new ReadinessController(readiness as any, facts as any);
+        const controller = new ReadinessController(readiness as any, facts as any, {} as any);
         const req = { user: { id: OWNER.kind === 'user' ? OWNER.userId : '', role: 'tenant_admin' } };
         const res = await controller.writeFact(TENANT, 'CORE.PAYMENT.METHODS', { value: { methods: ['efectivo'] } }, req);
         expect(facts.write).toHaveBeenCalledWith(TENANT, { requirementId: 'CORE.PAYMENT.METHODS', value: { methods: ['efectivo'] }, scopeKey: '', expectedVersion: undefined },

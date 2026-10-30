@@ -8,8 +8,8 @@
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    evaluate, formFor, formRequirementIds, fromLegacyRows, resolveValue, screenTargetsFor,
-    type CompiledSpec, type FormDescriptor, type ReadinessResult, type RequirementEvaluation, type TenantSnapshot, type ValueRecord,
+    buildTurnContract, evaluate, formFor, formRequirementIds, fromLegacyRows, resolveValue, screenTargetsFor,
+    type CompiledSpec, type FormDescriptor, type ReadinessResult, type RequirementEvaluation, type TenantSnapshot, type TurnKnowledgeContract, type ValueRecord,
     type ValueState, type Verdict,
 } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
@@ -66,6 +66,8 @@ export const READINESS_HISTORY_MAX = 100;
 const UNDEFINED_TABLE = '42P01';
 
 export const readinessCacheKey = (tenantId: string, specVersion: string) => `readiness:${tenantId}:${specVersion}`;
+/** Contrato de conocimiento del turno (C0 §1.2, R4): sale de la misma evaluación y vive y se invalida con ella. */
+export const turnContractCacheKey = (tenantId: string, specVersion: string) => `readiness:contract:${tenantId}:${specVersion}`;
 
 /** SQL de solo lectura por Prisma: una transacción READ ONLY que devuelve un único valor JSON. */
 export function prismaJsonRunner(prisma: PrismaService): SqlJsonRunner {
@@ -91,6 +93,8 @@ export class ReadinessService {
     /** Una evaluación en curso por tenant: dos pedidos simultáneos comparten la misma. */
     private readonly inflight = new Map<string, Promise<ReadinessView>>();
     private formIds: string[] | null = null;
+    /** Último contrato del turno calculado por tenant (respaldo si Redis no responde justo después de evaluar). */
+    private readonly contracts = new Map<string, TurnKnowledgeContract>();
 
     constructor(
         private readonly prisma: PrismaService,
@@ -136,9 +140,30 @@ export class ReadinessService {
         return job;
     }
 
-    /** Borra la caché: el próximo pedido reevalúa. */
+    /** Borra la caché (evaluación y contrato del turno): el próximo pedido reevalúa. */
     async invalidate(tenantId: string): Promise<void> {
         await this.redis.del(readinessCacheKey(tenantId, this.spec.specVersion));
+        await this.redis.del(turnContractCacheKey(tenantId, this.spec.specVersion));
+    }
+
+    /**
+     * Contrato de conocimiento del turno (C0 §1.2, R4) de la última evaluación: de la caché; si no está, evalúa ahora
+     * (que lo deja en caché). Null si no se pudo leer: el turno sigue con el prompt sin `<knowledge_status>`.
+     */
+    async turnContract(tenantId: string): Promise<TurnKnowledgeContract | null> {
+        const key = turnContractCacheKey(tenantId, this.spec.specVersion);
+        try {
+            const cached = await this.redis.get(key);
+            if (cached) return JSON.parse(cached) as TurnKnowledgeContract;
+            const view = await this.evaluateTenant(tenantId, 'on_demand');
+            const fresh = this.contracts.get(tenantId);
+            if (fresh && fresh.resultHash === view.result.resultHash) return fresh;
+            const again = await this.redis.get(key);
+            return again ? JSON.parse(again) as TurnKnowledgeContract : null;
+        } catch (err) {
+            this.logger.warn(`readiness: contrato del turno no disponible para ${tenantId}: ${(err as Error).message}`);
+            return null;
+        }
     }
 
     async readSnapshot(tenantId: string): Promise<TenantSnapshot> {
@@ -203,6 +228,10 @@ export class ReadinessService {
         const stored = await this.persist(schema, result, trigger);
         const view: ReadinessView = { evaluationId: stored.id, evaluatedAt: result.asOf, trigger, cached: false, result };
         await this.writeCache(tenantId, view);
+        // el contrato del turno sale de la misma foto y del mismo resultado: el agente y el panel no pueden discrepar
+        const contract = buildTurnContract(this.spec, snapshot, result, { now: new Date(result.asOf) });
+        this.contracts.set(tenantId, contract);
+        await this.writeJson(turnContractCacheKey(tenantId, this.spec.specVersion), contract);
         this.events?.emit('readiness.evaluated', { tenantId, verdict: result.verdict, resultHash: result.resultHash, changed: stored.inserted });
         if (stored.inserted && stored.previousVerdict && stored.previousVerdict !== result.verdict) {
             this.events?.emit('readiness.verdict_changed', { tenantId, from: stored.previousVerdict, to: result.verdict });
@@ -246,10 +275,14 @@ export class ReadinessService {
     }
 
     private async writeCache(tenantId: string, view: ReadinessView): Promise<void> {
+        await this.writeJson(readinessCacheKey(tenantId, this.spec.specVersion), view);
+    }
+
+    private async writeJson(key: string, value: unknown): Promise<void> {
         try {
-            await this.redis.set(readinessCacheKey(tenantId, this.spec.specVersion), JSON.stringify(view), READINESS_CACHE_TTL_SECONDS);
+            await this.redis.set(key, JSON.stringify(value), READINESS_CACHE_TTL_SECONDS);
         } catch (err) {
-            this.logger.warn(`readiness: no se pudo guardar la caché de ${tenantId}: ${(err as Error).message}`);
+            this.logger.warn(`readiness: no se pudo guardar la caché ${key}: ${(err as Error).message}`);
         }
     }
 }

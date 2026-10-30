@@ -107,7 +107,10 @@ export class BusinessFactsService {
         if (MIGRATION_ORIGINS.has(origin) && actor.kind !== 'script') {
             throw new BadRequestException(`el origen ${origin} solo lo escribe la migración de procedencia`);
         }
-        const issues = validateRequirementValue(this.spec, requirementId, { value: input.value, status, origin, scopeKey });
+        // R4 (ADR 0010): WRITE_MODE.required_fields es una lista cerrada; un campo libre ya guardado sigue valiendo
+        const previous = this.spec.requirements[requirementId]?.templateId === 'OBJ.*.WRITE_MODE'
+            ? (await this.get(tenantId, requirementId, scopeKey).catch(() => null))?.fact?.value : undefined;
+        const issues = validateRequirementValue(this.spec, requirementId, { value: input.value, status, origin, scopeKey, ...(previous !== undefined ? { previous } : {}) });
         this.raiseIssues(requirementId, issues);
         const userId = actor.kind === 'user' ? actor.userId : null;
         const at = this.now().toISOString();

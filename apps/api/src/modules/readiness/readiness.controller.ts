@@ -5,6 +5,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { auditActor } from '../../common/utils/audit-actor.util';
 import { BusinessFactsService, type BusinessFactActor } from './business-facts.service';
+import { GoLiveService, type GoLiveActor } from './go-live.service';
 import { ReadinessService } from './readiness.service';
 
 /**
@@ -15,7 +16,7 @@ import { ReadinessService } from './readiness.service';
 @Controller('readiness')
 @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
 export class ReadinessController {
-    constructor(private readonly readiness: ReadinessService, private readonly facts: BusinessFactsService) {}
+    constructor(private readonly readiness: ReadinessService, private readonly facts: BusinessFactsService, private readonly goLive: GoLiveService) {}
 
     /** Última evaluación (caché). `?refresh=1` reevalúa ahora. */
     @Get(':tenantId')
@@ -53,6 +54,32 @@ export class ReadinessController {
         const detail = await this.readiness.getRequirement(tenantId, requirementId);
         const stored = await this.facts.get(tenantId, requirementId, '');
         return { success: true, data: { ...detail, fact: stored.fact } };
+    }
+
+    // ─────────────────────────── control de salida (R4) ───────────────────────────
+
+    /** Estado de publicación, modo (sombra o aplicado), la decisión de hoy y el informe de sombra (`?days=`, 7 por defecto). */
+    @Get(':tenantId/go-live')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async goLiveStatus(@Param('tenantId') tenantId: string, @Query('days') days?: string) {
+        return { success: true, data: await this.goLive.status(tenantId, Number(days) || 7) };
+    }
+
+    /**
+     * Publicar (C0 §1.2): `{ack?: string[]}`. 409 con los bloqueantes si el veredicto es no_listo; si es «limitado», 409
+     * con `limitedIntents` y `missing` hasta que `ack` las reconozca todas.
+     */
+    @Post(':tenantId/go-live')
+    @Roles('super_admin', 'tenant_admin')
+    async publish(@Param('tenantId') tenantId: string, @Body() body: { ack?: unknown }, @Req() req: any) {
+        return { success: true, data: await this.goLive.publish(tenantId, body?.ack, this.goLiveActorOf(req)) };
+    }
+
+    /** Despublicar: la IA deja de atender a clientes reales (en cuanto el control esté aplicado). */
+    @Post(':tenantId/go-live/off')
+    @Roles('super_admin', 'tenant_admin')
+    async unpublish(@Param('tenantId') tenantId: string, @Req() req: any) {
+        return { success: true, data: await this.goLive.unpublish(tenantId, this.goLiveActorOf(req)) };
     }
 
     // ─────────────────────────── valores del negocio (R3) ───────────────────────────
@@ -121,6 +148,12 @@ export class ReadinessController {
                 } : null,
             },
         };
+    }
+
+    /** Quién publica: el dueño, o la plataforma suplantando (el reconocimiento de «limitado» es un acto del negocio). */
+    private goLiveActorOf(req: any): GoLiveActor {
+        const actor = this.actorOf(req);
+        return { userId: actor.kind === 'user' ? actor.userId : null, ...(actor.kind === 'user' && actor.delegation ? { delegation: actor.delegation } : {}) };
     }
 
     /** Actor de la escritura. La plataforma escribe solo suplantando (la suplantación lleva el operador real). */

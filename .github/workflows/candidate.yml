@@ -437,6 +437,7 @@ jobs:
       - name: Typecheck the five
         run: |
           npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
+          npx tsc -p packages/business-spec/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/api/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/dashboard/tsconfig.json --noEmit --pretty false
           npx tsc -p apps/whatsapp/tsconfig.json --noEmit --pretty false
@@ -475,6 +476,21 @@ jobs:
           # checked by nobody — and that is the one number in this repository
           # that gets used to ask for an authorisation to spend real money.
           node apps/api/scripts/check-canary-figures.cjs --check
+
+      # ── Business requirements specification (packages/business-spec) ──────
+      #
+      # `business-spec --check` already runs inside verify-artifacts above (spec
+      # defects, ID ↔ evaluator parity, canonical subtypes, ui targets and the
+      # generated docs/domain/business-requirements.md). These are its tests: one
+      # per spec defect, a passing and a failing snapshot per requirement, and the
+      # golden snapshots of the 7 QA tenants. Pure TypeScript, no database.
+      - name: Business spec suite
+        run: |
+          set -o pipefail
+          npx jest --config packages/business-spec/jest.config.cjs --ci --runInBand \
+            --json --outputFile "${GITHUB_WORKSPACE}/business-spec-jest.json" || true
+          node infra/scripts/assert-no-skipped-tests.cjs \
+            --report "${GITHUB_WORKSPACE}/business-spec-jest.json" --label "Business spec suite"
 
       # ── The API suite, on this SHA, with nothing skipped ──────────────────
       #

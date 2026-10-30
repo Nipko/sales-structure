@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://parallext.dev/business-spec/requirement.schema.json",
+  "title": "Requisito del negocio (schema §4)",
+  "type": "object",
+  "required": ["id", "title", "kind", "applies_when", "answers", "exposure", "data", "criticality", "when_missing", "sources", "collection", "readiness", "qa_truth"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^(CORE|OBJ|PROF|DOM)(\\.[A-Z0-9_*]+)+$" },
+    "title": { "type": "string", "minLength": 3 },
+    "layer": { "type": "string", "pattern": "^(core|object:[a-z_]+|profile:P\\d\\d|domain:[a-z_]+)$" },
+    "kind": { "enum": ["knowledge", "procedure", "policy", "config"] },
+    "applies_when": { "type": "string", "minLength": 1 },
+    "answers": { "type": "array", "items": { "type": "string", "pattern": "^((C|T)\\d\\d|P\\d\\d-\\d+)$" } },
+    "exposure": { "enum": ["always_in_context", "read_on_intent", "account_read", "platform_only"] },
+    "data": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": { "name": { "type": "string" }, "type": { "type": "string" } }
+    },
+    "criticality": {
+      "type": "object",
+      "required": ["level", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["bloqueante", "necesario", "recomendado"] },
+        "rule": { "enum": ["R1", "R2", "R3", "R4", "R5"] },
+        "conditional": { "type": ["string", "null"] },
+        "when": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["if", "level", "rule"],
+            "additionalProperties": false,
+            "properties": {
+              "if": { "type": "string" },
+              "level": { "enum": ["bloqueante", "necesario", "recomendado"] },
+              "rule": { "enum": ["R1", "R2", "R3", "R4", "R5"] }
+            }
+          }
+        }
+      }
+    },
+    "when_missing": {
+      "type": "object",
+      "required": ["code", "behavior"],
+      "properties": {
+        "code": { "enum": ["PREG", "NC+AV", "HUM", "EXT", "GAP"] },
+        "behavior": { "type": "string" },
+        "never": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "required": ["allowed"],
+      "properties": {
+        "allowed": { "type": "array", "minItems": 1, "items": { "enum": ["owner_form", "copilot_approved", "import", "integration", "country_pack", "derived"] } },
+        "accepts_text_evidence": { "type": "boolean" },
+        "max_age": { "type": "string" }
+      }
+    },
+    "collection": {
+      "type": "object",
+      "required": ["channels", "ui_today", "storage_today", "storage_status"],
+      "properties": {
+        "channels": { "type": "array", "items": { "enum": ["form", "import", "copilot_extraction", "integration", "platform", "derived"] } },
+        "ui_today": { "type": "string" },
+        "storage_today": { "type": "string" },
+        "storage_status": { "enum": ["existe", "parcial", "nuevo"] }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "required": ["predicate_kind", "gap_message"],
+      "properties": {
+        "predicate_kind": { "enum": ["custom", "confirmed_fields", "value_or_empty", "default_accepted", "count_min", "platform_pack"] },
+        "predicate_params": { "type": "object" },
+        "predicate": { "type": "string" },
+        "predicate_by_level": { "type": "object", "propertyNames": { "enum": ["bloqueante", "necesario"] } },
+        "gap_message": { "type": ["string", "object"] },
+        "derived": { "type": "boolean" }
+      },
+      "anyOf": [{ "required": ["predicate"] }, { "required": ["predicate_by_level"] }]
+    },
+    "qa_truth": { "type": "string" },
+    "owner_decision": { "type": "string" },
+    "deprecated_by": { "type": "string" },
+    "notes": {}
+  }
+}

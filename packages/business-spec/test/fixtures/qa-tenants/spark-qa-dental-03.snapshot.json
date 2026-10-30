@@ -1,0 +1,368 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:49:10.109Z",
+  "tenant": {
+    "ref": "spark-qa-dental-03",
+    "name": "Spark QA Dental 03",
+    "slug": "spark-qa-dental-03",
+    "industry": "salud",
+    "language": "es-CO",
+    "settings": {
+      "subType": "dental",
+      "customerTypes": [
+        "b2c"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-18T09:22:35.118Z"
+      },
+      "businessInfoDraft": {
+        "about": "Negocio ficticio de Salud / Odontología exclusivamente para pruebas funcionales, sin clientes reales."
+      }
+    },
+    "created_at": "2026-10-18T09:22:30.11+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "salud/dental"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "ced8a163-cb47-42ed-99fd-6560851cec22",
+      "city": null,
+      "name": "Spark QA Dental 03",
+      "about": "Negocio ficticio de Salud / Odontología exclusivamente para pruebas funcionales, sin clientes reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-18T09:22:34.86285",
+      "is_primary": true,
+      "updated_at": "2026-10-18T09:22:34.86285",
+      "social_links": {}
+    }
+  ],
+  "services": [
+    {
+      "id": "c8ef84c9-4d2c-4e63-9e1f-9907ba4f4c5a",
+      "name": "Consulta general",
+      "price": 80000,
+      "category": "consulta",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "description": "Consulta médica general con el especialista",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 30
+    },
+    {
+      "id": "79d14a3e-ce5b-45ad-a593-9a47cfc83f48",
+      "name": "Consulta especializada",
+      "price": 120000,
+      "category": "consulta",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "description": "Consulta con especialista o procedimiento diagnóstico",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 45
+    },
+    {
+      "id": "553694fe-7a7b-4baf-8d47-cef626aff43d",
+      "name": "Control y seguimiento",
+      "price": 50000,
+      "category": "control",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "description": "Cita de control o seguimiento de tratamiento",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 20
+    }
+  ],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "aee90d5f-6d3d-44af-83a3-e35caddae4ce",
+      "answer": "Cuéntame qué día te sirve y te confirmo el horario de atención. Si quieres agendar ahora mismo, escribe \"quiero una cita\".",
+      "category": "general",
+      "question": "¿Cuál es el horario de atención?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "5ed3eedb-408d-4488-9ca7-496d4a078f18",
+      "answer": "Te confirmo los medios de pago disponibles y si trabajamos con tu seguro antes de tu cita. Pregúntame y lo verifico.",
+      "category": "pagos",
+      "question": "¿Cuáles son los métodos de pago?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "e0a6df4a-e58b-47ea-9e5d-4d7fc5e347ed",
+      "answer": "En caso de emergencia acude al servicio de urgencias más cercano o llama a la línea de emergencias de tu ciudad. Durante el horario de atención escríbenos y damos prioridad a tu caso.",
+      "category": "emergencias",
+      "question": "¿Qué hago en caso de emergencia?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "4c984c75-ba9c-4872-88dd-e6cc98d9651b",
+      "answer": "Escribe \"cancelar cita\" o \"reprogramar cita\" y lo gestiono. Avísanos con la mayor anticipación posible; te confirmo las condiciones de cancelación antes de hacer el cambio.",
+      "category": "citas",
+      "question": "¿Cómo cancelo o reprogramo una cita?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "3f2d8217-26da-41b1-acd5-3da5b4dca707",
+      "answer": "Trae tu documento de identidad y, si tienes seguro médico, el carné. Los exámenes previos relacionados con tu consulta también ayudan. Te aviso si hace falta algo más antes de tu cita.",
+      "category": "general",
+      "question": "¿Qué documentos necesito para la primera visita?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "a5feca59-ab25-406b-a3e1-5f9a2ee927f5",
+      "answer": "Trabajamos con varios convenios. Cuéntame cuál es el tuyo y la doctora confirma cobertura específica al momento de la valoración.",
+      "category": "seguros",
+      "question": "¿Trabajan con mi seguro / EPS / convenio?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "9d7beb6f-8501-4071-b2a7-431916619246",
+      "answer": "El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Quieres que te agende una?",
+      "category": "costos",
+      "question": "¿Cuánto cuesta una limpieza dental?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "d795fd1c-398d-4d39-82a2-1c5ad11bd98a",
+      "answer": "Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agenda una valoración y lo conversan.",
+      "category": "dolor",
+      "question": "¿Cómo manejan el dolor o miedo al dentista?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "77008eab-09cf-48e3-9e6f-86d04c148113",
+      "answer": "Depende de tu caso, pero generalmente entre 12 y 24 meses con citas mensuales. Si ya tienes ortodoncia con nosotros, puedo consultarte el progreso de tu plan.",
+      "category": "ortodoncia",
+      "question": "¿Cuánto tiempo dura un tratamiento de ortodoncia?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    },
+    {
+      "id": "8e61f6ea-d352-43b0-ae8c-cddebfb9f650",
+      "answer": "Si tienes dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.",
+      "category": "urgencias",
+      "question": "¿Atienden urgencias dentales?",
+      "created_at": "2026-10-18T09:22:34.903496",
+      "updated_at": "2026-10-18T09:22:34.903496",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [
+    {
+      "id": "df07244e-1121-4a9f-9ecc-547bf3442acc",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 1
+    },
+    {
+      "id": "e8f8fe5d-8036-4203-b713-efe1ae73ba12",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 2
+    },
+    {
+      "id": "1e9e6ec9-150b-47f6-9186-d58e5d2b4464",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 3
+    },
+    {
+      "id": "464a10bf-b5b8-469f-b4c5-2a1f4ce6c259",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 4
+    },
+    {
+      "id": "76597c2f-1a2a-467c-b0ad-abb04bff5dc7",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 5
+    },
+    {
+      "id": "0ea1bfc9-d614-42b5-8858-94429b27d609",
+      "user_id": "user-1",
+      "end_time": "13:00:00",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.903496",
+      "start_time": "08:00:00",
+      "day_of_week": 6
+    }
+  ],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "ca864f27-baa0-423a-854a-66fdb8c3223d",
+      "is_active": true,
+      "created_at": "2026-10-18T09:22:34.839987",
+      "is_default": true,
+      "updated_at": "2026-10-18T13:06:58.806528",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Siempre ofrece agendar una cita cuando el paciente describe síntomas.",
+            "Nunca brindes diagnósticos ni recomiendes medicamentos.",
+            "Refiere a consulta presencial cuando haya dudas clínicas.",
+            "Pregunta el motivo: ¿limpieza de rutina, dolor, tratamiento estético, ortodoncia?",
+            "Si el paciente reporta DOLOR INTENSO, traumatismo o sangrado abundante, ESCALA INMEDIATAMENTE — es urgencia",
+            "Para limpieza/control rutinario: agenda directamente desde el calendario",
+            "Para ortodoncia/blanqueamiento/tratamientos: ofrece valoración previa de 30min",
+            "Si el paciente ya tiene plan de tratamiento activo, USA get_treatment_plan para ver su progreso y list_upcoming_sessions para próximas citas",
+            "NUNCA des diagnósticos ni recomiendes medicamentos",
+            "Confirma nombre y telefono del paciente antes de agendar. NUNCA pidas cedula ni documento de identidad",
+            "Pregunta si tiene seguro/convenio y cuál — pero aclara que la cobertura la confirma la clínica",
+            "Para urgencias fuera de horario, da número de guardia (escalado) — nunca improvises"
+          ],
+          "requiredFields": {
+            "name": {
+              "required": true
+            },
+            "phone": {
+              "required": true
+            }
+          },
+          "forbiddenTopics": [
+            "Diagnósticos clínicos",
+            "Prescripción de medicamentos o antibióticos",
+            "Predecir resultados de tratamiento",
+            "Cobertura específica de seguros sin confirmar",
+            "Costos exactos sin valoración previa",
+            "Productos de competidores",
+            "Diagnósticos médicos",
+            "Prescripción de medicamentos",
+            "Interpretación de exámenes",
+            "Datos de otros pacientes",
+            "Recomendación de tratamientos específicos"
+          ],
+          "handoffTriggers": [
+            "dolor intenso",
+            "sangrado abundante",
+            "traumatismo dental",
+            "urgencia",
+            "reclamo",
+            "queja sobre tratamiento",
+            "cambio de plan de tratamiento",
+            "devolución de pago",
+            "urgencia medica",
+            "emergencia",
+            "solicitud de receta",
+            "queja formal",
+            "historial clinico"
+          ]
+        }
+      },
+      "template_id": "tpl_salud_dental",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

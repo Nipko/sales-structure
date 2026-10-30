@@ -1,0 +1,24 @@
+{
+    "name": "@parallext/business-spec",
+    "version": "1.0.0-rc.1",
+    "private": true,
+    "description": "Especificación de requisitos del negocio (fuente única) y motor puro de preparación, verdad QA y CLI",
+    "main": "./dist/index.js",
+    "types": "./src/index.ts",
+    "bin": {
+        "business-spec": "./bin/business-spec.cjs"
+    },
+    "scripts": {
+        "build": "tsc -p tsconfig.json && node bin/business-spec.cjs compile --out dist/spec.json",
+        "check": "node bin/business-spec.cjs check",
+        "docs": "node bin/business-spec.cjs docs --write",
+        "test": "jest --config jest.config.cjs --runInBand"
+    },
+    "dependencies": {
+        "ajv": "^8.12.0",
+        "js-yaml": "^4.1.0"
+    },
+    "devDependencies": {
+        "typescript": "^5.4.0"
+    }
+}

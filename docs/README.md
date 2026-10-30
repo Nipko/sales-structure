@@ -12,6 +12,16 @@ _Última actualización: 2026-10-08_
 
 ---
 
+## Base de conocimiento aprobada (K1)
+
+Solo entra lo aprobado; lo que se puede contar se **genera** y la CI lo verifica. Cada documento dice su fuente de verdad en código.
+
+| Documento | Dueño | Estado | Última revisión | Fuente de verdad en código |
+|-----------|-------|--------|-----------------|----------------------------|
+| [domain/business-requirements-format.md](domain/business-requirements-format.md) | dueño del producto | aprobado (B2 v0.2 + R1) | 2026-10-30 | `packages/business-spec/spec/requirement.schema.json` |
+| [domain/business-requirements.md](domain/business-requirements.md) | generado | **generado** (`business-spec docs --write`; `--check` en `verify-artifacts`) | — | `packages/business-spec/spec/*.yaml` |
+| [decisions/](decisions/README.md) | dueño del producto | ADR aprobados: 0001 (especificación única), 0002 (D1–D15 y C0 §7) | 2026-10-30 | — |
+
 ## Arquitectura y referencia
 
 | Documento | Descripción |

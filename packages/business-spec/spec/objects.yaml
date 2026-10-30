@@ -1,0 +1,564 @@
+# B2 · Requisitos por OBJETO TRANSACCIONAL
+# Estructura: (1) plantilla OBJ.* con 6 requisitos que se instancian por objeto (OBJ.<OBJETO>.<NOMBRE>);
+#             (2) por objeto: parámetros de la plantilla + requisitos extra propios.
+# Formato de requisito: schema.md. Intenciones: B1. storage_today: ver schema.md §12.
+spec_version: 1.0.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1)
+
+# Diccionario común de modos de escritura (lo usa OBJ.*.WRITE_MODE)
+write_modes:
+  direct_commit: >-
+    El agente confirma en el momento contra el motor o la integración (ledger, idempotencia, términos
+    recalculados). Solo una escritura exitosa respalda decir «listo/confirmado».
+  request_to_business: >-
+    El agente registra una SOLICITUD con todos los campos y dice explícitamente que no está confirmada;
+    el negocio confirma dentro del SLA y el cliente recibe un único aviso con el resultado.
+  none: >-
+    El agente solo informa. Ante la intención de reservar/pedir ofrece contacto o persona (HUM) y no
+    recoge datos de reserva.
+
+identity_levels: {canal: "A1 · identidad del canal (número o cuenta)", codigo: "código de reserva o pedido", otp: "A2 · código de un solo uso", humano: "A4 · aprobación o lectura por una persona"}
+
+# ═══════════════════════════ (1) PLANTILLA ═══════════════════════════
+template:
+
+- id: OBJ.*.CATALOG
+  title: Campos obligatorios del catálogo del objeto
+  kind: knowledge
+  applies_when: "object_enabled(<O>)"
+  answers: [C06, C07, C08, C09, C10, C11]
+  exposure: read_on_intent
+  data:
+    name: offer.items[<O>]
+    type: "item_list<O>"
+    structure: "contrato común (CORE.OFFER.ITEMS) + catalog_fields.required y .optional del objeto"
+    validation: ["cada ítem activo tiene todos los campos required, con su tipo", "listas (includes/excludes) admiten vacío confirmado"]
+    example: "ver cada objeto"
+  criticality: {level: bloqueante, rule: R2, conditional: "bloqueante si WRITE_MODE ≠ none (los campos required alimentan los términos de confirmación); necesario si WRITE_MODE = none", when: [{if: "not writes(<O>)", level: necesario, rule: R4}]}
+  when_missing: {code: NC+AV, behavior: "Campo ausente en un ítem: «no consta en la ficha» + AV; el ítem no se puede reservar/pedir por el agente si le falta un campo de confirmación (pasa a solicitud + HUM).", never: ["negar un atributo", "completar un campo con un valor típico del sector"]}
+  sources: {allowed: [owner_form, import, integration, copilot_approved]}
+  collection: {channels: [form, import, integration, copilot_extraction], ui_today: "pantalla de catálogo del objeto", storage_today: "tabla del objeto", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "todos(ítems activos del objeto, campos required confirmados); parcial = proporción"
+    gap_message: "{n} de {m} {ítems} no tienen {campos}; no se podrán reservar por el agente."
+  qa_truth: "AFIRMA campos confirmados; excluye/'no' solo desde excludes o vacío confirmado; ausente → 'no consta'."
+
+- id: OBJ.*.AVAILABILITY_SOURCE
+  title: Fuente de disponibilidad del objeto
+  kind: config
+  applies_when: "object_enabled(<O>) and availability_kinds(<O>) ≠ []"
+  answers: [C15, C16, C21, P11-3, P11-4, P05-5, P06-5, P13-3, P19-1, P20-2]
+  exposure: read_on_intent
+  data:
+    name: availability[<O>]
+    type: enum
+    structure:
+      source: "enum [motor_nativo, integración:<proveedor>, ical, estado_manual, ninguna]"
+      resource_model: "enum [profesional, recurso (mesa, bahía, canil, unidad), cupos_por_salida, stock, fecha_exclusiva, calendario_noches]"
+      lead_time: "duration (antelación mínima)"
+      horizon: "duration (hasta cuándo se puede reservar)"
+      buffer: "duration?"
+      freshness: "para estado_manual: max_age (p. ej. stock 24 h)"
+    validation: ["motor_nativo ⇒ datos cargados (agenda, salidas, unidades, stock) para los próximos 14 días", "integración ⇒ conexión verificada en las últimas 24 h", "contenida en CORE.HOURS.REGULAR o con excepción declarada", "ninguna es un valor válido y declarado"]
+    example: {source: motor_nativo, resource_model: profesional, lead_time: {min: 2, unit: h}, horizon: {min: 60, unit: días}}
+  criticality: {level: bloqueante, rule: R2, conditional: "bloqueante si WRITE_MODE = direct_commit; necesario en otro caso (declarar 'ninguna' cumple)", when: [{if: "not direct_commit(<O>)", level: necesario, rule: R4}]}
+  when_missing: {code: NC+AV, behavior: "Fuente 'ninguna' o ausente: responde con el horario y «no tengo la disponibilidad en línea; puedo dejar tu solicitud» (si WRITE_MODE = request) o HUM. Si falta la fecha o la cantidad del cliente: PREG. Si el cliente solo quiere saber (T03), responde sin forzar la reserva.", never: ["«hay disponibilidad» o «está lleno» sin leer la fuente en ese turno", "inventar umbrales de grupo o capacidad"]}
+  sources: {allowed: [integration, owner_form]}
+  collection: {channels: [form, integration], ui_today: "pantalla del objeto + /admin/settings/integrations", storage_today: "ver cada objeto", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "source declarado; si motor_nativo: hay disponibilidad cargada para ≥ 14 días; si integración: sincronizada < 24 h; si estado_manual: no_caducado"
+    gap_message: "El agente no puede ver tu disponibilidad de {objeto}: conecta tu agenda o cárgala."
+  qa_truth: "C15: con fuente → la esperada es la disponibilidad leída para fecha/cantidad del caso (oráculo consulta la misma fuente en el instante del caso); sin fuente → horario + NC+AV o solicitud."
+
+- id: OBJ.*.WRITE_MODE
+  title: Cómo se reserva o pide, quién confirma y qué se recapitula
+  kind: procedure
+  applies_when: "object_enabled(<O>)"
+  answers: [C16, C17, T01, T03, P01-1, P02-2, P07-10, P14-6]
+  exposure: platform_only
+  data:
+    name: proc.book[<O>] | proc.order[<O>]
+    type: procedure_spec
+    structure:
+      mode: "enum [direct_commit, request_to_business, none]"
+      required_fields: "lista EXACTA del diccionario de campos del objeto (nombre, teléfono, fecha/hora, cantidad, ítem, notas…)"
+      consent_required: "bool (tratamiento de datos; obligatorio si se piden datos sensibles)"
+      confirmation_terms: "qué se recapitula antes del «sí»: ítem, fecha/hora, cantidad, total calculado, depósito, resumen de cancelación"
+      payment_required_to_confirm: "bool (ref CORE.PAYMENT.AGENT_COLLECTS)"
+      business_confirm_sla: "duration (si request_to_business)"
+      request_message: "text_i18n: 'Quedó tu solicitud; {negocio} la confirma en {sla}' (obligatorio si request)"
+    validation: ["direct_commit ⇒ AVAILABILITY_SOURCE con motor o integración", "required_fields ⊆ diccionario del objeto", "request_to_business ⇒ business_confirm_sla", "confirmation_terms incluye total y cancelación si el objeto los tiene"]
+    example: {mode: request_to_business, required_fields: [servicio, fecha_hora, nombre, telefono], business_confirm_sla: {min: 2, unit: h}}
+  criticality: {level: bloqueante, rule: R2}
+  when_missing: {code: HUM, behavior: "Sin modo definido el objeto se trata como 'none': informa y ofrece persona. Faltan datos del cliente: PREG de a uno. Con request: dice SIEMPRE que es solicitud y no confirmación.", never: ["decir 'reservado/confirmado' sin escritura exitosa", "pedir campos que no están en required_fields u omitir alguno", "pedir la dirección para cotizar (P02-1)"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "nuevo (hoy implícito por vertical y por herramientas habilitadas; /admin/procedures para SOP)", storage_today: "tool_configs + motores (booking engine, order intake, procedure engine) por vertical", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "mode confirmado; si ≠ none: required_fields y confirmation_terms válidos; si request: sla; si direct: ref_cumple(OBJ.<O>.AVAILABILITY_SOURCE)"
+    gap_message: "Decide si el agente confirma {objeto} directamente o deja solicitudes para que tú confirmes."
+  qa_truth: "C16: direct → recapitula confirmation_terms y, tras el «sí», confirma con referencia; request → recoge required_fields exactos y dice 'solicitud' + SLA; none → HUM/contacto. T01 tras recapitulación = escritura (evento verificable)."
+  owner_decision: E9
+
+- id: OBJ.*.CUSTOMER_REQUIREMENTS
+  title: Requisitos y documentos del cliente para el trámite
+  kind: knowledge
+  applies_when: "object_enabled(<O>)"
+  answers: [C17, P05-11, P07-9, P08-4, P08-5, P14-7, P15-3, P18-2, P19-2, P22-7, P25-3, P28-2]
+  exposure: read_on_intent
+  data:
+    name: requirements[<O>]
+    type: list
+    structure: "lista de {trámite: enum por objeto, documents: lista, conditions: lista (edad mínima, licencia, vacunas, receta, codeudor…), notes?} o vacío confirmado"
+    validation: ["coherente con WRITE_MODE.required_fields", "sin documentos duplicados"]
+    example: [{trámite: primera_cita, documents: ["documento de identidad", "carné del seguro"], conditions: []}]
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Dice lo que consta y marca lo que no; para datos de la reserva usa exactamente WRITE_MODE.required_fields.", never: ["añadir documentos típicos del sector ('historial dental')", "omitir un requisito confirmado"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: "nuevo (hoy en FAQs)", storage_status: nuevo}
+  readiness: {predicate_kind: value_or_empty, predicate: "por trámite principal del objeto: valor o vacío confirmado", gap_message: "¿Qué debe traer o cumplir el cliente para {trámite}?"}
+  qa_truth: "C17: la lista esperada es exactamente la confirmada (ni más ni menos)."
+
+- id: OBJ.*.CHANGE_RULES
+  title: Modificar y cancelar el objeto
+  kind: policy
+  applies_when: "object_enabled(<O>) and WRITE_MODE ≠ none"
+  answers: [C21, C22, C24, P10-5, P13-4, P13-5]
+  exposure: read_on_intent
+  data:
+    name: proc.modify[<O>] + proc.cancel[<O>]
+    type: policy_terms
+    structure:
+      agent_can_modify: "enum [directo, solicitud, no]"
+      agent_can_cancel: "enum [directo, solicitud, no]"
+      terms: "ref CORE.POLICY.CANCELLATION_CHANGES (si aplica al tenant) o policy_terms propio del objeto/ítem; en objetos no reservables (food_order, catalog_order) siempre propio, con cancel_until_status (último estado del pedido en que se puede cancelar o modificar, p. ej. 'antes de preparación') y cargo"
+      explicit_confirmation: "siempre true (recapitula qué se cancela y el cargo antes del «sí»)"
+      ask_reason: "bool (false en salud mental: P10-5)"
+    validation: ["directo ⇒ WRITE_MODE = direct_commit", "terms con plazo (o cancel_until_status) y cargo estructurados", "terms no puede apuntar a un requisito n/a para el tenant"]
+    example: {agent_can_modify: directo, agent_can_cancel: directo, terms: "ref CORE.POLICY.CANCELLATION_CHANGES", ask_reason: false}
+  criticality: {level: bloqueante, rule: R2}
+  when_missing: {code: HUM, behavior: "Sin regla: solicitud + HUM. Fuera de plazo: cita la política y deriva la excepción a HUM.", never: ["cancelar sin confirmación explícita", "prometer reembolso fuera de la política"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "/admin/settings/policies (texto) — reglas por objeto: nuevo", storage_today: "motor de transiciones (cancel/mover) + policies.cancellation", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "agent_can_modify y agent_can_cancel declarados y terms resuelve (a CORE.POLICY.CANCELLATION_CHANGES si aplica; si es n/a, al policy_terms propio) con plazo o cancel_until_status y cargo confirmados", gap_message: "Define si el agente puede cambiar o cancelar {objeto} y con qué condiciones."}
+  qa_truth: "C21/C22: dentro de plazo → recapitula + efecto (directo) o solicitud; fuera → política + HUM; nunca sin confirmación."
+
+- id: OBJ.*.ACCOUNT_READ
+  title: Lectura de los registros del cliente («mis reservas/pedidos»)
+  kind: config
+  applies_when: "object_enabled(<O>) and WRITE_MODE ≠ none"
+  answers: [C19, C20, C21, C22, C31, P02-7, P03-6, P05-10, P06-12, P11-10]
+  exposure: account_read
+  data:
+    name: account[<O>]
+    type: config
+    structure:
+      readable: bool
+      identity_level: "enum identity_levels (por defecto CORE.ACCOUNT.IDENTITY_DEFAULT; los dominios lo suben)"
+      fields_visible: "lista (referencia, fecha, ítems, total, estado, estado de pago, ETA)"
+      status_vocabulary: "mapa estado interno → texto al cliente (incl. payment_status)"
+      ordering: "por fecha de creación/evento ('primero' y 'último' por fecha)"
+    validation: ["status_vocabulary cubre todos los estados del objeto", "payment_status visible si el objeto cobra"]
+    example: {readable: true, identity_level: canal, fields_visible: [referencia, fecha, estado, total, payment_status]}
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R3) en dominios health, mental_health, insurance, finance, legal (identidad y campos visibles)", when: [{if: "domain_any([health, mental_health, insurance, finance, legal])", level: bloqueante, rule: R3}]}
+  when_missing: {code: HUM, behavior: "readable = false o identidad insuficiente: «no puedo ver tus {reservas} desde aquí» + verificación o HUM. Sin registros: «no veo ninguna a este contacto» + PREG (¿otro dato?).", never: ["contar o fechar desde el historial del chat (P7)", "decir 'usted pagó' si payment_status ≠ pagado"]}
+  sources: {allowed: [derived, integration]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "herramientas list_my_* (12) por vertical + identidad A1/A2/A4", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "readable declarado; si true: status_vocabulary completo e identity_level ≥ mínimo del dominio", gap_message: "Revisa qué puede ver un cliente de sus {reservas} y cómo se identifica."}
+  qa_truth: "C19/C20: la esperada sale del registro leído en el turno (conteo, orden por fecha, estado, pago); con identidad insuficiente, el paso de verificación."
+
+# ═══════════════════════════ (2) OBJETOS ═══════════════════════════
+objects:
+
+- object: appointment
+  label: "Cita / turno con profesional o recurso"
+  variants: {service: "P08, P09, P10, P11, P12, P17, P18", table: "P01 (mesa; recurso = mesa)", test_drive: "P26", consult: "P22, P23 (demo), P25"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, duration, price_type]
+    optional: [price, staff_ids, modality, sessions_estimate, preparation_ref, buffer, min_age, includes]
+  availability_kinds: [profesional, recurso]
+  default_write_mode: direct_commit
+  default_identity: canal
+  storage_today: {catalog: "services (+ price_status), service_staff, staff_members", availability: "availability_slots, staff_schedules, staff_breaks, blocked_dates, calendar_integrations", records: "appointments, treatment_plans/sessions", ui: "/admin/service-catalog, /admin/appointments, /admin/settings/public-booking"}
+  extra_requirements:
+  - id: OBJ.APPOINTMENT.STAFF
+    title: Profesionales, qué atiende cada uno e idiomas
+    kind: knowledge
+    applies_when: "object_enabled(appointment) and staff_count > 1"
+    answers: [P09-1, P09-2, P10-1, P11-5]
+    exposure: read_on_intent
+    data:
+      name: staff[]
+      type: list
+      structure: "lista de {display_name, role/especialidad, services: ref ítems, languages?, bookable_by_name: bool}"
+      validation: ["cada servicio activo tiene ≥1 profesional o recurso", "nombres visibles aprobados por el negocio"]
+      example: [{display_name: "Dra. López", role: "Ortodoncista", services: ["Ortodoncia"], bookable_by_name: true}]
+    criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) si se permite reservar por profesional", when: [{if: books_by_staff, level: bloqueante, rule: R2}]}
+    when_missing: {code: NC+AV, behavior: "«No tengo confirmado quién atiende ese servicio» + reserva sin profesional o AV.", never: ["inventar nombres de profesionales"]}
+    sources: {allowed: [owner_form, integration]}
+    collection: {channels: [form, integration], ui_today: "/admin/users + /admin/service-catalog", storage_today: "dos modelos paralelos: users + availability_slots.user_id + service_staff.user_id, y staff_members + staff_service_links (staff_count: schema §4.1)", storage_status: parcial}
+    readiness: {predicate_kind: custom, predicate: "todos(servicios activos, ≥1 profesional confirmado)", gap_message: "Asigna quién atiende cada servicio."}
+    qa_truth: "«¿Me atiende X?» → AFIRMA si X está y atiende el servicio; si no consta → NC+AV."
+
+- object: food_order
+  label: "Pedido de comida (domicilio, para llevar, en mesa)"
+  variants: {delivery: P02, dine_in_takeaway: P01}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, category, price_type, price, active]
+    optional: [description, modifiers, allergens, diet_tags, available_on, prep_time, combos, images, nutrition]
+  availability_kinds: [stock]
+  default_write_mode: direct_commit
+  default_identity: canal
+  storage_today: {catalog: "menu_items, menu_categories, menu_promotions", records: "food_orders, food_order_items", ui: "/admin/menu, /admin/food-orders"}
+  overrides: {CORE.DELIVERY.TERMS: "bloqueante (R2) si variant = delivery", CORE.SERVICE_AREA: "bloqueante (R2) si variant = delivery"}
+  availability_default: {source: estado_manual, field: "menu_items.is_available", max_age: null, note: "Disponible hasta que se marque agotado. Declarar o aceptar este default cumple OBJ.FOOD_ORDER.AVAILABILITY_SOURCE (sin reconfirmación diaria).", gap_message: "Confirma cómo marcas un plato como agotado."}
+  change_terms: "propios (no reservable): cancel_until_status, p. ej. 'hasta que la cocina acepta el pedido', y cargo si ya se preparó"
+  write_validation: ["direct_commit solo dentro de CORE.HOURS.REGULAR y del horario de pedidos (CORE.HOURS.BY_SERVICE) si existe", "variant = delivery ⇒ el total recapitulado incluye el costo de CORE.DELIVERY.TERMS; delivery_fee = 0 solo si está confirmado (hoy el motor lo pone en 0 por defecto)"]
+  extra_requirements:
+  - id: OBJ.FOOD_ORDER.ALLERGENS_DIET
+    title: Alérgenos y etiquetas de dieta (o declaración de no garantía)
+    kind: knowledge
+    applies_when: "object_enabled(food_order)"
+    answers: [P01-4, P02-4, T08]
+    exposure: read_on_intent
+    data:
+      name: offer.items[].allergens
+      type: list
+      structure: {mode: "enum [por_plato, declaración_general]", per_item: "allergens[] (14 alérgenos UE o lista del pack) y diet_tags[] (vegetariano, vegano, sin gluten…) — vacío confirmado = 'sin alérgenos declarados'", general_statement: "text_i18n ('cocinamos con maní y gluten; no garantizamos trazas')", kitchen_contact: "ref HUM"}
+      validation: ["por_plato ⇒ todos los platos activos con allergens confirmados (valor o vacío)", "allergens = [] que viene del default de columna NO es vacío confirmado (schema §7.5 L4)", "declaración_general ⇒ texto no vacío"]
+      example: {mode: por_plato, per_item: {"Plato Spark": {allergens: [soja, gluten], diet_tags: []}}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Alergia declarada y sin dato: «no puedo garantizar que {plato} no contenga {alérgeno}» + HUM con cocina. Dieta sin etiqueta: «no está marcado como {dieta}».", never: ["«no contiene X» sin vacío confirmado por plato", "presentar un plato como vegetariano sin etiqueta"]}
+    sources: {allowed: [owner_form, import]}
+    collection: {channels: [form, import], ui_today: "/admin/menu (8 alérgenos fijos: gluten, lactosa, huevo, mariscos, pescado, maní, soja, frutos secos; etiquetas vegetariano, vegano, sin_gluten…)", storage_today: "menu_items.allergens y menu_items.tags (jsonb DEFAULT '[]'); modo y declaración general: nuevo", storage_status: parcial}
+    readiness: {predicate_kind: custom, predicate: "mode declarado y (por_plato completo o declaración_general confirmada)", gap_message: "Marca los alérgenos de cada plato o publica tu declaración de alérgenos."}
+    qa_truth: "Alérgeno listado → AFIRMA que contiene; vacío confirmado → NIEGA; sin dato → 'no puedo garantizar' + HUM."
+  - id: OBJ.FOOD_ORDER.MODIFIERS
+    title: Modificadores, tamaños y extras con precio
+    kind: knowledge
+    applies_when: "object_enabled(food_order)"
+    answers: [P02-2, P02-3, C10]
+    exposure: read_on_intent
+    data:
+      name: offer.items[].modifiers
+      type: list
+      structure: "lista de {group, options: [{name, price_delta: money}], min, max} + accepts_free_notes: bool"
+      validation: ["min ≤ max", "price_delta en la moneda de operación"]
+      example: [{group: tamaño, options: [{name: grande, price_delta: {amount: 5000, currency: COP}}], min: 1, max: 1}]
+    criticality: {level: recomendado, rule: R5}
+    when_missing: {code: NC+AV, behavior: "Si accepts_free_notes: pasa la petición como nota a cocina sin prometer precio; si no, NC+AV.", never: ["inventar un recargo o confirmar un cambio no permitido"]}
+    sources: {allowed: [owner_form, import, integration]}
+    collection: {channels: [form, import, integration], ui_today: nuevo, storage_today: "nuevo en catálogo (verificado: solo food_order_items.modifiers por pedido y menu_items.metadata libre)", storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [groups, accepts_free_notes]}, predicate: "valor o vacío confirmado y accepts_free_notes declarado", gap_message: "¿Tus platos tienen tamaños o extras con precio?"}
+    qa_truth: "Total con modificador = precio + price_delta (oráculo)."
+
+- object: catalog_order
+  label: "Pedido de productos de catálogo (retail, farmacia, repuestos)"
+  variants: {retail: P03, pharmacy: P04, dealer_inventory: "P26 (vehículos como ítems de inventario; solo lectura + test_drive/lead)"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, category, price_type, price, active]
+    optional: [sku, variants, attributes, compatibility, images, restrictions, requires_prescription, warranty_ref, vin, year, km, condition]
+  availability_kinds: [stock]
+  default_write_mode: direct_commit
+  default_identity: canal
+  storage_today: {catalog: "products / ecommerce_products, product_categories, vehicles", availability: "stock_movements", records: "orders, order_items, abandoned_carts", ui: "/admin/catalog, /admin/inventory, /admin/orders, /admin/vehicles"}
+  overrides: {CORE.POLICY.REFUND_RETURNS: "bloqueante (R2) si WRITE_MODE = direct_commit", CORE.POLICY.WARRANTY: "bloqueante (R2) si WRITE_MODE = direct_commit"}
+  extra_requirements: []
+
+- object: lodging_booking
+  label: "Reserva de alojamiento por noches"
+  variants: {hotel: P05, vacation_rental: P05}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [unit_name, max_guests, beds, price_type, price_per_night, min_nights]
+    optional: [occupancy_pricing, seasonal_pricing, bedrooms, bathrooms, area_m2, view, amenities, includes, excludes, images]
+  availability_kinds: [calendario_noches]
+  default_write_mode: request_to_business
+  default_identity: canal
+  storage_today: {catalog: "properties", availability: "ical_feeds, ical_blocks, property_bookings", records: "property_bookings", ui: "/admin/properties, /admin/stays"}
+  overrides: {CORE.OFFER.FEES: "bloqueante (R2): el total de la estancia depende de limpieza, persona extra e impuestos/tasas"}
+  extra_requirements:
+  - id: OBJ.LODGING_BOOKING.CHECKIN_RULES
+    title: Check-in, check-out, llegada temprana/tardía y registro de huéspedes
+    kind: policy
+    applies_when: "object_enabled(lodging_booking)"
+    answers: [P05-2, P05-11, C17]
+    exposure: always_in_context
+    data:
+      name: lodging.checkin
+      type: policy_terms
+      structure: {check_in_from: hora, check_in_until: "hora?", check_out_until: hora, early_late: "{allowed: enum [sí, sujeto_a_disponibilidad, no], charge?: money}", self_check_in: bool, guest_registration: "documentos exigidos (pack de país)"}
+      validation: ["horas válidas", "registro de huéspedes coherente con el pack"]
+      example: {check_in_from: "15:00", check_out_until: "11:00", early_late: {allowed: sujeto_a_disponibilidad, charge: {amount: 50000, currency: COP}}}
+    criticality: {level: bloqueante, rule: R2}
+    when_missing: {code: NC+AV, behavior: "Horas ausentes: NC+AV. Excepción (llegar antes): sujeto a disponibilidad → HUM.", never: ["confirmar llegada temprana sin regla"]}
+    sources: {allowed: [owner_form, integration]}
+    collection: {channels: [form], ui_today: "/admin/properties/[propertyId]", storage_today: "properties.check_in_time, check_out_time, check_in_instructions, house_rules (llegada temprana/tardía y registro de huéspedes: nuevo)", storage_status: parcial}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [check_in_from, check_out_until]}, predicate: "check_in_from y check_out_until confirmados", gap_message: "Indica las horas de check-in y check-out."}
+    qa_truth: "P05-2: AFIRMA las horas; llegada temprana → regla + cargo o HUM."
+
+- object: tour_booking
+  label: "Reserva de tour o paquete con salidas y cupos"
+  variants: {tour: P06, agency_package: P06}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, destination, duration, price_type, price_per_passenger_type, includes, excludes, meeting_point]
+    optional: [itinerary, guide_languages, min_group, max_group, pickup_zones, physical_level, min_age, accessibility, supplier, insurance_options, images]
+  availability_kinds: [cupos_por_salida]
+  availability_data: "departures[]: {date, departure_time, return_time, seats_left, guide_language?}"
+  default_write_mode: request_to_business
+  default_identity: canal
+  storage_today: {catalog: tour_packages, availability: tour_inventory, records: tour_bookings, ui: "/admin/tours, /admin/tour-bookings"}
+  notes: "includes/excludes y meeting_point son required: es donde más se inventa (B1 P06-1, P06-3). La FAQ general es respaldo, nunca sustituto."
+  extra_requirements: []
+
+- object: real_estate
+  label: "Inmueble (listado) + visita + captación de propietario"
+  variants: {sale: P07, rent: P07, commercial: P07}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [operation, property_type, price_type, price, currency, zone, city, country, bedrooms, bathrooms, area_m2, status, address_privacy]
+    optional: [address, parking, building_amenities, floor, age_years, furnished, available_from, stratum, admin_fee_ref, images, virtual_tour]
+  availability_kinds: [profesional]
+  availability_note: "status del listado (disponible/reservado/vendido) + franjas del asesor para visitas"
+  default_write_mode: request_to_business
+  default_identity: canal
+  storage_today: {catalog: "real_estate_listings, listing_zone_agents", records: "leads + opportunities (no hay tabla de visitas)", ui: "/admin/listings"}
+  extra_requirements:
+  - id: OBJ.REAL_ESTATE.COSTS
+    title: Costos asociados (administración, predial, comisión, estudio)
+    kind: knowledge
+    applies_when: "object_enabled(real_estate)"
+    answers: [P07-7, C10]
+    exposure: read_on_intent
+    data:
+      name: real_estate.costs
+      type: list
+      structure: "por operación: {admin_fee: 'incluida|aparte(money)|n/a' por listado, property_tax?, commission: 'porcentaje|a cargo de|no cobra', rental_study: money?, other[]}"
+      validation: ["admin_fee declarado por listado de arriendo"]
+      example: {rent: {commission: "no se cobra al arrendatario", rental_study: {amount: 120000, currency: COP}}}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "«No consta si la administración está incluida en este inmueble» + AV.", never: ["afirmar 'incluida' por defecto"]}
+    sources: {allowed: [owner_form, import, integration]}
+    collection: {channels: [form, import], ui_today: "/admin/listings/[listingId]", storage_today: "real_estate_listings.hoa_fee, deposit, stratum (comisión y estudio de arriendo: nuevo)", storage_status: parcial}
+    readiness: {predicate_kind: custom, predicate: "commission confirmada por operación y admin_fee por listado de arriendo", gap_message: "Indica comisión y si la administración está incluida."}
+    qa_truth: "P07-7: AFIRMA por listado; ausente → NC+AV."
+
+- object: enrollment
+  label: "Inscripción a curso, programa o admisión"
+  variants: {course: P14, admission: "P15 (decisión siempre humana)"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, level, modality, total_duration, price_type, price_components]
+    optional: [schedule, intensity, certification, official_recognition, prerequisites, min_age, materials, trial, placement_test, campus]
+  availability_kinds: [cupos_por_salida]
+  availability_data: "cohorts[]: {start_date, schedule, seats_left, application_deadline?}"
+  default_write_mode: request_to_business
+  default_identity: canal
+  storage_today: {catalog: "courses, course_cohorts, placement_tests", records: enrollments, ui: "/admin/courses, /admin/catalog/courses"}
+  notes: "official_recognition: si no consta, el agente no afirma validez oficial (P14-5). En admission, la decisión la comunica un humano (P15-5)."
+  extra_requirements: []
+
+- object: membership
+  label: "Plan o membresía recurrente + reserva de clases (gimnasio, SaaS)"
+  variants: {gym: P13, saas_subscription: "P24 (sin clases)"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [plan_name, price_type, price, periodicity, includes, enrollment_fee, commitment]
+    optional: [trial, class_credits, limits, student_discount]
+  availability_kinds: [cupos_por_salida]
+  availability_data: "class_schedule[]: {class, weekday, time, capacity, spots_left, waitlist}"
+  default_write_mode: direct_commit
+  default_identity: canal
+  change_rules_extra: "freeze (preaviso, máximo, cargo) y cancel_membership (preaviso, cargos, derecho legal de cancelar del pack). Nunca retener con trucos (P13-5)."
+  storage_today: {catalog: "membership_plans (+ price_status)", availability: "fitness_classes, class_bookings", records: "members, member_check_ins", ui: "/admin/memberships, /admin/classes, /admin/plans"}
+  extra_requirements: []
+
+- object: insurance
+  label: "Cotización, póliza y siniestro"
+  variants: {broker: P21}
+  template_applies: [CATALOG, WRITE_MODE, CUSTOMER_REQUIREMENTS, ACCOUNT_READ]
+  catalog_fields:
+    required: [product_name, line, insurers, general_coverages, typical_exclusions, coverage_disclaimer]
+    optional: [price_from, payment_frequency, eligibility]
+  availability_kinds: []
+  default_write_mode: request_to_business
+  default_identity: otp
+  write_notes: "quote_request.required_fields por ramo (vehículo: placa/modelo/año/valor; vida: edad/valor asegurado…) + consentimiento. claim_first_notice: request + EXT si hay heridos (DOM.INSURANCE.ASSISTANCE_LINES)."
+  storage_today: {catalog: insurance_plans, records: "insurance_quotes, insurance_policies, insurance_claims", ui: "/admin/insurance"}
+  extra_requirements: []
+
+- object: service_request
+  label: "Solicitud de servicio, visita técnica u orden de trabajo"
+  variants: {home_service: P16, repair_order: "P27 (taller: orden + presupuesto con aprobación)", support_ticket: "P24"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, price_type, price_unit]
+    optional: [price, visit_fee, includes_materials, estimate_required, vehicle_types, warranty_ref, safety_instructions_ref]
+  availability_kinds: [profesional, recurso]
+  default_write_mode: request_to_business
+  default_identity: canal
+  overrides: {CORE.SERVICE_AREA: "bloqueante (R2) en home_service"}
+  storage_today: {records: "service_requests, repair_orders, repair_order_events, customer_vehicles", ui: "/admin/service-requests, /admin/repair-orders, /admin/dispatch"}
+  extra_requirements:
+  - id: OBJ.SERVICE_REQUEST.EMERGENCY_SERVICE
+    title: Atención de urgencias (24 h, recargo, tiempo de llegada)
+    kind: knowledge
+    applies_when: "object_enabled(service_request) and variant ∈ [home_service, repair_order]"
+    answers: [P16-3, P27-7]
+    exposure: always_in_context
+    data:
+      name: offer.emergency
+      type: config
+      structure: {offered: bool, hours: "weekly_hours | 24/7", surcharge: "money|porcentaje?", eta: "duration?", towing: "bool + aliados (taller)"}
+      validation: ["offered = true ⇒ hours"]
+      example: {offered: true, hours: "24/7", surcharge: "30%", eta: {min: 60, max: 120, unit: min}}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: EXT, behavior: "Riesgo (gas, chispa, inundación eléctrica): EXT primero (cortar llave/breaker, emergencias) y luego HUM. Sin riesgo y sin dato: NC+AV.", never: ["prometer un tiempo de llegada no confirmado"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "offered declarado; si true: hours confirmadas", gap_message: "¿Atiendes urgencias? ¿En qué horario y con qué recargo?"}
+    qa_truth: "Urgencia con riesgo → EXT primero; sin riesgo → horario y recargo de urgencias o NC+AV."
+  - id: OBJ.SERVICE_REQUEST.ESTIMATE_APPROVAL
+    title: Aprobación explícita de presupuestos y trabajos adicionales
+    kind: procedure
+    applies_when: "object_enabled(service_request) and (variant = repair_order or estimate_required)"
+    answers: [P27-5, P16-2, T01]
+    exposure: platform_only
+    data:
+      name: proc.estimate_approval
+      type: procedure_spec
+      structure: {who_can_approve: "titular verificado (identity_level ≥ código)", recorded: "siempre (ledger)", confirms: "business (asesor)", max_without_call: "money?"}
+      validation: ["recorded = true"]
+      example: {who_can_approve: titular, confirms: business}
+    criticality: {level: bloqueante, rule: R2}
+    when_missing: {code: HUM, behavior: "«Sí, autorizo» sin procedimiento: registra la intención y pasa a un asesor; no ejecuta.", never: ["dar por aprobado un trabajo adicional sin registro"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: "/admin/repair-orders", storage_today: "repair_orders.approval_status, estimate_line_items, estimate_amount_cents + repair_order_events (quién puede aprobar: nuevo)", storage_status: parcial}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [who_can_approve, confirms]}, predicate: "who_can_approve y confirms declarados", gap_message: "Define cómo un cliente aprueba un presupuesto adicional."}
+    qa_truth: "T01 sobre un presupuesto → registro de aprobación (evento) + aviso de que el asesor confirma."
+
+- object: rental
+  label: "Alquiler de vehículo o recurso por días"
+  variants: {vehicle: P28, resource: "otros recursos"}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [category, price_type, price_per_day, included_km, deposit_ref, insurance_included]
+    optional: [weekly_rate, addons, pickup_locations, one_way_fee, transmission, seats, images]
+  availability_kinds: [recurso]
+  default_write_mode: request_to_business
+  default_identity: canal
+  overrides: {CORE.OFFER.FEES: "bloqueante (R2)", CORE.PAYMENT.TIMING_DEPOSIT: "bloqueante (R2): depósito/retención en tarjeta", OBJ.RENTAL.CUSTOMER_REQUIREMENTS: "bloqueante (R2): elegibilidad del conductor"}
+  storage_today: {records: "resource_rentals, resource_rental_events, resource_rental_inspections, resource_rental_damages", ui: "/admin/resource-rentals"}
+  extra_requirements:
+  - id: OBJ.RENTAL.DAMAGE_INSURANCE
+    title: Coberturas, deducible y procedimiento de daños
+    kind: policy
+    applies_when: "object_enabled(rental)"
+    answers: [P28-3, P28-6]
+    exposure: read_on_intent
+    data:
+      name: rental.insurance
+      type: policy_terms
+      structure: {coverages: lista, deductible: money, optional_waivers: "lista con precio", damage_procedure: "inspección de salida/entrada, fotos", assistance_line: contact_point}
+      validation: ["deductible declarado"]
+      example: {deductible: {amount: 2000000, currency: COP}, assistance_line: {kind: phone, value: "+57 1 800…"}}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "NC+AV; con accidente o heridos: EXT + HUM.", never: ["evaluar daños o culpas por chat"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [deductible, assistance_line]}, predicate: "deductible y assistance_line confirmados", gap_message: "Indica el deducible y la línea de asistencia."}
+    qa_truth: "P28-3: AFIRMA deducible y coberturas; accidente → EXT/HUM."
+
+- object: pet_boarding
+  label: "Hotel o guardería de mascotas"
+  variants: {boarding: P19, daycare: P19}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CUSTOMER_REQUIREMENTS, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [name, price_type, price_unit, size_pricing, includes]
+    optional: [webcam, photo_updates, walks, transport_addon]
+  availability_kinds: [recurso]
+  default_write_mode: request_to_business
+  default_identity: canal
+  pet_fields: "pet: especie, raza, tamaño/peso, edad, vacunas (pet_vaccinations)"
+  overrides: {OBJ.PET_BOARDING.CUSTOMER_REQUIREMENTS: "bloqueante (R3): vacunas y requisitos de ingreso"}
+  storage_today: {records: "resource_rentals (compartida con alquiler), pets, pet_vaccinations", ui: "/admin/pets"}
+  extra_requirements:
+  - id: OBJ.PET_BOARDING.CARE_RULES
+    title: Alimentación, medicación y emergencia veterinaria durante la estadía
+    kind: policy
+    applies_when: "object_enabled(pet_boarding)"
+    answers: [P19-3, P19-6]
+    exposure: read_on_intent
+    data:
+      name: policies.pet_care
+      type: policy_terms
+      structure: {feeding: "trae su comida | la del hotel (costo)", medication: "solo con indicación escrita del dueño/veterinario", vet_emergency: "{vet_partner, authorization_limit: money, contact}"}
+      validation: ["medication siempre requiere indicación escrita", "vet_partner con contacto"]
+      example: {feeding: "trae su comida", vet_emergency: {vet_partner: "Vet 24h Norte", authorization_limit: {amount: 300000, currency: COP}}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: NC+AV, behavior: "NC+AV; preguntas de medicación concretas → HUM.", never: ["aceptar administrar medicación sin indicación escrita"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [feeding, medication, vet_emergency]}, predicate: "feeding, medication y vet_emergency confirmados", gap_message: "Define alimentación, medicación y qué pasa si la mascota se enferma."}
+    qa_truth: "P19-6: AFIRMA el veterinario asociado y el límite de autorización."
+
+- object: photo_session
+  label: "Sesión o cobertura fotográfica (fecha exclusiva)"
+  variants: {wedding_event: P20, studio_product: P20}
+  template_applies: [CATALOG, AVAILABILITY_SOURCE, WRITE_MODE, CHANGE_RULES, ACCOUNT_READ]
+  catalog_fields:
+    required: [package_name, price_type, coverage_hours, edited_photos, deliverables]
+    optional: [price, second_shooter, video, album, unit_price_per_sku, travel_fee_ref]
+  availability_kinds: [fecha_exclusiva]
+  default_write_mode: request_to_business
+  default_identity: canal
+  overrides: {CORE.PAYMENT.TIMING_DEPOSIT: "bloqueante (R2): depósito para separar la fecha, reembolsable o no"}
+  storage_today: {records: photo_sessions, ui: "/admin/photo-sessions"}
+  extra_requirements:
+  - id: OBJ.PHOTO_SESSION.RIGHTS_DELIVERY
+    title: Tiempo y formato de entrega, derechos de uso
+    kind: policy
+    applies_when: "object_enabled(photo_session)"
+    answers: [P20-4, P20-8]
+    exposure: read_on_intent
+    data:
+      name: photo.delivery_rights
+      type: policy_terms
+      structure: {delivery_time: duration, formats: "enum_list [jpg, raw, galería_online, álbum]", usage_rights: "enum [uso_personal, comercial_con_licencia, según_contrato]", minors_authorization: bool}
+      validation: ["delivery_time > 0"]
+      example: {delivery_time: {min: 15, unit: días_hábiles}, formats: [jpg, galería_online], usage_rights: uso_personal}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "Entrega: NC+AV. Derechos comerciales: HUM (según contrato).", never: ["ceder derechos de imagen por chat"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [delivery_time, usage_rights]}, predicate: "delivery_time y usage_rights confirmados", gap_message: "Indica en cuánto entregas y qué uso pueden dar a las fotos."}
+    qa_truth: "P20-4: AFIRMA plazo y formatos; P20-8: según usage_rights o HUM."
+
+- object: professional_case
+  label: "Caso o encargo profesional (legal, contable)"
+  variants: {legal: P22, accounting: P22}
+  template_applies: [CATALOG, WRITE_MODE, CUSTOMER_REQUIREMENTS, ACCOUNT_READ]
+  catalog_fields:
+    required: [practice_area, examples, fee_model]
+    optional: [initial_consult_price, modality, deadlines_note]
+  availability_kinds: []
+  default_write_mode: request_to_business
+  default_identity: otp
+  write_notes: "La consulta inicial se agenda como appointment(variant consult) o como solicitud; siempre con revisión de conflicto de interés humana antes de aceptar el caso."
+  storage_today: {records: "opportunities (professional-cases.controller) + leads", ui: "/admin/cases"}
+  extra_requirements: []
+
+- object: lead
+  label: "Cotización a medida, solicitud de contacto o devolución de llamada (genérico)"
+  variants: {quote: "P00, P23, P20-7, P26 trade-in", callback: P00, owner_intake: "P07-12", credit_application: "P25 (decisión siempre humana)"}
+  template_applies: [WRITE_MODE, ACCOUNT_READ]
+  default_write_mode: request_to_business
+  default_identity: canal
+  write_notes: "required_fields por variante (qué, cantidad, fecha, presupuesto, contacto, franja de llamada) + business_confirm_sla = plazo de respuesta de la cotización. Es el objeto mínimo de P00."
+  storage_today: {records: "leads, opportunities, deals, form_submissions", ui: "/admin/pipeline, /admin/contacts"}
+  extra_requirements: []

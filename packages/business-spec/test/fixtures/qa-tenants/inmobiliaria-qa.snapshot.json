@@ -1,0 +1,386 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:48:59.479Z",
+  "tenant": {
+    "ref": "inmobiliaria-qa",
+    "name": "Inmobiliaria QA",
+    "slug": "inmobiliaria-qa",
+    "industry": "inmobiliaria",
+    "language": "es-CO",
+    "settings": {
+      "subType": "venta",
+      "customerTypes": [
+        "buyers"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-02T21:19:15.467Z"
+      },
+      "businessInfoDraft": {
+        "about": "Inmobiliaria ficticia de prueba que ofrece apartamentos y casas inventadas. Atiende consultas de disponibilidad, características y visitas simuladas. No procesa pagos reales."
+      }
+    },
+    "created_at": "2026-10-02T21:19:05.256+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "inmobiliaria/venta"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "391f673e-60f0-4acf-8f85-ac08c275a691",
+      "city": null,
+      "name": "Inmobiliaria QA",
+      "about": "Inmobiliaria ficticia de prueba que ofrece apartamentos y casas inventadas. Atiende consultas de disponibilidad, características y visitas simuladas. No procesa pagos reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-02T21:19:15.197748",
+      "is_primary": true,
+      "updated_at": "2026-10-02T21:19:15.197748",
+      "social_links": {}
+    }
+  ],
+  "services": [
+    {
+      "id": "dd8cb991-f75f-4f16-acc6-594bb19e2fbf",
+      "name": "Visita guiada",
+      "price": 0,
+      "category": "visitas",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "description": "Recorrido por la propiedad con asesor",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 60
+    },
+    {
+      "id": "bf32654a-de2d-48da-8a21-d3ae1705bcdf",
+      "name": "Asesoría hipotecaria",
+      "price": 0,
+      "category": "asesoria",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "description": "Orientación sobre crédito y financiación",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 45
+    },
+    {
+      "id": "c01efe50-6a7f-44cc-9e09-f0b53422e58c",
+      "name": "Avalúo comercial",
+      "price": 200000,
+      "category": "valuacion",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "description": "Valoración profesional del inmueble",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 120
+    }
+  ],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [
+    {
+      "id": "57542cc7-de10-4166-b731-704bc7fa403d",
+      "city": "Spark QA Ciudad",
+      "name": "Spark QA Inmueble 20261018T2220Z",
+      "price": 250000,
+      "status": "available",
+      "area_m2": 80,
+      "country": "CO",
+      "deposit": null,
+      "hoa_fee": null,
+      "bedrooms": 2,
+      "currency": "EUR",
+      "bathrooms": 1,
+      "is_active": true,
+      "created_at": "2026-10-18T22:24:30.520568",
+      "updated_at": "2026-10-21T08:16:56.9299",
+      "description": null,
+      "neighborhood": null,
+      "property_kind": "apartment",
+      "transaction_type": "sale"
+    }
+  ],
+  "faqs": [
+    {
+      "id": "4cb51957-ce02-4e96-bbe1-615207b39799",
+      "answer": "La comisión depende del tipo de operación. Te confirmo la cifra exacta antes de avanzar; si quieres, agendamos una reunión para revisarla con calma.",
+      "category": "costos",
+      "question": "¿Cuál es la comisión?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "f6156ff3-724e-4c20-8a7c-b57a6679ad14",
+      "answer": "Podemos orientarte sobre opciones de crédito hipotecario y contarte con qué entidades trabajamos. Agenda una asesoría y lo revisamos juntos.",
+      "category": "financiacion",
+      "question": "¿Ofrecen financiación?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "6c3a8b64-002c-42bf-a614-a564ec1b7723",
+      "answer": "Puedo agendar una visita para ti ahora mismo. Dime cuál propiedad te interesa y tus horarios disponibles.",
+      "category": "visitas",
+      "question": "¿Cómo agendo una visita?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "94c7f4d7-3eff-4a03-a0d3-7528f89aa05d",
+      "answer": "Depende de si compras o arriendas y de la entidad que participe. Cuéntame cuál es tu caso y un asesor te pasa la lista exacta de documentos.",
+      "category": "documentos",
+      "question": "¿Qué documentos necesito?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "c926edf1-4e83-45d9-a99e-78e5fdbe7ace",
+      "answer": "La financiación depende de cada propiedad y de tu perfil. Cuéntame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.",
+      "category": "financiacion",
+      "question": "¿Tienen opciones con financiación / crédito hipotecario?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "267a03dd-2d0e-4d3c-aa24-a1884ba9ac3c",
+      "answer": "Te muestro las propiedades disponibles según tu interés y agendamos visita con el asesor de zona. ¿Qué presupuesto manejas y en qué zona te interesa?",
+      "category": "visitas",
+      "question": "¿Cómo agendo una visita a la propiedad?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "35c3436b-7e5d-4335-ad07-788b1030aa68",
+      "answer": "Los honorarios dependen de si es arriendo o venta y del inmueble. Te los confirma el asesor sobre la propiedad concreta que te interese, antes de cualquier compromiso.",
+      "category": "comisiones",
+      "question": "¿Cuánto cobran de comisión / honorarios?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "bb703bf6-7044-47ed-a4c4-f42c2fe9a11f",
+      "answer": "Arriendo: cédula, certificado laboral, extractos bancarios y codeudor (depende del inmueble). Compra: capacidad crediticia y separación. Te detallo cuando definamos el inmueble.",
+      "category": "documentos",
+      "question": "¿Qué documentos necesito para arrendar / comprar?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "f22f224d-fd0a-4602-b350-83b158228874",
+      "answer": "En arriendo: la administración generalmente NO está incluida y se paga aparte. En venta: el precio publicado es del inmueble; la administración mensual se informa en la visita.",
+      "category": "costos",
+      "question": "¿La administración / cuota de condominio está incluida en el precio?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    },
+    {
+      "id": "c758ab27-1d0e-47a7-af60-06df0cf7cae6",
+      "answer": "Tenemos opciones en venta y arriendo. Cuéntame tu presupuesto, zona de interés y tipo de inmueble y te muestro las que mejor encajan.",
+      "category": "propiedades",
+      "question": "¿Qué propiedades tienen disponibles?",
+      "created_at": "2026-10-02T21:19:15.249265",
+      "updated_at": "2026-10-02T21:19:15.249265",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [
+    {
+      "id": "c3d5497c-10ed-4a2e-a2cf-1087c2fde23f",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "08:00:00",
+      "day_of_week": 1
+    },
+    {
+      "id": "b1d808b9-b3d1-4b82-89e9-e9ca36519822",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "08:00:00",
+      "day_of_week": 2
+    },
+    {
+      "id": "162c4fbf-ccc9-4957-86e0-8d365222806c",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "08:00:00",
+      "day_of_week": 3
+    },
+    {
+      "id": "d367d516-69d6-466e-bc0b-d83af5f5e470",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "08:00:00",
+      "day_of_week": 4
+    },
+    {
+      "id": "52f64f7e-bbd3-44cb-af26-edab4813d5b5",
+      "user_id": "user-1",
+      "end_time": "18:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "08:00:00",
+      "day_of_week": 5
+    },
+    {
+      "id": "d80e6374-07f6-42ac-b60e-9c20241bd3f4",
+      "user_id": "user-1",
+      "end_time": "14:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.249265",
+      "start_time": "09:00:00",
+      "day_of_week": 6
+    }
+  ],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "2a5df919-98ae-4081-9e74-5094a8344267",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:15.166216",
+      "is_default": true,
+      "updated_at": "2026-10-02T21:32:27.001025",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Califica al prospecto (presupuesto, zona, tipo de inmueble, urgencia).",
+            "Ofrece agendar visitas.",
+            "Nunca garantices valorización.",
+            "PRIMERO pregunta: ¿comprar o arrendar?, presupuesto, zona/barrio y número de habitaciones",
+            "USA search_listings con esos filtros para mostrar opciones REALES del catálogo (no inventes propiedades)",
+            "Cuando el cliente muestre interés en una específica, USA get_listing_details para dar todos los detalles",
+            "Para propiedades de venta, pregunta si necesita financiación — varias propiedades aplican a crédito hipotecario / VIS",
+            "Para arriendo, aclara que la administración suele pagarse aparte y pregunta si tiene codeudor",
+            "Captura nombre completo, teléfono y email antes de agendar visita",
+            "NUNCA prometas precio final ni descuentos — el asesor confirma en la visita",
+            "Para temas legales (derecho de retracto, escrituración, registro), escala al asesor humano"
+          ],
+          "requiredFields": {
+            "name": {
+              "required": true
+            },
+            "phone": {
+              "required": true
+            }
+          },
+          "forbiddenTopics": [
+            "Asesoría legal específica",
+            "Garantizar aprobación de crédito",
+            "Garantizar valorización futura",
+            "Honorarios sin confirmar con asesor",
+            "Comparativos con propiedades de la competencia",
+            "Garantizar valorización",
+            "Asesoramiento hipotecario legal",
+            "Discriminación por zona",
+            "Precios de costo",
+            "Información fiscal"
+          ],
+          "handoffTriggers": [
+            "cierre de negocio",
+            "firma de contrato",
+            "reclamo legal",
+            "consulta sobre escrituras",
+            "permuta o pago en especie",
+            "inversionista institucional",
+            "oferta formal",
+            "negociacion de precio",
+            "visita presencial",
+            "escrituras",
+            "credito hipotecario"
+          ]
+        }
+      },
+      "template_id": "tpl_inmobiliaria_listings",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

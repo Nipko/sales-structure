@@ -1,0 +1,382 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:48:56.117Z",
+  "tenant": {
+    "ref": "agencia-qa-viajes",
+    "name": "Agencia QA Viajes",
+    "slug": "agencia-qa-viajes",
+    "industry": "turismo",
+    "language": "es-CO",
+    "settings": {
+      "subType": "agencia_viajes",
+      "customerTypes": [
+        "leisure"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-02T21:19:36.390Z"
+      },
+      "businessInfoDraft": {
+        "about": "Agencia ficticia de prueba que informa sobre viajes y tours inventados. Atiende consultas de destinos, itinerarios y reservas simuladas. No procesa pagos reales."
+      }
+    },
+    "created_at": "2026-10-02T21:19:26.836+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "turismo/agencia_viajes"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "93c81d3b-103e-405f-bb90-bff58ec92ca6",
+      "city": null,
+      "name": "Agencia QA Viajes",
+      "about": "Agencia ficticia de prueba que informa sobre viajes y tours inventados. Atiende consultas de destinos, itinerarios y reservas simuladas. No procesa pagos reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-02T21:19:36.192081",
+      "is_primary": true,
+      "updated_at": "2026-10-02T21:19:36.192081",
+      "social_links": {}
+    }
+  ],
+  "services": [],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [
+    {
+      "id": "847fdf5f-49ff-4b8f-8c3d-f13baaf651b5",
+      "name": "Tour QA Aurora 20261014",
+      "price": 129000,
+      "currency": "COP",
+      "excludes": [],
+      "includes": [],
+      "is_active": true,
+      "languages": [],
+      "created_at": "2026-10-14T08:15:54.629026",
+      "updated_at": "2026-10-14T08:15:54.629026",
+      "description": "Experiencia ficticia exclusiva para QA. No es una oferta comercial ni permite reservas reales. Incluye recorrido virtual y guía sintética; excluye transporte y alojamiento.",
+      "destination": "Destino QA Aurora",
+      "duration_type": "hours",
+      "deposit_amount": null,
+      "duration_value": 4,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "departure_location": null,
+      "cancellation_policy": null
+    },
+    {
+      "id": "76775f40-2fdd-48e2-9db5-c6afa93573dc",
+      "name": "Spark QA Tour 20261018T2140Z",
+      "price": 125,
+      "currency": "EUR",
+      "excludes": [],
+      "includes": [],
+      "is_active": true,
+      "languages": [
+        "es"
+      ],
+      "created_at": "2026-10-18T21:49:53.809824",
+      "updated_at": "2026-10-18T21:49:53.809824",
+      "description": null,
+      "destination": null,
+      "duration_type": "hours",
+      "deposit_amount": null,
+      "duration_value": 4,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "departure_location": null,
+      "cancellation_policy": null
+    }
+  ],
+  "tour_inventory": [
+    {
+      "id": "33ab2e14-3ebc-40d0-ac0c-2c02d7ea6999",
+      "is_active": true,
+      "created_at": "2026-10-18T22:24:38.957448",
+      "package_id": "76775f40-2fdd-48e2-9db5-c6afa93573dc",
+      "updated_at": "2026-10-18T22:24:38.957448",
+      "total_seats": 10,
+      "departure_date": "2026-12-15",
+      "available_seats": 10
+    }
+  ],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "03bbf114-f759-49a5-a844-59d93b0585ba",
+      "answer": "Cuéntame a dónde te gustaría ir y te confirmo si trabajamos ese destino. Con eso armamos tu plan a medida.",
+      "category": "destinos",
+      "question": "¿Qué destinos manejan?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "23cf6fb9-c064-4542-980b-ba27ac9bdd41",
+      "answer": "Cada paquete es distinto. Cuéntame cuál te interesa y te detallo exactamente qué incluye antes de cotizar.",
+      "category": "paquetes",
+      "question": "¿Qué incluye el paquete?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "ad0f7011-a9d1-4dc1-81dd-fb425d16cdd2",
+      "answer": "Siempre recomendamos viajar con seguro. Pregúntanos y te contamos qué opciones podemos incluir en tu plan.",
+      "category": "seguros",
+      "question": "¿Necesito seguro de viaje?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "7768f71e-d764-4d92-bcd3-5c8b0df3f548",
+      "answer": "Depende del destino: en viajes nacionales suele bastar tu documento de identidad y en internacionales se pide pasaporte vigente, a veces con visa. Dinos el destino y te orientamos con lo que exige.",
+      "category": "documentos",
+      "question": "¿Qué documentos necesito para viajar?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "98d77ffe-14dd-4896-8771-42018a1310bb",
+      "answer": "En la mayoría de tours sí está incluido el traslado desde hoteles del centro. Para zonas alejadas puede aplicar un costo extra. Confírmamelo y te cotizo.",
+      "category": "tours",
+      "question": "¿Incluye traslado desde el hotel?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "9efd3e7d-bc68-41ba-95b9-efb086b3cb0b",
+      "answer": "Las tarifas para niños dependen del paquete y de la edad. Cuéntame cuántos van y qué edades tienen, y te confirmo el precio exacto.",
+      "category": "tours",
+      "question": "¿Hay descuento para niños?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "6ff32332-7577-4695-978d-92e25855fb71",
+      "answer": "Depende del tour y de la disponibilidad de guías. Dime qué idioma prefieres y te confirmo si lo tenemos para la fecha que buscas.",
+      "category": "tours",
+      "question": "¿En qué idiomas se hace el tour?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "a347b7cd-3a18-436f-b3d2-56bae5e3a8c0",
+      "answer": "Te enviaré el punto exacto al confirmar la reserva. Generalmente recogemos en hoteles del centro 15 minutos antes de la salida.",
+      "category": "logistica",
+      "question": "¿Dónde es el punto de encuentro?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    },
+    {
+      "id": "b75daf03-2375-4fe8-926e-f26e8259e626",
+      "answer": "El Tour QA Aurora 20261014 cuesta 500 COP por persona y dura 4 horas.",
+      "category": "qa-conflicto-precio",
+      "question": "QA_CONFLICT_20261014 — ¿Cuánto cuesta Tour QA Aurora 20261014?",
+      "created_at": "2026-10-14T09:42:16.949147",
+      "updated_at": "2026-10-14T18:25:18.979056",
+      "is_published": false
+    },
+    {
+      "id": "5802e732-78ec-4bd1-bc2f-5c6c16582e7a",
+      "answer": "Depende del paquete y de los proveedores involucrados. Te confirmamos las condiciones exactas antes de que reserves.",
+      "category": "politicas",
+      "question": "¿Cuál es la política de cancelación?",
+      "created_at": "2026-10-02T21:19:36.23888",
+      "updated_at": "2026-10-02T21:19:36.23888",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [
+    {
+      "id": "47411ed8-7f06-4509-8fd8-4894d50541de",
+      "title": "PruebaQA_KNW02_TXT_20261014_A1.txt",
+      "status": "ready",
+      "excerpt": "Prueba QA de importación de texto plano para Agencia QA Viajes. El identificador de control es AMATISTA-TXT-836. Esta ficha describe una recepción virtual ficticia, sin precios, reservas ni servicio comercial. El identificador solo sirve para verificar extracción y persistencia en pruebas sintéticas",
+      "language": "es",
+      "valid_to": null,
+      "created_at": "2026-10-14T23:14:25.7136",
+      "updated_at": "2026-10-14T23:14:26.697251",
+      "source_type": "upload"
+    },
+    {
+      "id": "8bbf0ae0-8180-45bf-955f-d2a29c7865e1",
+      "title": "Prueba QA QA_UI_VIAJES_KB_DOC_GROUNDING_20261014_A1 — Protocolo recepción virtual Aurora",
+      "status": "ready",
+      "excerpt": "Prueba QA QA_UI_VIAJES_KB_DOC_GROUNDING_20261014_A1. Protocolo de recepción virtual Aurora de Agencia QA Viajes. La clave de recepción virtual Aurora es AURORA-CEDRO-729. La actividad de esta ficha es un recorrido virtual con una guía sintética. Este protocolo es ficticio y exclusivo de las pruebas",
+      "language": "es",
+      "valid_to": null,
+      "created_at": "2026-10-14T18:42:25.700207",
+      "updated_at": "2026-10-14T22:39:05.006165",
+      "source_type": "upload"
+    },
+    {
+      "id": "13dc4360-76ae-459e-a3f1-433620fe0d11",
+      "title": "PruebaQA_KNW02_PDF_20261014_A2.pdf",
+      "status": "ready",
+      "excerpt": "Parallly synthetic PDF ingestion QA. The receipt code is TURQUESA-PDF-684. This is a fictional virtual reception, not a commercial service. It contains no prices, bookings, contacts, scripts or external links.",
+      "language": "en",
+      "valid_to": null,
+      "created_at": "2026-10-15T00:01:03.552783",
+      "updated_at": "2026-10-15T00:01:05.349236",
+      "source_type": "upload"
+    },
+    {
+      "id": "0fb9fb78-785a-4de8-bf8e-f0d15805fca0",
+      "title": "PruebaQA_KNW02_DOCX_20261014_A1.docx",
+      "status": "ready",
+      "excerpt": "Prueba QA sintética de importación DOCX para Agencia QA Viajes. El identificador de control es JADE-DOCX-527. Esta ficha describe una recepción virtual ficticia, sin precios, reservas ni servicio comercial.",
+      "language": "es",
+      "valid_to": null,
+      "created_at": "2026-10-15T00:01:05.448519",
+      "updated_at": "2026-10-15T00:01:05.959976",
+      "source_type": "upload"
+    },
+    {
+      "id": "4fab8f3d-48b5-4320-93ac-41cbb4df57bd",
+      "title": "Prueba QA INTERNAL_SOURCE_NEBULA_20261014_A1 — Manual de coordinación Nébula",
+      "status": "ready",
+      "excerpt": "Manual sintético de coordinación Nébula, exclusivo de consulta interna del equipo. El identificador de coordinación es NEBULA-INT-903. Es un marcador ficticio de QA, sin uso como contraseña ni credencial. No contiene datos de personas, precios, reservas ni enlaces.",
+      "language": "es",
+      "valid_to": null,
+      "created_at": "2026-10-15T00:47:34.478226",
+      "updated_at": "2026-10-15T00:47:59.282518",
+      "source_type": "upload"
+    },
+    {
+      "id": "db44f8ee-dda5-4e4e-8cc0-1a41f558510c",
+      "title": "Prueba QA READINESS_EXPIRED_20261014_A1 — Archivo ficticio Cobalto",
+      "status": "ready",
+      "excerpt": "Ficha sintética para comprobar vigencia técnica. El identificador documental es COBALTO-EXP-618. No describe servicios comerciales ni incluye precios, reservas, contactos o enlaces.",
+      "language": "auto",
+      "valid_to": "2026-10-01",
+      "created_at": "2026-10-15T00:20:09.782784",
+      "updated_at": "2026-10-15T00:21:22.0803",
+      "source_type": "upload"
+    }
+  ],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "5b5531e7-c679-4497-ab22-2c50343ba237",
+      "is_active": true,
+      "created_at": "2026-10-02T21:19:36.148761",
+      "is_default": true,
+      "updated_at": "2026-10-14T08:21:55.156748",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {
+            "dom": null,
+            "jue": {
+              "end": "18:00",
+              "start": "08:00"
+            },
+            "lun": {
+              "end": "18:00",
+              "start": "08:00"
+            },
+            "mar": {
+              "end": "18:00",
+              "start": "08:00"
+            },
+            "mie": {
+              "end": "18:00",
+              "start": "08:00"
+            },
+            "sab": {
+              "end": "14:00",
+              "start": "08:00"
+            },
+            "vie": {
+              "end": "18:00",
+              "start": "08:00"
+            }
+          },
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Inspira al viajero con destinos.",
+            "Cotiza paquetes.",
+            "Para grupos >10, escala.",
+            "Pregunta destino, fechas, número de viajeros y presupuesto aproximado",
+            "Usa search_packages para mostrar paquetes que coincidan con el perfil",
+            "Si el cliente pide algo personalizado fuera del catálogo, escala al equipo",
+            "Aclara claramente qué incluye/no incluye cada paquete (vuelos, alojamiento, traslados, tours)",
+            "Captura nombre completo, teléfono y email antes de armar la cotización",
+            "Recomienda seguro de viaje cuando sea internacional",
+            "NO prometas vuelos sin confirmar disponibilidad con el equipo"
+          ],
+          "requiredFields": {
+            "name": {
+              "required": true
+            },
+            "phone": {
+              "required": true
+            }
+          },
+          "forbiddenTopics": [
+            "Información migratoria oficial",
+            "Vacunas requeridas",
+            "Garantizar precios de aerolíneas",
+            "Garantizar clima"
+          ],
+          "handoffTriggers": [
+            "paquete personalizado",
+            "grupo mayor a 6",
+            "viaje corporativo",
+            "reclamación de seguro",
+            "cambio de fechas con vuelos emitidos",
+            "grupo >10",
+            "reclamacion de seguro",
+            "emergencia en destino"
+          ],
+          "mainInstructions": ""
+        }
+      },
+      "template_id": "tpl_turismo_agencia",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

@@ -149,6 +149,10 @@ describe('ReadinessService', () => {
         const detail = await service.getRequirement(TENANT, 'CORE.IDENTITY.REGION');
         expect(detail.definition).toMatchObject({ id: 'CORE.IDENTITY.REGION', level: expect.any(String), uiTarget: spec.requirements['CORE.IDENTITY.REGION'].uiTarget });
         expect(detail.evaluation?.id).toBe('CORE.IDENTITY.REGION');
+        // C6: el descriptor del cajón y el valor que lee el motor (heredado de tenants.operating_* en la foto golden)
+        expect(detail.form).toMatchObject({ schema: 'business-spec/form@1', requirementId: 'CORE.IDENTITY.REGION', mode: 'form' });
+        expect(detail.form.fields.map(f => f.key)).toEqual(expect.arrayContaining(['operating_country', 'timezone', 'currency']));
+        expect(detail.current.state).toEqual(detail.evaluation?.valueState);
         await expect(service.getRequirement(TENANT, 'NO.EXISTE')).rejects.toThrow(/desconocido/);
     });
 
@@ -169,13 +173,29 @@ describe('ReadinessController', () => {
     });
 
     it('responde con el sobre { success, data } y pasa refresh=1', async () => {
-        const service = { getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []) };
+        const service = { getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []), formRequirementIds: ['CORE.IDENTITY.NAME'] };
         const controller = new ReadinessController(service as any, {} as any);
-        await expect(controller.current(TENANT, '1')).resolves.toEqual({ success: true, data: { result: { verdict: 'listo' } } });
+        await expect(controller.current(TENANT, '1')).resolves.toEqual({ success: true, data: { result: { verdict: 'listo' }, formRequirementIds: ['CORE.IDENTITY.NAME'] } });
         expect(service.getCurrent).toHaveBeenCalledWith(TENANT, { refresh: true });
         await controller.current(TENANT);
         expect(service.getCurrent).toHaveBeenLastCalledWith(TENANT, { refresh: false });
         await expect(controller.history(TENANT, '5')).resolves.toEqual({ success: true, data: [] });
         expect(service.getHistory).toHaveBeenCalledWith(TENANT, 5);
+    });
+
+    it('el detalle del requisito suma la fila guardada con su versión (lo que abre el cajón)', async () => {
+        const service = { getRequirement: jest.fn(async () => ({ specVersion: 'v', form: { mode: 'form' } })) };
+        const facts = { get: jest.fn(async () => ({ fact: { version: 3 } })) };
+        const controller = new ReadinessController(service as any, facts as any);
+        await expect(controller.requirement(TENANT, 'CORE.IDENTITY.NAME')).resolves.toEqual({ success: true, data: { specVersion: 'v', form: { mode: 'form' }, fact: { version: 3 } } });
+        expect(facts.get).toHaveBeenCalledWith(TENANT, 'CORE.IDENTITY.NAME', '');
+    });
+
+    it('la lista de ids con formulario incluye los 13 bloqueantes con valor y WRITE_MODE de los 15 objetos', () => {
+        const { service } = build();
+        const ids = service.formRequirementIds;
+        expect(ids).toEqual(expect.arrayContaining(['CORE.IDENTITY.NAME', 'CORE.HOURS.REGULAR', 'CORE.HANDOFF.HOURS_SLA', 'OBJ.LEAD.WRITE_MODE', 'OBJ.APPOINTMENT.CHANGE_RULES']));
+        expect(ids).not.toContain('CORE.OFFER.ITEMS');
+        expect(ids).not.toContain('CORE.OFFER.PRICE_MODEL');
     });
 });

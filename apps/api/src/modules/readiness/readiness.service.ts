@@ -8,8 +8,9 @@
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    evaluate, fromLegacyRows,
-    type CompiledSpec, type ReadinessResult, type RequirementEvaluation, type TenantSnapshot, type Verdict,
+    evaluate, formFor, formRequirementIds, fromLegacyRows, resolveValue,
+    type CompiledSpec, type FormDescriptor, type ReadinessResult, type RequirementEvaluation, type TenantSnapshot, type ValueRecord,
+    type ValueState, type Verdict,
 } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
 import { PrismaService } from '../prisma/prisma.service';
@@ -50,6 +51,13 @@ export interface RequirementDetail {
     };
     evaluation: RequirementEvaluation | null;
     evaluatedAt: string;
+    /** Descriptor del formulario del cajón (C0 §1.6, `formFor`): lo sirve la API para que el panel no se desfase. */
+    form: FormDescriptor;
+    /**
+     * El valor que lee el motor ahora (alcance global), con su procedencia: el de `requirement_values` o el heredado
+     * de las pantallas actuales (reglas L). El cajón lo usa para precargar el formulario.
+     */
+    current: { state: ValueState; record: ValueRecord | null; conflicts: ValueRecord[] };
 }
 
 /** La caché vive poco: los escritores de hoy no avisan todos (R3 agrega `business_fact.written`). */
@@ -82,6 +90,7 @@ export class ReadinessService {
     private specCache: CompiledSpec | null = null;
     /** Una evaluación en curso por tenant: dos pedidos simultáneos comparten la misma. */
     private readonly inflight = new Map<string, Promise<ReadinessView>>();
+    private formIds: string[] | null = null;
 
     constructor(
         private readonly prisma: PrismaService,
@@ -156,10 +165,17 @@ export class ReadinessService {
         }
     }
 
+    /** Requisitos que se completan en el cajón del panel (el resto enlaza a su pantalla). */
+    get formRequirementIds(): string[] {
+        this.formIds ??= formRequirementIds(this.spec);
+        return this.formIds;
+    }
+
     async getRequirement(tenantId: string, requirementId: string): Promise<RequirementDetail> {
         const req = this.spec.requirements[requirementId];
         if (!req) throw new NotFoundException(`requisito desconocido: ${requirementId}`);
-        const view = await this.getCurrent(tenantId);
+        const [view, snapshot] = await Promise.all([this.getCurrent(tenantId), this.readSnapshot(tenantId)]);
+        const resolved = resolveValue(snapshot.values[requirementId], this.now());
         return {
             specVersion: this.spec.specVersion,
             definition: {
@@ -170,6 +186,8 @@ export class ReadinessService {
             },
             evaluation: view.result.requirements.find(r => r.id === requirementId) ?? null,
             evaluatedAt: view.evaluatedAt,
+            form: formFor(req, this.spec),
+            current: { state: resolved.state, record: resolved.record, conflicts: resolved.conflicts },
         };
     }
 

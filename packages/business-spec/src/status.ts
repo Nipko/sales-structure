@@ -3,7 +3,7 @@
  * Ausente, contradictorio y caducado se CALCULAN aquí; nunca se guardan (C0 §0.3).
  */
 import { canonicalJson } from './hash';
-import type { TextRecord, ValueRecord, ValueState } from './types';
+import type { ItemRecord, TextRecord, ValueRecord, ValueState } from './types';
 
 export interface ResolvedValue {
     state: ValueState;
@@ -45,6 +45,20 @@ export function resolveValue(records: readonly ValueRecord[] | undefined, now: D
     if (example) return { state: 'ejemplo', record: example, conflicts: [], shadowed: [] };
     return { state: 'sembrado', record: scoped.find(r => r.status === 'seeded') ?? null, conflicts: [], shadowed: [] };
 }
+
+/** Orígenes de los datos heredados (schema §7.5): lo deducido por L6/L7 y lo que la migración dejó escrito con ese origen. */
+const INHERITED_ORIGINS = new Set(['legacy', 'legacy_inferred']);
+
+/**
+ * Valor confirmado que viene de datos heredados (L6/L7, o migrado con origin legacy o legacy_inferred): el panel
+ * pide «dato heredado: confírmalo» (schema §7.5, C0 §2.9 L6).
+ */
+export const isInheritedRecord = (r: ValueRecord | null | undefined): boolean =>
+    Boolean(r) && (r!.legacyRule === 'L6' || r!.legacyRule === 'L7' || INHERITED_ORIGINS.has(r!.origin));
+
+/** Ítem que nadie escribió con el formulario nuevo: reglas L o procedencia migrada (sus listas vacías son el default de columna, L4). */
+export const isInheritedItem = (i: ItemRecord): boolean =>
+    i.legacyRule != null || INHERITED_ORIGINS.has(i.origin) || i.origin === 'platform_seed';
 
 /** ¿El estado permite afirmar el valor al cliente? (§7.1) */
 export const isAffirmable = (s: ValueState | null): boolean => s === 'confirmado';

@@ -159,7 +159,8 @@ const offerItems: Evaluator = ctx => {
 /** predicate_by_level: bloqueante = algún precio confirmado o «a cotizar»; necesario = todos con price_type y 0 ejemplos. */
 const priceModel: Evaluator = ctx => {
     const items = catalogObjects(ctx).flatMap(o => activeItems(ctx, o));
-    const priced = items.filter(i => itemConfirmed(i) && (i.priceType === 'a_cotizar' || i.priceType === 'gratis'
+    // un precio de ejemplo nunca cuenta, aunque la fila declare tipo (R3: price_type y price_status son columnas aparte)
+    const priced = items.filter(i => itemConfirmed(i) && i.priceStatus !== 'example' && (i.priceType === 'a_cotizar' || i.priceType === 'gratis'
         || (i.priceStatus === 'confirmed' && Number(i.fields.price ?? i.fields.price_per_night ?? i.fields.price_per_day ?? 0) > 0)));
     const examples = items.filter(i => i.priceStatus === 'example');
     const noType = items.filter(i => !i.priceType);

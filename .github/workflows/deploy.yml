@@ -1038,6 +1038,34 @@ jobs:
             echo "$GHCR_PAT" | docker login ghcr.io \
               -u "$GITHUB_ACTOR" --password-stdin
 
+            # ── Old image cleanup (production 29-oct) ──
+            # Every deploy pulls five new sha-tagged images. `docker image prune -f`
+            # removes only DANGLING (untagged) images, so none of them was ever
+            # removed: 262 images, the disk at 100%, and the next pull failed with
+            # «failed to extract layer … write …» before anything was recreated.
+            # Keep the 3 most recent images of each parallext repository (the
+            # rollback targets) and every image a container uses, running or not;
+            # remove the rest. Run BEFORE the pull, so a full disk cannot block it,
+            # and again after the deploy. Never fails the deploy.
+            prune_parallext_images() {
+              local in_use repo
+              in_use=$(docker ps -a --format '{{.Image}}' | sort -u)
+              for repo in api worker dashboard whatsapp landing; do
+                docker images "ghcr.io/nipko/parallext-$repo" --format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}' \
+                  | sort -r | tail -n +4 | cut -d'|' -f2 \
+                  | while read -r image; do
+                      [ -z "$image" ] && continue
+                      case "$image" in *:"<none>") continue ;; esac
+                      echo "$in_use" | grep -qxF "$image" && continue
+                      docker rmi "$image" >/dev/null 2>&1 || true
+                    done
+              done
+              docker image prune -f >/dev/null 2>&1 || true
+              df -h / | tail -1 | awk '{print "     disk after cleanup: " $5 " used, " $4 " free"}'
+            }
+            echo "===> Removing old parallext images before the pull..."
+            prune_parallext_images || true
+
             echo "===> Pulling images for this commit ($GIT_SHA)..."
             # Pull the IMMUTABLE sha tags, not :latest. compose resolves IMAGE_TAG
             # from .env (written below), so a rollback is IMAGE_TAG=<previous-sha>
@@ -1411,9 +1439,9 @@ jobs:
             # dejaban en rojo TODO deploy aunque el runtime quedara sano.)
             echo "===> Runtime SHA ${GIT_SHA} activo."
 
-            # ── Post-deploy cleanup: remove old images ──
+            # ── Post-deploy cleanup: the images the new containers replaced ──
             echo "===> Pruning old Docker images..."
-            docker image prune -f --filter "until=24h" 2>/dev/null || true
+            prune_parallext_images || true
 
             echo "===> Deploy complete! SHA: $GIT_SHA"
 

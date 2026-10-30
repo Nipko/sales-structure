@@ -50,7 +50,7 @@ function sample(f: FormField): unknown {
         case 'address': case 'object': return fill(f.fields ?? []);
         case 'list': return [fill(f.fields ?? [])];
         case 'ref_or_own': return `ref ${f.ref}`;
-        default: return SAMPLE_TEXT[f.key] ?? 'Texto de prueba del negocio, sin precios ni horarios, con más de cuarenta caracteres.';
+        default: return f.options?.[0]?.value ?? SAMPLE_TEXT[f.key] ?? 'Texto de prueba del negocio, sin precios ni horarios, con más de cuarenta caracteres.';
     }
 }
 const filled = (d: FormDescriptor): unknown => (d.root === 'list' ? [fill(d.fields)] : d.root === 'json' ? {} : fill(d.fields));
@@ -77,6 +77,7 @@ describe('formFor: lectura de la descripción', () => {
         ['ref CORE.POLICY.CANCELLATION_CHANGES', 'readonly', false],
         ['fijo|desde|a_cotizar|gratis', 'enum', false],
         ['prosa que nadie entiende', 'text', false],
+        ['union [siguiente_apertura, iso_duration] (ADR 0009)', 'text', false],
     ])('«%s» → %s', (desc, kind, required) => {
         const f = parseField('campo', desc);
         expect(f.kind).toBe(kind);

@@ -19,10 +19,18 @@ export {
 export type { LegacyTenantRows, LegacyContext } from './legacy-status';
 export {
     PROVENANCE_ORIGINS, MIGRATION_ORIGINS, PROVENANCE_TABLES, BACKFILL_MARK, PRICE_TYPES, STORED_STATUSES,
-    realRowProvenance, applyRequirementValues, valueRecordFromRow, valueFingerprint, migratedRef,
+    realRowProvenance, applyRequirementValues, valueRecordFromRow, valueFingerprint, migratedRef, projectedRef,
 } from './provenance';
-export type { ProvenanceOrigin, ProvenanceTable, RowProvenance, MigratedSourceRef } from './provenance';
-export { validateRequirementValue, isValueRequirement, MAX_VALUE_BYTES } from './validate-value';
+export type { ProvenanceOrigin, ProvenanceTable, RowProvenance, MigratedSourceRef, ProjectedSourceRef } from './provenance';
+export {
+    RUNTIME_FACT_IDS, POLICY_REQUIREMENTS, projectedStorageOf, factRows, factSnapshot, ownerFact, hoursToRuntime, i18nText,
+    resolveBusinessHours, renderPolicyText, resolvePolicy, resolveNotOffered, resolveIdentity, applyLegacyPatch, projectToLegacy,
+    projectionInSync,
+} from './business-facts';
+export type {
+    FactSources, OwnerFact, RuntimeDay, RuntimeBusinessHours, RuntimePolicy, NotOfferedEntry, IdentityOverlay, LegacyPatch, LegacyProjection,
+} from './business-facts';
+export { validateRequirementValue, isValueRequirement, isIsoDuration, unionOptions, MAX_VALUE_BYTES } from './validate-value';
 export type { ValueIssue, ValueWriteInput } from './validate-value';
 export { planProvenanceBackfill, applyBackfillPlan } from './backfill';
 export type { BackfillPlan, PlannedValue, PlannedRow, SkippedValue } from './backfill';

@@ -53,7 +53,7 @@ No todos los negocios de un tipo reciben todos los módulos: mandan las capacida
 
 ### La receta de tu rubro
 
-Lo que aparece ya escrito cuando activas una industria sale de una **receta**: el nombre y el saludo del agente, las preguntas frecuentes, los servicios con su precio de ejemplo, las palabras del rubro y los motivos por los que el agente pasa la conversación a una persona.
+Lo que aparece ya escrito cuando activas una industria sale de una **receta**: el nombre y el saludo del agente, los servicios de muestra (sin precio), las palabras del rubro y los motivos por los que el agente pasa la conversación a una persona. Las preguntas frecuentes no se precargan: las escribes tú en **Conocimiento** → **Preguntas frecuentes**, para que el agente nunca diga como tuya una respuesta de plantilla.
 
 No todas las industrias tienen receta propia. Solo la tienen seis: moda y belleza, salud, restaurantes, retail, educación y servicios del hogar; educación añade además una capa por tipo de negocio para las academias de baile y de música o arte, las clases particulares y la autoescuela. Las demás industrias nacen con la definición base, sin receta. Si eliges **Otro**, Parallly propone una receta escrita con IA a partir de la frase que pusiste en el alta sobre qué hace tu negocio; aparece como sugerencia y nunca reemplaza lo que ya cambiaste. Si la generación falla, la cuenta conserva la definición genérica.
 

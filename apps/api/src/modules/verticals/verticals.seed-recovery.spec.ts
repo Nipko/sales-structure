@@ -157,9 +157,8 @@ describe('VerticalsService seed recovery contracts', () => {
             const harness = buildMembershipHarness(['Mensual', 'Annual']);
 
             // D17: el gimnasio es chileno, así que el plan nace en pesos
-            // chilenos. El monto de la receta es una REFERENCIA en pesos
-            // colombianos y se traduce; antes los tres planes salían en COP y
-            // el dueño tenía que corregirlos uno por uno.
+            // chilenos. R3 (C0 §4.3, D5): sin monto de ejemplo — cero (la
+            // columna es NOT NULL) marcado como ejemplo; el precio lo pone el dueño.
             await (harness.service as any).seedMembershipPlans(schemaName, 'en', undefined, 'CL');
 
             expect(harness.transactionInTenantSchema).toHaveBeenCalledTimes(1);
@@ -170,8 +169,7 @@ describe('VerticalsService seed recovery contracts', () => {
             expect([name, description, durationDays, credits, personal, guests, freeze, order])
                 .toEqual(['Quarterly', 'Three months with unlimited classes and 15 freeze days', 90, null, 1, 3, 15, 2]);
             expect(currency).toBe('CLP');
-            expect(price).toBeGreaterThan(0);
-            expect(price).toBeLessThan(390000);
+            expect(price).toBe(0);
         });
 
         it('un gimnasio de un país sin monto de ejemplo nace en cero, nunca en NULL', async () => {
@@ -220,7 +218,8 @@ describe('VerticalsService seed recovery contracts', () => {
         });
     });
 
-    describe('localized service and FAQ seeds', () => {
+    // R3 (C0 §4.3, D5): el alta ya no siembra FAQs; solo queda la semilla localizada de servicios.
+    describe('localized service seeds', () => {
         it('does not duplicate semantic records after es -> en and probes every translation', async () => {
             type NamedRow = { name: string };
             type QuestionRow = { question: string };
@@ -297,24 +296,16 @@ describe('VerticalsService seed recovery contracts', () => {
 
             await (service as any).seedServices(schemaName, definition, 'es');
             await (service as any).seedServices(schemaName, definition, 'en');
-            await (service as any).seedFaqs(schemaName, definition, 'es');
-            await (service as any).seedFaqs(schemaName, definition, 'en');
 
             expect(committedServices).toEqual([
                 { name: 'Consulta inicial' },
                 { name: 'Seguimiento' },
             ]);
-            expect(committedFaqs).toEqual([
-                { question: '¿Atienden los sábados?' },
-                { question: '¿Qué medios de pago aceptan?' },
-            ]);
+            expect(committedFaqs).toEqual([]);
             expect(serviceQueries).toHaveLength(4);
-            expect(faqQueries).toHaveLength(4);
+            expect(faqQueries).toHaveLength(0);
             for (const { sql } of serviceQueries) {
                 expect(sql).toContain('name = ANY($9::text[])');
-            }
-            for (const { sql } of faqQueries) {
-                expect(sql).toContain('question = ANY($4::text[])');
             }
             expect(serviceQueries[0].params[8]).toEqual([
                 'Consulta inicial',
@@ -330,20 +321,6 @@ describe('VerticalsService seed recovery contracts', () => {
             ]);
             expect(serviceQueries[2].params[8]).toEqual(serviceQueries[0].params[8]);
             expect(serviceQueries[3].params[8]).toEqual(serviceQueries[1].params[8]);
-            expect(faqQueries[0].params[3]).toEqual([
-                '¿Atienden los sábados?',
-                'Are you open Saturdays?',
-                'Abrem aos sábados?',
-                'Êtes-vous ouverts le samedi ?',
-            ]);
-            expect(faqQueries[1].params[3]).toEqual([
-                '¿Qué medios de pago aceptan?',
-                'Which payment methods do you accept?',
-                'Quais meios de pagamento aceitam?',
-                'Quels moyens de paiement acceptez-vous ?',
-            ]);
-            expect(faqQueries[2].params[3]).toEqual(faqQueries[0].params[3]);
-            expect(faqQueries[3].params[3]).toEqual(faqQueries[1].params[3]);
         });
     });
 });

@@ -78,7 +78,7 @@ Uma ferramenta ativada está configurada. Uma ferramenta preparada atende aos re
 
 ## Preços que o agente ainda não diz
 
-A receita do seu ramo pré-preenche preços de exemplo para você não começar do zero, e o agente não os diz aos seus clientes até você confirmá-los. Vale para os serviços (veja **Agendamentos e calendários**) e, numa academia, também para os **planos de matrícula**:
+A receita do seu ramo pré-preenche serviços e planos de amostra sem valor (um plano de matrícula nasce em 0, marcado como exemplo) para você não começar do zero, e o agente não diz nenhum preço até você escrevê-lo ou confirmá-lo. Vale para os serviços (veja **Agendamentos e calendários**) e, numa academia, também para os **planos de matrícula**:
 
 - Em **Matrículas**, cada plano com preço de exemplo mostra o selo **Preço de exemplo** e a nota de que o agente não o menciona até você confirmá-lo. **Confirmar preço** mantém o mesmo valor, já confirmado; **É orçado** faz o agente não dizer nenhum valor daquele plano e oferecer que uma pessoa faça o orçamento.
 - Um plano que mostra **Sem preço** não tem valor a confirmar: toque em **Informar preço**, **É gratuito** ou **É orçado**.

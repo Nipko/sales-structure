@@ -53,7 +53,7 @@ Tous les modules ne sont pas attribués à chaque entreprise d'un type : capacit
 
 ### La recette de votre secteur
 
-Tout ce qui apparaît déjà rédigé quand vous activez un secteur vient d'une **recette** : le nom et le message d'accueil de l'agent, les questions fréquentes, les prestations avec leur prix d'exemple, le vocabulaire du métier et les raisons pour lesquelles l'agent passe la conversation à une personne.
+Tout ce qui apparaît déjà rédigé quand vous activez un secteur vient d'une **recette** : le nom et le message d'accueil de l'agent, les prestations d'exemple (sans prix), le vocabulaire du métier et les raisons pour lesquelles l'agent passe la conversation à une personne. Les questions fréquentes ne sont pas préremplies : vous les rédigez dans **Connaissances** → **Questions fréquentes**, pour que l'agent ne présente jamais une réponse de modèle comme la vôtre.
 
 Tous les secteurs n'ont pas leur propre recette. Seuls six en ont une : mode et beauté, santé, restaurants, commerce de détail, éducation et services à domicile ; l'éducation ajoute en plus une couche par type d'activité pour les écoles de danse et de musique ou d'art, les cours particuliers et les auto-écoles. Les autres secteurs démarrent avec la définition de base, sans recette. Si vous choisissez **Autre**, Parallly propose une recette rédigée avec l'IA à partir de la phrase saisie à l'inscription sur ce que fait votre entreprise ; elle apparaît comme suggestion et ne remplace jamais ce que vous avez déjà modifié. Si la génération échoue, le compte conserve la définition générique.
 

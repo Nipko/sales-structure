@@ -78,7 +78,7 @@ Un outil activé est configuré. Un outil prêt satisfait aux exigences connues.
 
 ## Les prix que l’agent n’annonce pas encore
 
-La recette de votre secteur préremplit des prix d’exemple pour que vous ne partiez pas de zéro, et l’agent ne les annonce pas à vos clients tant que vous ne les avez pas confirmés. Cela vaut pour les services (voir **Rendez-vous et calendriers**) et, dans une salle de sport, aussi pour les **forfaits d’adhésion** :
+La recette de votre secteur préremplit des services et des forfaits d’exemple sans montant (un forfait d’adhésion naît à 0, marqué comme exemple) pour que vous ne partiez pas de zéro, et l’agent n’annonce aucun prix tant que vous ne l’avez pas saisi ou confirmé. Cela vaut pour les services (voir **Rendez-vous et calendriers**) et, dans une salle de sport, aussi pour les **forfaits d’adhésion** :
 
 - Dans **Adhésions**, chaque forfait au prix d’exemple affiche le badge **Prix d'exemple** et la note indiquant que l’agent ne le mentionne pas tant que vous ne l’avez pas confirmé. **Confirmer le prix** conserve le même montant, désormais confirmé ; **Sur devis** fait que l’agent n’indique aucun montant pour ce forfait et propose qu’une personne établisse un devis.
 - Un forfait qui affiche **Sans prix** n’a aucun montant à confirmer : appuyez sur **Saisir le prix**, **C'est gratuit** ou **Sur devis**.

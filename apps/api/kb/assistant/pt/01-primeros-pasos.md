@@ -105,7 +105,7 @@ O que sempre aparece é uma falha real de entrega. Se um canal que você conecto
 1. **Confirme seu agente** no assistente e teste no chat de teste.
 2. **Conecte o canal por onde seus clientes escrevem para você** (o assistente coloca em cima o que o seu ramo recomenda). A partir desse momento o agente fica atribuído e responde por ali; no WhatsApp, confirme o fuso horário de cobrança se a tela pedir.
 3. **Envie uma mensagem de outro celular** e confirme a resposta e a conversa em **Conversas**.
-4. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente. Confirme também os preços de exemplo dos seus serviços em **Agendamentos** → **Serviços** para que o agente possa dizê-los.
+4. **Complete as informações e o conhecimento da empresa**: site, documentos, políticas, perguntas frequentes e o catálogo correspondente. Escreva também o preço dos seus serviços em **Agendamentos** → **Serviços** (os serviços de amostra chegam sem valor) para que o agente possa dizê-lo.
 5. **Ajuste o agente quando quiser**: tom, regras, saudação, ferramentas e atribuição do canal. Ao salvar, a mudança é aplicada na hora; teste no chat de teste.
 6. **Convide sua equipe** em **Usuários** e atribua funções: administrador, supervisor ou agente.
 

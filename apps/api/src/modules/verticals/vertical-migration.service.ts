@@ -620,12 +620,8 @@ export class VerticalMigrationService {
                 terminalOutcome: stage.isTerminal ? stage.terminalOutcome : null,
                 transitionRules: (stage as any).transitionRules || [],
             })),
-            faqs: definition.faqs.map((faq) => ({
-                question: faq.question[language] || faq.question.es,
-                answer: faq.answer[language] || faq.answer.es,
-                category: faq.category,
-                isPublished: true,
-            })),
+            // R3 (C0 §4.3, D5): cambiar de vertical ya no siembra FAQs de plantilla, igual que el alta.
+            faqs: [],
             // `serviceCatalogAllowed`, no `agendaAllowed`: son dos cosas
             // distintas y el alta usa esta. Con la condicion anterior, los siete
             // servicios del hogar, los dos de pet_services y los cuatro de
@@ -634,7 +630,8 @@ export class VerticalMigrationService {
             // en el mismo subtipo recibia su lista completa.
             services: agenda.serviceCatalogAllowed
                 ? agenda.services.map((service, sortOrder) => {
-                    const seeded = recipeSeedPrice(service.price, country);
+                    // R3 (C0 §4.3, D5): el servicio de muestra nace sin monto de ejemplo, en la moneda del pais.
+                    const seeded = { price: null as number | null, currency: recipeSeedPrice(service.price, country).currency };
                     return {
                         name: service.name[language] || service.name.es,
                         description: service.description[language] || service.description.es,
@@ -675,16 +672,7 @@ export class VerticalMigrationService {
             );
             if (rows?.[0]) inserted.pipelineStages.push({ id: rows[0].id, fingerprint: this.hash(stage) });
         }
-        const allowedFaqs = new Set(diff.faqs.add.map((row: any) => row.question));
-        for (const faq of targetSeeds.faqs.filter((row: any) => allowedFaqs.has(row.question))) {
-            const rows: any[] = await query(
-                `INSERT INTO faqs (question, answer, category, is_published, search_tsv)
-                 VALUES ($1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2))
-                 ON CONFLICT (question) DO NOTHING RETURNING id`,
-                [faq.question, faq.answer, faq.category],
-            );
-            if (rows?.[0]) inserted.faqs.push({ id: rows[0].id, fingerprint: this.hash(faq) });
-        }
+        // FAQs: ya no hay semillas que insertar (R3, D5); `inserted.faqs` queda vacío y la reversión no tiene nada que quitar.
         const allowedServices = new Set(diff.services.add.map((row: any) => row.name));
         for (const service of targetSeeds.services.filter((row: any) => allowedServices.has(row.name))) {
             const rows: any[] = await query(

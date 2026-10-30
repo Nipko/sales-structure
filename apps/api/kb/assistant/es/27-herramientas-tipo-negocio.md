@@ -78,7 +78,7 @@ Una herramienta activada está configurada. Una herramienta preparada reúne los
 
 ## Precios que el agente todavía no dice
 
-La receta de tu rubro precarga precios de ejemplo para que no arranques desde cero, y el agente no se los dice a tus clientes hasta que los confirmes. Vale para los servicios (ver **Citas y calendarios**) y, en un gimnasio, también para los **planes de membresía**:
+La receta de tu rubro precarga servicios y planes de muestra sin monto (un plan de membresía nace en 0, marcado como ejemplo) para que no arranques desde cero, y el agente no dice ningún precio hasta que lo escribas o lo confirmes. Vale para los servicios (ver **Citas y calendarios**) y, en un gimnasio, también para los **planes de membresía**:
 
 - En **Membresías**, cada plan con precio de ejemplo muestra la pastilla **Precio de ejemplo** y la nota de que el agente no lo dice hasta que lo confirmes. **Confirmar precio** conserva el mismo monto, ya confirmado; **Se cotiza** hace que el agente no diga ningún monto de ese plan y ofrezca que una persona lo cotice.
 - Un plan que muestra **Sin precio** no tiene monto que confirmar: pulsa **Escribir precio**, **Es gratis** o **Se cotiza**.

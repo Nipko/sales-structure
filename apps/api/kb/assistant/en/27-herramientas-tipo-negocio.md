@@ -78,7 +78,7 @@ An enabled tool is configured. A prepared tool meets known requirements. A teste
 
 ## Prices the agent doesn't state yet
 
-Your industry recipe pre-fills example prices so you don't start from zero, and the agent doesn't state them to your customers until you confirm them. That applies to services (see **Appointments and calendars**) and, for a gym, also to **membership plans**:
+Your industry recipe pre-fills sample services and plans with no amount (a membership plan starts at 0, marked as an example) so you don't start from zero, and the agent doesn't state any price until you type or confirm it. That applies to services (see **Appointments and calendars**) and, for a gym, also to **membership plans**:
 
 - Under **Memberships**, each plan with an example price shows the **Example price** pill and a note that the agent won't mention it until you confirm it. **Confirm price** keeps the same amount, now confirmed; **Quoted per case** makes the agent state no amount for that plan and offer to have a person quote it.
 - A plan that shows **No price** has no amount to confirm: press **Enter price**, **It's free** or **Quoted per case**.

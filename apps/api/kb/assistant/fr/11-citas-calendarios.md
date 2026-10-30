@@ -29,7 +29,7 @@ L'écran affiche votre capacité actuelle de services ; consultez les détails �
 
 ### Prix d'exemple et prix confirmés
 
-Lorsque vous activez un secteur, la recette de votre activité préremplit vos services avec un prix d'exemple, pour que vous ne partiez pas de zéro. Dans le formulaire du service, **Statut du prix** propose trois options : **Prix confirmé** (il faut un montant supérieur à 0), **C'est gratuit** ou **Sur devis, selon le cas**. Tant que vous n'en avez choisi aucune, le prix apporté par la recette reste un prix d'exemple.
+Lorsque vous activez un secteur, la recette de votre activité préremplit des services d'exemple **sans montant**, pour que vous ne partiez pas de zéro : le prix, c'est vous qui le saisissez. Dans le formulaire du service, **Statut du prix** propose trois options : **Prix confirmé** (il faut un montant supérieur à 0), **C'est gratuit** ou **Sur devis, selon le cas**. Tant que vous n'en avez choisi aucune, le service reste à confirmer.
 
 L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : dans la liste des services et lors de la confirmation d'un rendez-vous, il indique que le prix reste « à confirmer » avec l'entreprise, ou qu'il est établi sur devis. Il ne mentionne que les prix déjà confirmés.
 
@@ -38,7 +38,7 @@ L'agent IA ne dit jamais à voix haute un prix d'exemple ni un prix sur devis : 
 - Un service marqué **C'est gratuit** s'affiche **Gratuit**, et l'agent indique au client qu'il est gratuit. Laisser le montant vide ne le rend jamais gratuit.
 - Vous ne pouvez pas activer de politique de paiement (acompte ou paiement intégral) sur un service gratuit ni sur un service dont le prix n'est pas confirmé.
 - Tant qu'il reste des prix d'exemple non confirmés ou des services sans prix, le panneau de préparation de l'entreprise (`/admin/readiness`) l'affiche comme une donnée à confirmer, avec le lien vers l'écran où la confirmer ; l'agent n'annonce jamais un prix non confirmé. Dans une salle de sport, il compte aussi les forfaits d'adhésion, qui se confirment de la même façon dans **Adhésions**.
-- Le prix d'exemple arrive **dans la devise de votre pays**, pas en pesos colombiens. Si votre pays est la Colombie, le Mexique, l'Argentine, le Chili, le Pérou ou le Brésil, le service naît avec un montant d'exemple arrondi dans votre devise ; dans tout autre pays il naît **sans montant**, avec votre devise déjà en place, pour que vous saisissiez le vôtre. Ce montant n'est qu'un ordre de grandeur pour que l'écran ne démarre pas vide : ce n'est ni une conversion de devises ni un prix de marché, et personne ne l'énonce tant que vous ne l'avez pas confirmé.
+- Le service d'exemple naît **sans montant**, avec **la devise de votre pays** déjà en place, pour que vous saisissiez le vôtre. Les entreprises créées avant cette version peuvent encore avoir un montant d'exemple arrondi : il reste un prix d'exemple et personne ne l'énonce tant que vous ne l'avez pas confirmé.
 
 ## Comment définir votre disponibilité
 

@@ -18,9 +18,6 @@ const KEY = (c: { industry: string; subtype: string | null }) => `${c.industry}/
 
 function build(): any {
     const service: any = new VerticalsService({} as any, {} as any, {} as any);
-    jest.spyOn(service, 'seedToursExtras').mockResolvedValue(undefined);
-    jest.spyOn(service, 'seedDentalExtras').mockResolvedValue(undefined);
-    jest.spyOn(service, 'seedInmobiliariaExtras').mockResolvedValue(undefined);
     jest.spyOn(service, 'seedMembershipPlans').mockResolvedValue(undefined);
     return service;
 }

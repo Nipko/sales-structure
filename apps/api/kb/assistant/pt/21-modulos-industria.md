@@ -53,7 +53,7 @@ Nem todo negócio de um tipo recebe todos os módulos: capacidades efetivas, tip
 
 ### A receita do seu setor
 
-O que aparece já escrito quando você ativa um setor vem de uma **receita**: o nome e a saudação do agente, as perguntas frequentes, os serviços com seu preço de exemplo, o vocabulário do ramo e os motivos pelos quais o agente passa a conversa para uma pessoa.
+O que aparece já escrito quando você ativa um setor vem de uma **receita**: o nome e a saudação do agente, os serviços de amostra (sem preço), o vocabulário do ramo e os motivos pelos quais o agente passa a conversa para uma pessoa. As perguntas frequentes não vêm pré-preenchidas: você as escreve em **Conhecimento** → **Perguntas frequentes**, para que o agente nunca apresente uma resposta de modelo como sua.
 
 Nem todo setor tem receita própria. Só seis têm: moda e beleza, saúde, restaurantes, varejo, educação e serviços domésticos; educação acrescenta ainda uma camada por tipo de negócio para as academias de dança e de música ou arte, as aulas particulares e a autoescola. Os demais setores nascem com a definição base, sem receita. Se você escolher **Outros**, o Parallly propõe uma receita escrita com IA a partir da frase que você informou no cadastro sobre o que seu negócio faz; ela aparece como sugestão e nunca substitui o que você já alterou. Se a geração falhar, a conta mantém a definição genérica.
 

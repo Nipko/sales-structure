@@ -29,7 +29,7 @@ The screen shows your current service capacity; check current details in **Plan 
 
 ### Example prices and confirmed prices
 
-When you turn on an industry, that vertical's recipe pre-fills your services with an example price, so you don't start from zero. In the service form, **Price status** has three options: **Confirmed price** (needs an amount above 0), **It's free**, or **Quoted case by case**. Until you pick one, the price the recipe seeded stays an example.
+When you turn on an industry, that vertical's recipe pre-fills sample services **with no amount**, marked as examples, so you don't start from zero: you type the price. In the service form, **Price status** has three options: **Confirmed price** (needs an amount above 0), **It's free**, or **Quoted case by case**. Until you pick one, the service stays to be confirmed.
 
 The AI agent never states an example price or a quote-only price out loud: in the service list and when confirming an appointment, it says the price is "to be confirmed" with the business, or that it's quoted case by case. It only states prices that are already confirmed.
 
@@ -38,7 +38,7 @@ The AI agent never states an example price or a quote-only price out loud: in th
 - A service marked **It's free** shows as **Free**, and the agent tells customers it's free. Leaving the amount empty never makes it free.
 - You can't turn on a payment policy (deposit or full payment) on a free service or on one whose price isn't confirmed.
 - While any example prices are still unconfirmed or any service has no price, the business readiness panel (`/admin/readiness`) lists it as a fact to confirm, with a link to the screen where you confirm it; the agent never states an unconfirmed price. For a gym it also counts membership plans, which you confirm the same way under **Memberships**.
-- The example price comes **in your country's currency**, not in Colombian pesos. If your country is Colombia, Mexico, Argentina, Chile, Peru or Brazil, the service is created with a round example amount in your currency; in any other country it is created **with no amount** and your currency already set, so you can type your own. That amount is only an order of magnitude so the screen doesn't start empty: it is not a currency conversion and not a market price, and nobody states it out loud until you confirm it.
+- A sample service is created **with no amount** and **your country's currency** already set, so you can type your own. Businesses created before this version may still have a round example amount: it stays an example and nobody states it out loud until you confirm it.
 
 ## How to set your availability
 

@@ -16,12 +16,14 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    MIGRATION_ORIGINS, formFor, validateRequirementValue, type CompiledSpec, type StoredStatus, type ValueIssue,
+    MIGRATION_ORIGINS, formFor, projectToLegacy, validateRequirementValue, type CompiledSpec, type LegacyProjection, type StoredStatus, type ValueIssue,
 } from '@parallext/business-spec';
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessFactsReader } from './business-facts.reader';
 import { ReadinessService } from './readiness.service';
 import {
-    VIEW_COLUMNS, requirementValueWriteStatement, toIso, toView, type BusinessFactActor, type BusinessFactView, type BusinessFactVersionView,
+    VIEW_COLUMNS, legacyPatchStatements, requirementValueWriteStatement, toIso, toView,
+    type BusinessFactActor, type BusinessFactView, type BusinessFactVersionView,
 } from './business-facts.statements';
 
 export { requirementValueWriteStatement, rowProvenanceStatement } from './business-facts.statements';
@@ -58,7 +60,15 @@ export interface BusinessFactWrite {
 
 /** Evento que invalida la caché de la preparación (C0 §4.1). */
 export const BUSINESS_FACT_WRITTEN = 'business_fact.written';
-export interface BusinessFactWrittenEvent { tenantId: string; requirementId: string; scopeKey: string; version: number; origin: string }
+export interface BusinessFactWrittenEvent {
+    tenantId: string;
+    requirementId: string;
+    scopeKey: string;
+    version: number;
+    origin: string;
+    /** Almacenamiento viejo que la escritura también actualizó (R3b, expand): sus cachés se invalidan. */
+    projectedTo?: string;
+}
 
 const UNDEFINED_TABLE = '42P01';
 const REQUIREMENT_ID = /^[A-Z][A-Z0-9_]*(\.[A-Z0-9_*]+)+$/;
@@ -76,6 +86,7 @@ export class BusinessFactsService {
         private readonly prisma: PrismaService,
         private readonly readiness: ReadinessService,
         @Optional() private readonly events?: EventEmitter2,
+        @Optional() private readonly reader?: BusinessFactsReader,
     ) {}
 
     protected now(): Date {
@@ -100,19 +111,55 @@ export class BusinessFactsService {
         this.raiseIssues(requirementId, issues);
         const userId = actor.kind === 'user' ? actor.userId : null;
         const at = this.now().toISOString();
+        // R3b (expand, ADR 0009): un valor confirmado de horario, política o identidad se escribe también en su
+        // almacenamiento de hoy, con la huella de lo que la foto leerá de ahí. Si después una pantalla vieja lo edita,
+        // la edición manda (en el agente y en el motor) hasta que el dueño vuelva a guardar aquí.
+        const projection = await this.projectionFor(tenantId, requirementId, scopeKey, input.value, status, origin);
+        const sourceRef = projection
+            ? { ...(input.sourceRef ?? {}), projected_to: projection.storage, projected_hash: projection.hash }
+            : input.sourceRef ?? null;
         const { sql, params } = requirementValueWriteStatement({
             requirementId, scopeKey, value: input.value, status, origin,
             confirmedBy: status === 'confirmed' ? userId : null, confirmedAt: status === 'confirmed' ? at : null,
-            sourceRef: input.sourceRef ?? null, validUntil: input.validUntil ?? null, specVersion: this.spec.specVersion,
+            sourceRef, validUntil: input.validUntil ?? null, specVersion: this.spec.specVersion,
             actor, expectedVersion: input.expectedVersion ?? null,
         }, 'upsert');
-        const rows = await this.run<Record<string, any>[]>(tenantId, sql, params);
-        if (!rows[0]) {
-            throw new ConflictException({ message: 'otra escritura cambió este valor; vuelve a cargarlo', requirementId, expectedVersion: input.expectedVersion });
+        const conflict = () => new ConflictException({ message: 'otra escritura cambió este valor; vuelve a cargarlo', requirementId, expectedVersion: input.expectedVersion });
+        let rows: Record<string, any>[];
+        if (projection) {
+            const label = actor.kind === 'user' ? `business-facts:${actor.userId ?? 'user'}` : `business-facts:${actor.name}`;
+            rows = await this.transaction(tenantId, async query => {
+                for (const st of legacyPatchStatements(tenantId, projection.patch, label)) await query(st.sql, st.params);
+                const written = await query<Record<string, any>[]>(sql, params);
+                // sin fila (versión vieja): se deshace también la proyección
+                if (!written[0]) throw conflict();
+                return written;
+            });
+        } else {
+            rows = await this.run<Record<string, any>[]>(tenantId, sql, params);
         }
+        if (!rows[0]) throw conflict();
         const view = toView(rows[0]);
-        this.emitWritten(tenantId, view);
+        this.emitWritten(tenantId, view, projection?.storage);
         return view;
+    }
+
+    /** Proyección del valor a su almacenamiento de hoy, o null (sin almacenamiento viejo, alcance no global, no confirmado). */
+    private async projectionFor(tenantId: string, requirementId: string, scopeKey: string, value: unknown, status: StoredStatus, origin: string): Promise<LegacyProjection | null> {
+        if (!this.reader || status !== 'confirmed' || MIGRATION_ORIGINS.has(origin) || scopeKey !== '' || value === null || value === undefined) return null;
+        const src = await this.reader.sources(tenantId, { fresh: true });
+        if (!src) return null;
+        const projection = projectToLegacy(requirementId, value, src, scopeKey);
+        // sin la tabla `policies` en el esquema (tenant que nunca la abrió) no hay a dónde proyectar: el valor manda solo
+        if (projection?.patch.kind === 'policies' && !(await this.hasTable(tenantId, 'policies'))) return null;
+        return projection;
+    }
+
+    private async hasTable(tenantId: string, table: string): Promise<boolean> {
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        const rows = await this.prisma.$queryRawUnsafe(
+            'SELECT 1 FROM information_schema.tables WHERE table_schema = $1 AND table_name = $2', schema, table) as unknown[];
+        return rows.length > 0;
     }
 
     /**
@@ -202,9 +249,26 @@ export class BusinessFactsService {
         throw new BadRequestException({ message: `el valor de ${requirementId} no cumple la especificación`, issues });
     }
 
-    private emitWritten(tenantId: string, view: BusinessFactView): void {
-        const event: BusinessFactWrittenEvent = { tenantId, requirementId: view.requirementId, scopeKey: view.scopeKey, version: view.version, origin: view.origin };
+    private emitWritten(tenantId: string, view: BusinessFactView, projectedTo?: string): void {
+        const event: BusinessFactWrittenEvent = {
+            tenantId, requirementId: view.requirementId, scopeKey: view.scopeKey, version: view.version, origin: view.origin,
+            ...(projectedTo ? { projectedTo } : {}),
+        };
         this.events?.emit(BUSINESS_FACT_WRITTEN, event);
+    }
+
+    /** Escritura del valor y de su proyección en una sola transacción del esquema del tenant. */
+    private async transaction<T>(tenantId: string, fn: (query: <R = any[]>(sql: string, params?: any[]) => Promise<R>) => Promise<T>): Promise<T> {
+        const schema = await this.prisma.getTenantSchemaName(tenantId);
+        try {
+            return await this.prisma.transactionInTenantSchema(schema, fn);
+        } catch (err) {
+            if (isUndefinedTable(err)) {
+                this.logger.warn(`business-facts: ${schema} sin requirement_values (falta migrar el tenant)`);
+                throw new ServiceUnavailableException('el negocio aún no tiene la tabla de valores; reintenta después del despliegue');
+            }
+            throw err;
+        }
     }
 
     private async run<T>(tenantId: string, sql: string, params: unknown[]): Promise<T> {

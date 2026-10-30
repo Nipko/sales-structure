@@ -4,15 +4,18 @@ import { join, relative, resolve, sep } from 'node:path';
 /**
  * C0 §2.1 y riesgo de R3: «toda escritura pasa por BusinessFactsService.write(); escribir por SQL directo está
  * prohibido». Este barrido lista cada INSERT y UPDATE sobre `requirement_values` en el código de la API (src y
- * scripts) y falla si alguno vive fuera de business-facts.service.ts. `requirement_value_versions` es append-only:
- * su único INSERT es el de ese mismo archivo, y no puede haber UPDATE ni DELETE en ningún lado.
+ * scripts) y falla si alguno vive fuera de business-facts.service.ts y sus sentencias (business-facts.statements.ts).
+ * `requirement_value_versions` es append-only: su único INSERT es el de esas sentencias, y no puede haber UPDATE ni
+ * DELETE en ningún lado.
  *
  * Lo que no ve, dicho en voz alta: SQL armado concatenando el nombre de la tabla en tiempo de ejecución. Nadie lo
  * hace hoy; si alguien lo hiciera para esquivar esta prueba, la revisión es la que lo tiene que parar.
  */
 const API = resolve(__dirname, '..', '..', '..');
 const ROOTS = [join(API, 'src'), join(API, 'scripts'), join(API, 'prisma')];
-const OWNER = join('src', 'modules', 'readiness', 'business-facts.service.ts');
+/** BusinessFactsService: el servicio y sus sentencias (sin Nest ni Prisma, para que la migración use el mismo SQL). */
+const OWNERS = [join('src', 'modules', 'readiness', 'business-facts.service.ts'), join('src', 'modules', 'readiness', 'business-facts.statements.ts')];
+const STATEMENTS = OWNERS[1];
 const SELF = join('src', 'modules', 'readiness', 'business-facts-writes.spec.ts');
 
 function files(dir: string): string[] {
@@ -35,19 +38,19 @@ describe('requirement_values: solo escribe BusinessFactsService', () => {
 
     it('el barrido ve el código (y la sentencia de escritura del servicio)', () => {
         expect(all.length).toBeGreaterThan(500);
-        const owner = all.find(f => f.rel === OWNER);
+        const owner = all.find(f => f.rel === STATEMENTS);
         expect(owner?.text.match(WRITE_VALUES)?.length).toBeGreaterThan(0);
         expect(owner?.text.match(INSERT_VERSIONS)?.length).toBe(1);
     });
 
-    it('ningún INSERT ni UPDATE sobre requirement_values fuera de business-facts.service.ts', () => {
-        const offenders = all.filter(f => f.rel !== OWNER && f.rel !== SELF && (f.text.match(WRITE_VALUES)?.length ?? 0) > 0)
+    it('ningún INSERT ni UPDATE sobre requirement_values fuera de BusinessFactsService', () => {
+        const offenders = all.filter(f => !OWNERS.includes(f.rel) && f.rel !== SELF && (f.text.match(WRITE_VALUES)?.length ?? 0) > 0)
             .map(f => `${f.rel}: ${f.text.match(WRITE_VALUES)?.join(' | ')}`);
         expect(offenders).toEqual([]);
     });
 
     it('requirement_value_versions es append-only: un solo INSERT (el del servicio) y ningún UPDATE, DELETE ni TRUNCATE', () => {
-        const inserts = all.filter(f => f.rel !== OWNER && f.rel !== SELF && (f.text.match(INSERT_VERSIONS)?.length ?? 0) > 0).map(f => f.rel);
+        const inserts = all.filter(f => !OWNERS.includes(f.rel) && f.rel !== SELF && (f.text.match(INSERT_VERSIONS)?.length ?? 0) > 0).map(f => f.rel);
         const mutations = all.filter(f => f.rel !== SELF && (f.text.match(MUTATE_VERSIONS)?.length ?? 0) > 0).map(f => f.rel);
         expect(inserts).toEqual([]);
         expect(mutations).toEqual([]);

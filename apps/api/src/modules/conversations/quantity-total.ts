@@ -29,6 +29,15 @@ function names(text: string, title: string): boolean {
     return words.length > 0 && words.every(word => said.includes(` ${word} `));
 }
 
+/**
+ * Production QA 29/30-oct (travel, ES and EN, three times): «¿qué incluye exactamente ese tour de 4 HORAS?» / «What's included in
+ * that 4-hour tour?» got «Por 4 unidades serían 500 EUR (4 × 125 EUR)»: a duration is not a quantity of units.
+ */
+const DURATION = /(?<![\p{L}\p{N}])(\d{1,2})\s*-?\s*(?:h|hrs?|horas?|hours?|heures?|minutos?|minutes?|mins?)(?![\p{L}])/giu;
+function durationsIn(text: string): number[] {
+    return [...String(text || '').matchAll(DURATION)].map(m => Number(m[1]));
+}
+
 const TEXTS: Record<string, (n: number, total: string, unit: string) => string> = {
     es: (n, total, unit) => `Por ${n} unidades serían ${total} (${n} × ${unit}).`,
     en: (n, total, unit) => `For ${n} units it would be ${total} (${n} × ${unit}).`,
@@ -70,7 +79,7 @@ export function quantityTotalNote(reply: string, customerText: string, catalog: 
     }
     if (named.length !== 1) return null;
     const [product] = named;
-    const asked = quantitiesIn(String(customerText || '')).filter(n => !quantitiesIn(product.title).includes(n));
+    const asked = quantitiesIn(String(customerText || '')).filter(n => !quantitiesIn(product.title).includes(n) && !durationsIn(customerText).includes(n));
     if (asked.length !== 1) return null;
     const [n] = asked;
     const code0 = String(lang || 'es').slice(0, 2);

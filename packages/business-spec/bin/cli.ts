@@ -22,7 +22,8 @@ function externalChecks(spec: CompiledSpec): SpecError[] {
     const pages = require(path.join(REPO, 'packages/shared/src/dashboard-page-access.ts'));
     return checkExternal(spec, {
         canonicalSubtypes: subtypes.listCanonicalSubtypeExperienceProfileIds(),
-        uiTargetExists: (p: string) => pages.dashboardPageRuleFor(p.replace(/\[[^\]]+\]/g, 'x')) !== null,
+        // El panel enlaza cada hueco a su pantalla: tiene que existir y el dueño tiene que poder abrirla (R2).
+        uiTargetExists: (p: string) => pages.dashboardRoleCanOpen(p.replace(/\[[^\]]+\]/g, 'x'), 'tenant_admin'),
     });
 }
 

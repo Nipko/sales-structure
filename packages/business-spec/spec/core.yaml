@@ -475,7 +475,7 @@ requirements:
   criticality: {level: recomendado, rule: R5}
   when_missing: {code: NC+AV, behavior: "Sin promociones vigentes confirmadas: «hoy no hay promociones publicadas».", never: ["inventar promociones o gratuidad (clase de prueba gratis)"]}
   sources: {allowed: [owner_form, integration], max_age: "vigencia de cada promoción; la lista vacía se reconfirma cada 30 días"}
-  collection: {channels: [form], ui_today: "/admin/coupons, /admin/catalog/offers, promociones de /admin/menu", storage_today: "menu_promotions (solo comida), commercial_offers, cupones", storage_status: parcial}
+  collection: {channels: [form], ui_today: "/admin/catalog/offers, promociones de /admin/menu; cupones de la plataforma: /admin/coupons", storage_today: "menu_promotions (solo comida), commercial_offers, cupones", storage_status: parcial}
   readiness: {predicate_kind: custom, predicate: "valor o vacío confirmado y no_caducado", gap_message: "¿Tienes promociones vigentes? Si no, confírmalo."}
   qa_truth: "C13: solo promociones con fecha del caso dentro de la vigencia; si no hay → 'no hay promociones publicadas'."
 

@@ -263,9 +263,15 @@ export interface ReadinessResult {
         recommendedFailing: number;
     };
     requirements: RequirementEvaluation[];
+    /** Requisitos que fallan como bloqueantes (R1–R3): deciden `no_listo`. */
     blockingGaps: string[];
+    /** Fallan como necesarios (R4) y no como bloqueantes: deciden `limitado`. */
+    necessaryGaps: string[];
+    /** Fallan solo como recomendados (R5): suman a la cobertura. */
+    recommendedGaps: string[];
     platformGaps: { id: string; message: string }[];
-    qualityWarnings: { id: string; message: string }[];
+    /** Avisos que no bloquean (sembrados, contradicciones, dato heredado); `uiTarget` = dónde se revisa. */
+    qualityWarnings: { id: string; message: string; uiTarget: string | null }[];
     coverage: { byArea: Record<string, { ok: number; total: number }>; r5Pct: number };
     limitedIntents: { id: string; title: string; requirementIds: string[] }[];
 }

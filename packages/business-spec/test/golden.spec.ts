@@ -98,4 +98,24 @@ describe('golden: los 7 tenants QA', () => {
         expect(evaluate(spec, snap, NOW).resultHash).toBe(evaluate(spec, snap, NOW).resultHash);
         expect(evaluate(spec, snap, NOW).asOf).toBe(NOW.toISOString());
     });
+
+    it.each(slugs)('%s: las listas de huecos por nivel son disjuntas y explican el veredicto', slug => {
+        const r = evaluate(spec, fromLegacyRows(fixtureRows(slug)), NOW);
+        const all = [...r.blockingGaps, ...r.necessaryGaps, ...r.recommendedGaps];
+        expect(new Set(all).size).toBe(all.length);
+        expect(r.blockingGaps.length).toBe(r.counts.blockingFailing);
+        expect(r.verdict).toBe(r.blockingGaps.length ? 'no_listo' : r.necessaryGaps.length ? 'limitado' : 'listo');
+        for (const id of all) expect(r.requirements.find(x => x.id === id)?.gap).toBeDefined();
+    });
+
+    it('resultHash es del contenido: otra captura de la misma base, con el mismo resultado, da el mismo hash', () => {
+        const rows = fixtureRows('spark-qa-dental-03');
+        const a = evaluate(spec, fromLegacyRows(rows), NOW);
+        const later = new Date(NOW.getTime() + 60_000);
+        const b = evaluate(spec, fromLegacyRows({ ...rows, capturedAt: later.toISOString() }), later);
+        expect(b.snapshotHash).not.toBe(a.snapshotHash);
+        expect(b.asOf).not.toBe(a.asOf);
+        expect(b.verdict).toBe(a.verdict);
+        expect(b.resultHash).toBe(a.resultHash);
+    });
 });

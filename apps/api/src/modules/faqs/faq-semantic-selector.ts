@@ -76,22 +76,38 @@ export function parseFaqSelection(raw: unknown, count: number): number | null {
  * The published FAQ the selector names for `message`, or null. Never throws: a timeout, a provider error or a bad answer is
  * «none», and the turn goes on exactly as it did without a FAQ.
  */
-export async function selectFaqByMeaning<T extends { question: string }>(
+export async function selectFaqByMeaning<T extends { question: string; answer?: string }>(
     message: string, faqs: readonly T[], selector: FaqSelector, timeoutMs = FAQ_SELECTOR_TIMEOUT_MS,
 ): Promise<T | null> {
     if (!String(message || '').trim() || !faqs.length || faqs.length > FAQ_SELECTOR_MAX_FAQS) return null;
+    const candidates = faqs.filter(faq => !asksTheCustomerBack(faq.answer));
+    if (!candidates.length) return null;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         const timeout = new Promise<null>(resolve => {
             timer = setTimeout(() => resolve(null), timeoutMs);
             (timer as any)?.unref?.();
         });
-        const response = await Promise.race([selector(buildFaqSelectorRequest(message, faqs.map(faq => faq.question))), timeout]);
-        const index = parseFaqSelection(response?.content, faqs.length);
-        return index === null ? null : faqs[index];
+        const response = await Promise.race([selector(buildFaqSelectorRequest(message, candidates.map(faq => faq.question))), timeout]);
+        const index = parseFaqSelection(response?.content, candidates.length);
+        return index === null ? null : candidates[index];
     } catch {
         return null;
     } finally {
         if (timer) clearTimeout(timer);
     }
+}
+
+/**
+ * Production QA 29-oct (after #307): the selector still named «¿Qué incluye el paquete?» for «que comprend exactement le prix de ce
+ * tour ?» (29 of 29 times), and its answer «Cada paquete es distinto. Cuéntame cuál te interesa…» displaced the tour already named.
+ * Many seeded FAQs answer nothing: they hand the question back («Cuéntame qué día te sirve y te confirmo el horario», «Escribe "menú" y
+ * te muestro la carta», «Escríbenos y te confirmamos la dirección»), and with one the agent asked the day instead of giving the hours
+ * on file. An answer that asks the customer to tell, write or ask something and carries no figure is not offered to the selector: the
+ * turn goes on with the business data, as without a FAQ. The lexical search is unchanged. Pure.
+ */
+const ASKS_BACK = /(?<!\p{L})(?:cu[eé]nta(?:me|nos)|dime|d[ií]game|ind[ií]ca(?:me|nos)|escr[ií]be(?:me|nos)?|preg[uú]nta(?:me|nos)|av[ií]sa(?:me|nos)|tell (?:me|us)|let (?:me|us) know|write (?:to )?(?:me|us)|ask (?:me|us)|conte-(?:me|nos)|diga-(?:me|nos)|me diga|escreva|pergunte|dites-(?:moi|nous)|[ée]crivez|indiquez|demandez)(?!\p{L})/iu;
+export function asksTheCustomerBack(answer: unknown): boolean {
+    const text = String(answer ?? '');
+    return ASKS_BACK.test(text) && !/\d/.test(text);
 }

@@ -11,10 +11,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, ClipboardCheck, History, ListChecks, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, History, Inbox, ListChecks, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
+import { pendingBadgeCount } from "@/lib/pending-knowledge";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
 import { GoLiveCard } from "@/components/readiness/GoLiveCard";
@@ -116,12 +117,17 @@ export default function ReadinessPage() {
     // Escribe el dueño; el supervisor ve el formulario sin poder guardar (la API exige tenant_admin).
     const canWrite = role === "tenant_admin" || (role === "super_admin" && impersonating);
     const openForm = useCallback<OpenForm>((id, screen) => setDrawer({ id, screen }), []);
+    // R5: cuántas consultas pendientes esperan al dueño (contador del enlace a la bandeja). Sin la tabla, cero.
+    const [pendingCount, setPendingCount] = useState(0);
 
     // Al abrir se reevalúa: el dueño suele volver aquí después de arreglar algo en otra pantalla.
     const load = useCallback(async (refresh: boolean) => {
         if (!activeTenantId) return;
         setLoading(true);
         setError(null);
+        void api.getPendingQuestions(activeTenantId, "active")
+            .then(p => setPendingCount(p.success && p.data ? pendingBadgeCount(p.data.counts) : 0))
+            .catch(() => setPendingCount(0));
         const [res, hist] = await Promise.all([api.getReadiness(activeTenantId, refresh), api.getReadinessHistory(activeTenantId)]);
         if (res.success && res.data) setCurrent(res.data);
         else setError(res.error || t("error"));
@@ -145,6 +151,10 @@ export default function ReadinessPage() {
 
     const refreshButton = (
         <div className="flex flex-wrap items-center gap-2">
+        <Link href="/admin/readiness/pending"
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
+            <Inbox size={14} />{pendingCount > 0 ? t("pendingLinkCount", { count: pendingCount }) : t("pendingLink")}
+        </Link>
         <Link href="/admin/readiness/defaults"
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
             <ListChecks size={14} />{t("defaultsLink")}

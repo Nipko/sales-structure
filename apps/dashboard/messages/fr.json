@@ -5330,10 +5330,10 @@
       "retrievalCount": "Requêtes",
       "usedCount": "Réponses avec un signal observable",
       "unanswered": "Questions sans réponse",
+      "pendingMoved": "Ce que l'agent n'a pas su répondre se traite désormais dans Connaissances en attente : répondez-y, enregistrez-le comme donnée et le client reçoit la réponse.",
+      "pendingOpen": "Ouvrir les connaissances en attente",
       "occurrences": "Fois",
       "lastSeen": "Dernière fois",
-      "resolve": "Résoudre",
-      "resolved": "Résolue",
       "noData": "Pas encore de données analytiques. Les données sont collectées au fil des conversations.",
       "planRequired": "L'analytique KB nécessite le plan Starter ou supérieur.",
       "dailyVolume": "Volume quotidien",
@@ -5388,14 +5388,6 @@
         "negative_feedback": "Des avis négatifs existent ; examinez les commentaires et les réponses sans présumer que le document est faux."
       }
     },
-    "suggestions": {
-      "title": "Suggestions d'articles (IA)",
-      "generate": "Générer des suggestions",
-      "generating": "Analyse en cours...",
-      "hint": "Cliquez sur Générer pour que l'IA analyse les questions sans réponse et suggère de nouveaux articles.",
-      "empty": "Aucune nouvelle suggestion à afficher.",
-      "unavailable": "Impossible de générer des suggestions. Réessayez plus tard."
-    },
     "libraryActions": {
       "editDocument": "Modifier le document",
       "deleteDocument": "Supprimer le document",
@@ -5442,8 +5434,8 @@
       "title": "Analyse des lacunes de contenu",
       "subtitle": "Identifiez les questions sans réponse et les documents sous-performants",
       "loading": "Chargement de l'analyse...",
+      "pendingMoved": "Les questions sans réponse se traitent dans Connaissances en attente.",
       "kpi": {
-        "unanswered": "Requêtes sans réponse",
         "lowSatisfaction": "Docs faible satisfaction",
         "stale": "Docs obsolètes",
         "falsePositives": "Faux positifs"
@@ -15885,6 +15877,8 @@
     }
   },
   "readinessPanel": {
+    "pendingLink": "Connaissances en attente",
+    "pendingLinkCount": "Connaissances en attente ({count})",
     "goLive": {
       "title": "Service aux vrais clients",
       "state": {
@@ -16272,5 +16266,63 @@
     "acceptSelected": "Accepter {count, plural, one {# sélectionnée} other {# sélectionnées}}",
     "readOnly": "Seul un administrateur de l’activité peut les accepter.",
     "allDecided": "Vous avez tout décidé."
+  },
+  "readinessPending": {
+    "title": "Connaissances en attente",
+    "subtitle": "Ce que l'agent n'a pas su répondre. Répondez une fois ou enregistrez-le comme donnée : l'agent l'affirmera désormais et les clients en attente reçoivent la réponse.",
+    "back": "Retour à la préparation",
+    "loading": "Chargement…",
+    "tenantRequired": "Choisissez une entreprise.",
+    "error": "Impossible de charger la boîte.",
+    "empty": "Aucune question dans cette vue.",
+    "readOnly": "Seul un administrateur de l'entreprise peut répondre.",
+    "summary": "{open, plural, =0 {Personne n'attend} one {# question avec des clients en attente} other {# questions avec des clients en attente}} · {gap, plural, =0 {aucune autre question} one {# question sans réponse} other {# questions sans réponse}}{overdue, plural, =0 {} one { · # en retard} other { · # en retard}}",
+    "filters": {
+      "active": "À répondre",
+      "answered": "Répondues",
+      "stored": "Enregistrées comme donnée",
+      "dismissed": "Écartées",
+      "all": "Toutes"
+    },
+    "status": {
+      "gap": "sans réponse",
+      "open": "clients en attente",
+      "answered": "répondue",
+      "stored": "enregistrée comme donnée",
+      "closed": "fermée",
+      "dismissed": "écartée"
+    },
+    "demand": "{count, plural, one {# client a demandé} other {# clients ont demandé}}",
+    "waiters": "{count, plural, =0 {personne n'attend} one {# attend la réponse} other {# attendent la réponse}}",
+    "slaIn": "Délai : {hours} h",
+    "slaOverdue": "En retard de {hours} h",
+    "requirement": "Donnée : {id}",
+    "noRequirement": "Ne correspond pas à une donnée de l'entreprise : répondez une fois ou écartez-la.",
+    "fromRetrieval": "Détectée parce que la recherche n'a trouvé aucune réponse.",
+    "answerLabel": "Réponse pour le client",
+    "answerPlaceholder": "Écrivez la réponse telle que le client la recevra…",
+    "answerHint": "En l'enregistrant comme donnée, ce texte est ce que reçoit le client ; s'il est vide, il reçoit la donnée enregistrée.",
+    "answerRequired": "Écrivez la réponse.",
+    "answerOnce": "Répondre juste cette fois",
+    "storeAsData": "Enregistrer comme donnée",
+    "dismiss": "Écarter",
+    "close": "Fermer",
+    "renotify": "Relancer l'avis",
+    "answerText": "Réponse : {text}",
+    "done": "Terminé.",
+    "notified": "Avis aux clients : {summary}",
+    "notifiedNone": "Personne n'attendait cette réponse.",
+    "notify": {
+      "sent": "{count} envoyé(s)",
+      "template_required": "{count} hors de la fenêtre de 24 h (modèle approuvé manquant)",
+      "opted_out": "{count} ont refusé les messages",
+      "skipped_human": "{count} déjà pris en charge par une personne",
+      "skipped_closed": "{count} avec la conversation fermée",
+      "no_channel": "{count} sans canal",
+      "sandbox": "{count} de test (non envoyé)",
+      "failed": "{count} en erreur",
+      "waiting": "{count} en attente de relance",
+      "unavailable": "{count} sans sortie disponible"
+    }
   }
 }

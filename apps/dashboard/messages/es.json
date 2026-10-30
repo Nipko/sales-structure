@@ -5330,10 +5330,10 @@
       "retrievalCount": "Consultas",
       "usedCount": "Respuestas con señal observable",
       "unanswered": "Preguntas sin respuesta",
+      "pendingMoved": "Lo que el agente no supo responder ahora se atiende en Conocimiento pendiente: ahí respondes, lo guardas como dato y el cliente recibe la respuesta.",
+      "pendingOpen": "Abrir conocimiento pendiente",
       "occurrences": "Veces",
       "lastSeen": "Última vez",
-      "resolve": "Resolver",
-      "resolved": "Resuelta",
       "noData": "No hay datos de analytics aún. Se empiezan a recopilar con las conversaciones.",
       "planRequired": "Las analíticas de KB requieren plan Starter o superior.",
       "dailyVolume": "Volumen diario",
@@ -5388,14 +5388,6 @@
         "negative_feedback": "Hay valoraciones negativas; revise los comentarios y las respuestas, sin asumir que el documento sea falso."
       }
     },
-    "suggestions": {
-      "title": "Sugerencias de artículos (IA)",
-      "generate": "Generar sugerencias",
-      "generating": "Analizando...",
-      "hint": "Haz clic en Generar para que la IA analice las preguntas sin respuesta y sugiera artículos nuevos.",
-      "empty": "No hay sugerencias nuevas para mostrar.",
-      "unavailable": "No se pudieron generar sugerencias. Inténtalo de nuevo más tarde."
-    },
     "libraryActions": {
       "editDocument": "Editar documento",
       "deleteDocument": "Eliminar documento",
@@ -5442,8 +5434,8 @@
       "title": "Análisis de brechas de contenido",
       "subtitle": "Identifica preguntas sin respuesta y documentos con bajo rendimiento",
       "loading": "Cargando análisis...",
+      "pendingMoved": "Las preguntas sin respuesta se atienden en Conocimiento pendiente.",
       "kpi": {
-        "unanswered": "Consultas sin respuesta",
         "lowSatisfaction": "Docs baja satisfacción",
         "stale": "Docs desactualizados",
         "falsePositives": "Falsos positivos"
@@ -15885,6 +15877,8 @@
     }
   },
   "readinessPanel": {
+    "pendingLink": "Conocimiento pendiente",
+    "pendingLinkCount": "Conocimiento pendiente ({count})",
     "goLive": {
       "title": "Atención a clientes reales",
       "state": {
@@ -16272,5 +16266,63 @@
     "acceptSelected": "Aceptar {count, plural, one {# seleccionado} other {# seleccionados}}",
     "readOnly": "Solo un administrador del negocio puede aceptarlos.",
     "allDecided": "Ya decidiste todos."
+  },
+  "readinessPending": {
+    "title": "Conocimiento pendiente",
+    "subtitle": "Lo que el agente no supo responder. Respóndelo una vez o guárdalo como dato: el agente lo afirmará desde ahora y los clientes que esperan reciben la respuesta.",
+    "back": "Volver a la preparación",
+    "loading": "Cargando…",
+    "tenantRequired": "Elige un negocio.",
+    "error": "No se pudo cargar la bandeja.",
+    "empty": "No hay consultas en esta vista.",
+    "readOnly": "Solo un administrador del negocio puede responder.",
+    "summary": "{open, plural, =0 {Nadie espera} one {# consulta con clientes esperando} other {# consultas con clientes esperando}} · {gap, plural, =0 {sin otras preguntas} one {# pregunta sin respuesta} other {# preguntas sin respuesta}}{overdue, plural, =0 {} one { · # vencida} other { · # vencidas}}",
+    "filters": {
+      "active": "Por responder",
+      "answered": "Respondidas",
+      "stored": "Guardadas como dato",
+      "dismissed": "Descartadas",
+      "all": "Todas"
+    },
+    "status": {
+      "gap": "sin respuesta",
+      "open": "esperan respuesta",
+      "answered": "respondida",
+      "stored": "guardada como dato",
+      "closed": "cerrada",
+      "dismissed": "descartada"
+    },
+    "demand": "{count, plural, one {# cliente preguntó} other {# clientes preguntaron}}",
+    "waiters": "{count, plural, =0 {nadie espera} one {# espera la respuesta} other {# esperan la respuesta}}",
+    "slaIn": "Plazo: {hours} h",
+    "slaOverdue": "Vencida hace {hours} h",
+    "requirement": "Dato: {id}",
+    "noRequirement": "No corresponde a un dato del negocio: respóndela una vez o descártala.",
+    "fromRetrieval": "Detectada porque la búsqueda no encontró respuesta.",
+    "answerLabel": "Respuesta para el cliente",
+    "answerPlaceholder": "Escribe la respuesta tal como la recibirá el cliente…",
+    "answerHint": "Al guardar como dato, este texto es el que recibe el cliente; si lo dejas vacío, recibe el dato guardado.",
+    "answerRequired": "Escribe la respuesta.",
+    "answerOnce": "Responder solo esta vez",
+    "storeAsData": "Guardar como dato",
+    "dismiss": "Descartar",
+    "close": "Cerrar",
+    "renotify": "Reintentar aviso",
+    "answerText": "Respuesta: {text}",
+    "done": "Listo.",
+    "notified": "Aviso a los clientes: {summary}",
+    "notifiedNone": "Nadie esperaba esta respuesta.",
+    "notify": {
+      "sent": "{count} enviado(s)",
+      "template_required": "{count} fuera de la ventana de 24 h (falta la plantilla aprobada)",
+      "opted_out": "{count} pidieron no recibir mensajes",
+      "skipped_human": "{count} ya los atiende una persona",
+      "skipped_closed": "{count} con la conversación cerrada",
+      "no_channel": "{count} sin canal",
+      "sandbox": "{count} de prueba (no se envía)",
+      "failed": "{count} con error",
+      "waiting": "{count} pendiente(s) de reintento",
+      "unavailable": "{count} sin salida disponible"
+    }
   }
 }

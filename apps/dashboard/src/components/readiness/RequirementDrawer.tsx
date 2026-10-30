@@ -12,12 +12,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, History, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type ApiEnvelope } from "@/lib/api";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { gapAction, type PanelViewer, type ScreenAction } from "@/lib/readiness-panel";
 import {
     formIssues, initialFormValue, submitValue,
-    type BusinessFactVersion, type FormIssue, type RequirementDetailResponse,
+    type BusinessFactVersion, type BusinessFactWriteResponse, type FormIssue, type RequirementDetailResponse,
 } from "@/lib/readiness-forms";
 import { FieldInput, ItemList, ObjectFields, type FieldContext } from "./FormFields";
 
@@ -27,7 +27,7 @@ export interface DrawerSaved {
     verdictAfter: string | null;
 }
 
-export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, screen, onClose, onSaved }: {
+export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, screen, onClose, onSaved, saveWith }: {
     tenantId: string;
     requirementId: string | null;
     viewer: PanelViewer;
@@ -36,6 +36,12 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
     screen?: ScreenAction | null;
     onClose: () => void;
     onSaved: (saved: DrawerSaved) => void;
+    /**
+     * Otra puerta de guardado con la misma respuesta (R5): la bandeja de conocimiento pendiente guarda el valor por
+     * `POST /readiness/:t/pending/:id/answer {mode: store}`, que escribe por BusinessFactsService y además resuelve las
+     * consultas y avisa a los clientes. Sin ella, el `PUT` de siempre.
+     */
+    saveWith?: (body: { value: unknown; expectedVersion?: number }) => Promise<ApiEnvelope<BusinessFactWriteResponse>>;
 }) {
     const t = useTranslations("readinessForms");
     const tp = useTranslations("readinessPanel");
@@ -85,7 +91,8 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
         if (local.length) return;
         setSaving(true);
         setError(null);
-        const res = await api.putBusinessFact(tenantId, requirementId, { value: submitValue(form, value), expectedVersion: detail.fact?.version });
+        const body = { value: submitValue(form, value), expectedVersion: detail.fact?.version };
+        const res = saveWith ? await saveWith(body) : await api.putBusinessFact(tenantId, requirementId, body);
         setSaving(false);
         if (!res.success || !res.data) {
             if (res.httpStatus === 409) setError(t("conflict"));

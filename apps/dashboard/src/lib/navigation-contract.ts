@@ -122,6 +122,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
     keywords: ["preparación", "listo", "huecos", "requisitos", "datos del negocio", "readiness", "requirements", "gaps", "prontidão", "préparation"] },
   { id: "readinessDefaults", pattern: "/admin/readiness/defaults", titleKey: "readinessDefaults.title", scope: "tenant", parentId: "readiness",
     keywords: ["valores por defecto", "defaults", "aceptar", "accept", "valores padrão", "valeurs par défaut"] },
+  { id: "readinessPending", pattern: "/admin/readiness/pending", titleKey: "readinessPending.title", scope: "tenant", parentId: "readiness",
+    keywords: ["conocimiento pendiente", "preguntas sin respuesta", "lo averiguo", "pending knowledge", "unanswered", "conhecimento pendente", "connaissances en attente"] },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
   { id: "knowledge", pattern: "/admin/knowledge", titleKey: "nav.items.knowledgeBase", scope: "tenant" },

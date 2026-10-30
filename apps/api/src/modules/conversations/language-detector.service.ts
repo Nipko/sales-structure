@@ -61,7 +61,10 @@ export class LanguageDetectorService {
             'possui', 'possuem', 'comeca', 'comecam', 'exata', 'exato', 'exatamente', 'aquecimento',
             // «O Audífono QA Aurora REQUER RECEITA médica?», «PRECISA de receita?», «o PRODUTO … exige receita?» (29-oct): Spanish writes
             // «requiere», «receta», «necesita», «producto».
-            'requer', 'requerem', 'receita', 'receitas', 'precisa', 'precisam', 'produto', 'produtos'],
+            'requer', 'requerem', 'receita', 'receitas', 'precisa', 'precisam', 'produto', 'produtos',
+            // «Vocês OFERECEM DESCONTOS de FIDELIDADE se eu for todo mês?» (30-oct) was Spanish: «for» scored English and Portuguese won
+            // 2 to 1. Spanish writes «ofrecen», «descuentos», «fidelidad».
+            'oferece', 'oferecem', 'desconto', 'descontos', 'fidelidade'],
         fr: ['bonjour', 'bonsoir', 'merci', 'vous', 'nous', 'veux', 'besoin', 'comment', 'aussi', "c'est", 'oui', 'est', 'sont', 'avec', 'pourquoi', 'voudrais', 'combien', 'salut', 'je', 'quel', 'quels', 'quelle', 'quelles', 'horaires', 'votre', 'pour', 'avez', 'une', 'dans', 'cherche', 'acheter', 'jusqu', 'prix', 'fil', 'filaire', 'il', 'elle',
             // F4300-16 (production QA 29-oct): «que FAIRE en cas d'urgence dentaire ?» read as Spanish — no word of it was French.
             'faire', 'fais', 'fait'],

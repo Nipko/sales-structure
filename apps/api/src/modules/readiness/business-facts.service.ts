@@ -16,7 +16,7 @@ import {
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    MIGRATION_ORIGINS, validateRequirementValue, type CompiledSpec, type StoredStatus, type ValueIssue,
+    MIGRATION_ORIGINS, formFor, validateRequirementValue, type CompiledSpec, type StoredStatus, type ValueIssue,
 } from '@parallext/business-spec';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReadinessService } from './readiness.service';
@@ -26,6 +26,23 @@ import {
 
 export { requirementValueWriteStatement, rowProvenanceStatement } from './business-facts.statements';
 export type { BusinessFactActor, BusinessFactView, BusinessFactVersionView, RequirementValueStatementInput } from './business-facts.statements';
+
+/** Un valor por defecto de la plataforma que el dueño puede aceptar (pantalla `/admin/readiness/defaults`, C0 §1.6). */
+export interface BusinessFactDefaultView {
+    id: string;
+    title: string;
+    level: string;
+    /** Pregunta del hueco (`gap_message`). */
+    question: string;
+    /** Qué hace el agente con el valor por defecto (`when_missing.behavior`). */
+    behavior: string;
+    example: unknown;
+    /** Resultado del requisito en la última evaluación. */
+    result: string | null;
+    /** `accepted`: default aceptado; `configured`: el dueño lo configuró con su propio valor; `pending`: falta decidir. */
+    status: 'accepted' | 'configured' | 'pending';
+    fact: BusinessFactView | null;
+}
 
 export interface BusinessFactWrite {
     requirementId: string;
@@ -124,6 +141,32 @@ export class BusinessFactsService {
             accepted.push(id);
         }
         return { specVersion: this.spec.specVersion, accepted, skipped };
+    }
+
+    /**
+     * Requisitos del tenant que se cumplen aceptando el valor por defecto de la plataforma (`predicate_kind:
+     * default_accepted`), con lo que hace ese default y si ya se aceptó o configuró.
+     */
+    async listDefaults(tenantId: string): Promise<{ specVersion: string; items: BusinessFactDefaultView[] }> {
+        const [view, facts] = await Promise.all([this.readiness.getCurrent(tenantId), this.list(tenantId)]);
+        const evaluations = new Map(view.result.requirements.map(r => [r.id, r]));
+        const byId = new Map(facts.filter(f => f.scopeKey === '').map(f => [f.requirementId, f]));
+        const items = this.spec.order
+            .map(id => this.spec.requirements[id])
+            .filter(req => req.predicateKind === 'default_accepted' && evaluations.get(req.id)?.applies !== false)
+            .map(req => {
+                const fact = byId.get(req.id) ?? null;
+                const evaluation = evaluations.get(req.id);
+                const configured = fact?.status === 'confirmed' && fact.origin !== 'default_accepted' && !MIGRATION_ORIGINS.has(fact.origin);
+                const status: BusinessFactDefaultView['status'] = fact?.origin === 'default_accepted' ? 'accepted' : configured ? 'configured' : 'pending';
+                const form = formFor(req, this.spec);
+                return {
+                    id: req.id, title: req.title, level: evaluation?.level ?? req.level, question: form.help,
+                    behavior: form.defaults?.behavior ?? req.whenMissing.behavior, example: form.example,
+                    result: evaluation?.result ?? null, status, fact,
+                };
+            });
+        return { specVersion: this.spec.specVersion, items };
     }
 
     async list(tenantId: string): Promise<BusinessFactView[]> {

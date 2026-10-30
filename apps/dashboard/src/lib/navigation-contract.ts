@@ -120,6 +120,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "agentQuality", pattern: "/admin/agent/quality", titleKey: "nav.items.agentQuality", scope: "tenant" },
   { id: "readiness", pattern: "/admin/readiness", titleKey: "nav.items.readiness", scope: "tenant",
     keywords: ["preparación", "listo", "huecos", "requisitos", "datos del negocio", "readiness", "requirements", "gaps", "prontidão", "préparation"] },
+  { id: "readinessDefaults", pattern: "/admin/readiness/defaults", titleKey: "readinessDefaults.title", scope: "tenant", parentId: "readiness",
+    keywords: ["valores por defecto", "defaults", "aceptar", "accept", "valores padrão", "valeurs par défaut"] },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
   { id: "knowledge", pattern: "/admin/knowledge", titleKey: "nav.items.knowledgeBase", scope: "tenant" },

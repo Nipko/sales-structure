@@ -1,6 +1,6 @@
 # Preparación del negocio en tiempo de ejecución (R2–R3)
 
-Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2).
+Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2), [ADR 0007](../decisions/0007-procedencia-y-valores-del-negocio-r3.md) (R3, procedencia) y [ADR 0008](../decisions/0008-formularios-del-panel-r3.md) (R3, formularios).
 
 ## Flujo
 
@@ -30,14 +30,15 @@ PUT /readiness/:tenantId/business-facts/:requirementId
 
 | Método | Ruta | Roles | Uso |
 |---|---|---|---|
-| GET | `/readiness/:tenantId` | super_admin, tenant_admin, tenant_supervisor | Última evaluación (`{evaluationId, evaluatedAt, trigger, cached, result}`); `?refresh=1` reevalúa |
+| GET | `/readiness/:tenantId` | super_admin, tenant_admin, tenant_supervisor | Última evaluación (`{evaluationId, evaluatedAt, trigger, cached, result, formRequirementIds, screenTargets}`); `?refresh=1` reevalúa |
 | GET | `/readiness/:tenantId/history?limit=30` | ídem | Una fila por resultado distinto: veredicto, conteos, bloqueantes, `trigger`, fecha |
-| GET | `/readiness/:tenantId/requirements/:requirementId` | ídem | Definición del requisito y su evaluación actual |
+| GET | `/readiness/:tenantId/requirements/:requirementId` | ídem | Lo que abre el cajón: definición, evaluación actual, descriptor de formulario (`form`), valor que lee el motor con su procedencia (`current`, también heredado) y fila de `requirement_values` con su versión (`fact`) |
 | GET | `/readiness/:tenantId/snapshot` | super_admin | Foto `business-spec/tenant-snapshot@1` para `business-spec qa-truth` |
 | GET | `/readiness/:tenantId/business-facts` | super_admin, tenant_admin, tenant_supervisor | Todos los valores con procedencia del tenant |
 | GET | `/readiness/:tenantId/business-facts/:requirementId?scope=` | ídem | Un valor (alcance `''` por defecto) |
 | GET | `/readiness/:tenantId/business-facts/:requirementId/versions` | ídem | Sus versiones: valor, estado, origen, actor y fecha |
 | PUT | `/readiness/:tenantId/business-facts/:requirementId` | super_admin, tenant_admin | `{value, scopeKey?, expectedVersion?}` → escribe con `origin=owner_form`, confirmado; responde el valor y el delta (`verdictBefore`, `verdictAfter`, evaluación del requisito). 400 si no cumple la especificación, 409 si `expectedVersion` quedó vieja |
+| GET | `/readiness/:tenantId/business-facts/defaults` | super_admin, tenant_admin, tenant_supervisor | Requisitos del tenant con `predicate_kind: default_accepted`: pregunta, qué hace el default (`when_missing.behavior`) y estado (`accepted`, `configured`, `pending`) |
 | POST | `/readiness/:tenantId/business-facts/defaults/accept` | super_admin, tenant_admin | `{ids[], specVersion}` → acepta los valores por defecto (§2.5); 409 si `specVersion` no es la vigente |
 
 Una escritura de `super_admin` exige suplantación: el actor guarda el usuario efectivo y la delegación (`auditActor`), nunca solo uno de los dos.
@@ -100,7 +101,7 @@ El alta y el cambio de vertical **no siembran FAQs** de plantilla (el paso `know
 
 ## Panel
 
-`/admin/readiness` (solo lectura en R2) muestra:
+`/admin/readiness` muestra:
 - el veredicto;
 - los **Bloqueantes**;
 - los **Necesarios**, con las intenciones que quedarán en «no consta»;
@@ -108,11 +109,27 @@ El alta y el cambio de vertical **no siembran FAQs** de plantilla (el paso `know
 - **Calidad** y **Plataforma**;
 - la cobertura por área y el historial.
 
-Cada hueco enlaza a la pantalla donde se arregla hoy (`ui_target`), solo si el rol que mira puede abrirla. La tarjeta de Inicio muestra el veredicto y los 3 primeros bloqueantes (tarea `business` = veredicto ≠ `no_listo`). Los formularios del panel que escriben por `business-facts` llegan en el paso de interfaz de R3.
+La tarjeta de Inicio muestra el veredicto y los 3 primeros bloqueantes (tarea `business` = veredicto ≠ `no_listo`).
+
+### Formularios (R3, C6)
+
+Cada hueco tiene una acción:
+
+- **Cajón** (`Completar`): si el requisito está en `formRequirementIds`. El cajón pide `GET …/requirements/:id` y `…/business-facts/:id/versions`, precarga el formulario con la fila guardada o, si no hay, con el valor que lee el motor (un dato heredado se confirma revisándolo y guardando), valida en el cliente, guarda con `PUT …/business-facts/:id` y `expectedVersion`, muestra el veredicto antes y después y el historial de versiones, y el panel recarga. El supervisor ve el cajón sin poder guardar. `/admin/readiness?open=ID` abre el cajón al llegar; así enlaza la tarjeta de Inicio los bloqueantes con formulario.
+- **Pantalla del objeto**: los ítems de catálogo (`CORE.OFFER.ITEMS`, `OBJ.*.CATALOG`, `PRICE_MODEL`, `ITEM_DETAILS`) y las FAQs siguen en sus pantallas (C0 §1.6). Para los del núcleo, la API manda en `screenTargets` la pantalla de catálogo del primer objeto habilitado del tenant (menú para un restaurante, catálogo para una tienda), en lugar del `ui_target` fijo de servicios.
+- **Nada que hacer**: datos de plataforma, derivados o que solo aporta una integración.
+
+El descriptor sale de `formFor(requisito, spec)` (`packages/business-spec/src/forms/descriptor.ts`): un campo por clave de `data.structure`, con el componente que decide su descripción (`enum […]`, `enum_list […]`, `bool`, `duration`, `money`, `weekly_hours`, `lista de {…}`, `text_i18n`…). Los 13 bloqueantes del núcleo y `OBJ.*.WRITE_MODE` / `OBJ.*.CHANGE_RULES` llevan ajustes explícitos para la forma que leen sus evaluadores (horario por día con tramos `{open, close}`, plazo y cargo de cancelación, `ref` a la política general o condiciones propias, campos que solo se piden con `request_to_business`…). Los componentes por tipo están en `apps/dashboard/src/components/readiness/`; la validación del cliente (`readiness-forms.ts`) interpreta el descriptor y `readiness-forms.spec.ts` la cruza con `validateRequirementValue` en todos los formularios: lo que el cliente deja guardar, la API lo acepta.
+
+**Hasta R3b**, el agente sigue leyendo los almacenamientos viejos (ADR 0007 §11): por eso el cajón conserva el enlace a la pantalla actual del dato, como acción secundaria.
+
+### Valores por defecto
+
+`/admin/readiness/defaults` lista los requisitos con `predicate_kind: default_accepted` que aplican al tenant (conversión de moneda, memoria del cliente, casos que atiende siempre una persona, retorno a la IA, compensaciones, identidad…), con lo que hace la plataforma si no se configura (`when_missing.behavior`). Aceptar llama a `POST …/defaults/accept` con la `spec_version` vigente; un valor que el dueño ya configuró no se pisa. «Configurar a mi medida» abre el cajón del requisito.
 
 ## Qué reemplazó
 
 - **Retirado en R2:** `ReadinessCitationV1` y `readinessAudit` del contrato público; las tareas `knowledge`, `hours`, `appointments` y `team` de la tarjeta; los 20 chequeos de datos del negocio de `AgentQualityService`.
-- **Retirado en R3:** la siembra de FAQs de plantilla (alta, extras de tours, dental e inmobiliaria, re-siembra y cambio de vertical) y los montos de ejemplo de los servicios y planes de muestra.
+- **Retirado en R3:** la siembra de FAQs de plantilla (alta, extras de tours, dental e inmobiliaria, re-siembra y cambio de vertical) y los montos de ejemplo de los servicios y planes de muestra. Con los formularios: la acción «Pronto podrás completarlo aquí» de los huecos sin pantalla (`readinessPanel.action.comingSoon`) y el enlace de los huecos con formulario como acción principal (queda como secundario dentro del cajón hasta R3b).
 - **Sigue hasta R3b:** `settings.businessHours`, `agent_personas.config_json.hours`, la tabla `policies` y `companies` como identidad (expand: la migración ya escribió el lado nuevo); `price_status = quote`.
 - **Sigue hasta R4:** `VerticalReadinessService`, `READINESS`, `TOOL_GROUP_READINESS` y `readiness-predicate-authority.util.ts` (C0 §4.2).

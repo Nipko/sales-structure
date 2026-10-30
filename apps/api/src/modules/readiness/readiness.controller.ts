@@ -21,7 +21,12 @@ export class ReadinessController {
     @Get(':tenantId')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async current(@Param('tenantId') tenantId: string, @Query('refresh') refresh?: string) {
-        return { success: true, data: await this.readiness.getCurrent(tenantId, { refresh: refresh === '1' || refresh === 'true' }) };
+        const view = await this.readiness.getCurrent(tenantId, { refresh: refresh === '1' || refresh === 'true' });
+        // Qué huecos abren el formulario del cajón (C0 §1.6); el resto enlaza a la pantalla del objeto.
+        return {
+            success: true,
+            data: { ...view, formRequirementIds: this.readiness.formRequirementIds, screenTargets: this.readiness.screenTargets(view.result) },
+        };
     }
 
     /** Historial: una fila por resultado distinto, la más reciente primero. */
@@ -38,11 +43,16 @@ export class ReadinessController {
         return { success: true, data: await this.readiness.readSnapshot(tenantId) };
     }
 
-    /** Definición del requisito y su evaluación actual. */
+    /**
+     * Lo que abre el cajón del panel (C0 §4.1): definición, evaluación actual, descriptor de formulario, el valor que
+     * lee el motor (`current`, también heredado) y la fila de `requirement_values` con su versión (`fact`).
+     */
     @Get(':tenantId/requirements/:requirementId')
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async requirement(@Param('tenantId') tenantId: string, @Param('requirementId') requirementId: string) {
-        return { success: true, data: await this.readiness.getRequirement(tenantId, requirementId) };
+        const detail = await this.readiness.getRequirement(tenantId, requirementId);
+        const stored = await this.facts.get(tenantId, requirementId, '');
+        return { success: true, data: { ...detail, fact: stored.fact } };
     }
 
     // ─────────────────────────── valores del negocio (R3) ───────────────────────────
@@ -52,6 +62,13 @@ export class ReadinessController {
     @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
     async listFacts(@Param('tenantId') tenantId: string) {
         return { success: true, data: await this.facts.list(tenantId) };
+    }
+
+    /** Valores por defecto que el dueño puede aceptar (pantalla `/admin/readiness/defaults`). Antes de `:requirementId`. */
+    @Get(':tenantId/business-facts/defaults')
+    @Roles('super_admin', 'tenant_admin', 'tenant_supervisor')
+    async listDefaults(@Param('tenantId') tenantId: string) {
+        return { success: true, data: await this.facts.listDefaults(tenantId) };
     }
 
     /** Aceptar los valores por defecto de la plataforma (C0 §2.5): `{ids[], specVersion}`. */

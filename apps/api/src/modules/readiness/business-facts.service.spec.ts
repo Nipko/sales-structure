@@ -121,6 +121,22 @@ describe('aceptación de valores por defecto (C0 §2.5)', () => {
         expect(db.values.get('CORE.PRIVACY.CUSTOMER_MEMORY|')).toMatchObject({ origin: 'default_accepted', status: 'confirmed', value: null, spec_version: spec.specVersion });
     });
 
+    it('lista los defaults del tenant: qué hace la plataforma y si ya se aceptó o configuró', async () => {
+        const { service, readiness } = make();
+        const applies = (id: string) => ({ id, level: 'necesario', applies: id !== 'CORE.OFFER.CURRENCY_CONVERSION', result: 'no_cumple' });
+        (readiness as any).getCurrent = jest.fn(async () => ({ result: { requirements: Object.keys(spec.requirements).map(applies) } }));
+        await service.write(TENANT, { requirementId: 'CORE.HANDOFF.ALWAYS_HUMAN', value: { business_additions: ['descuentos'] } }, OWNER);
+        await service.acceptDefaults(TENANT, ['CORE.PRIVACY.CUSTOMER_MEMORY'], spec.specVersion, OWNER);
+        const { specVersion, items } = await service.listDefaults(TENANT);
+        expect(specVersion).toBe(spec.specVersion);
+        const byId = Object.fromEntries(items.map(i => [i.id, i]));
+        expect(byId['CORE.OFFER.CURRENCY_CONVERSION']).toBeUndefined();
+        expect(byId['CORE.PRIVACY.CUSTOMER_MEMORY']).toMatchObject({ status: 'accepted', behavior: spec.requirements['CORE.PRIVACY.CUSTOMER_MEMORY'].whenMissing.behavior });
+        expect(byId['CORE.HANDOFF.ALWAYS_HUMAN'].status).toBe('configured');
+        expect(byId['CORE.HANDOFF.RETURN_TO_AI']).toMatchObject({ status: 'pending', fact: null });
+        expect(items.every(i => spec.requirements[i.id].predicateKind === 'default_accepted')).toBe(true);
+    });
+
     it('con otra versión de la especificación responde 409 (hay que revisar los defaults de nuevo)', async () => {
         const { service } = make();
         await expect(service.acceptDefaults(TENANT, ['CORE.PRIVACY.CUSTOMER_MEMORY'], '0.0.1', OWNER)).rejects.toBeInstanceOf(ConflictException);
@@ -172,7 +188,7 @@ describe('invalidación y controlador', () => {
     it('escribir es del dueño; leer, del dueño y el supervisor', () => {
         expect(roles('writeFact')).toEqual(['super_admin', 'tenant_admin']);
         expect(roles('acceptDefaults')).toEqual(['super_admin', 'tenant_admin']);
-        for (const m of ['listFacts', 'getFact', 'factVersions'] as const) expect(roles(m)).toEqual(['super_admin', 'tenant_admin', 'tenant_supervisor']);
+        for (const m of ['listFacts', 'getFact', 'factVersions', 'listDefaults'] as const) expect(roles(m)).toEqual(['super_admin', 'tenant_admin', 'tenant_supervisor']);
     });
 
     it('PUT escribe como owner_form y devuelve el delta; la plataforma sin suplantación no escribe', async () => {

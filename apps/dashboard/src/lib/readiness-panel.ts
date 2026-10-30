@@ -1,5 +1,5 @@
 /**
- * Panel de preparación (C0 §1.6, rebanada R2) — forma de los datos para la pantalla.
+ * Panel de preparación (C0 §1.6, rebanadas R2 y R3) — forma de los datos para la pantalla.
  *
  * Solo ordena y agrupa lo que el motor ya decidió (`GET /readiness/:tenantId`): el veredicto, qué falla en
  * cada nivel y por qué los decide `@parallext/business-spec` en la API. Aquí no hay ninguna regla de
@@ -64,6 +64,10 @@ export interface ReadinessCurrentResponse {
     trigger: string;
     cached: boolean;
     result: ReadinessResultView;
+    /** Requisitos que se completan en el cajón del panel (R3). Sin la lista (API anterior), cada hueco enlaza a su pantalla. */
+    formRequirementIds?: string[];
+    /** Pantalla del dato que vive en el catálogo, la del objeto habilitado del tenant (manda sobre `gap.uiTarget`). */
+    screenTargets?: Record<string, string>;
 }
 
 /** Fila de `GET /readiness/:tenantId/history`. */
@@ -78,13 +82,20 @@ export interface ReadinessHistoryEntry {
     createdAt: string;
 }
 
-/** Dónde se arregla un hueco, para el rol que mira el panel. */
-export type GapAction =
+/** Dónde se arregla un hueco con una pantalla, para el rol que mira el panel. */
+export type ScreenAction =
     | { kind: "link"; href: string }
     /** La pantalla existe pero el rol no la puede abrir: se pide al administrador, sin enlace. */
     | { kind: "ask_admin"; href: string }
-    /** Aún no hay pantalla (`ui_today` = nuevo): llega con los formularios de R3. */
+    /** Sin formulario ni pantalla (dato de plataforma o derivado de otros). */
     | { kind: "none" };
+
+/**
+ * Dónde se arregla un hueco. `form` abre el cajón con el formulario del requisito (R3); `screen` es la pantalla
+ * actual del dato, que se conserva como enlace secundario mientras el agente siga leyendo ese almacenamiento (hasta
+ * R3b, ADR 0007 §11 y ADR 0008).
+ */
+export type GapAction = ScreenAction | { kind: "form"; requirementId: string; screen: ScreenAction };
 
 export interface PanelGap {
     id: string;
@@ -140,15 +151,23 @@ export function navigableTarget(uiTarget: string): string {
 }
 
 /** Enlace del hueco según el permiso real del rol. Nunca se ofrece un enlace que el guardia rechazaría. */
-export function gapAction(uiTarget: string | null | undefined, viewer: PanelViewer): GapAction {
+export function gapAction(uiTarget: string | null | undefined, viewer: PanelViewer): ScreenAction {
     if (!uiTarget) return { kind: "none" };
     const href = navigableTarget(uiTarget);
     const path = href.split(/[?#]/)[0];
     return canAccessPath(path, viewer.role, viewer.impersonating) ? { kind: "link", href } : { kind: "ask_admin", href };
 }
 
+/** Acción del hueco: el cajón si el requisito tiene formulario; si no, su pantalla. */
+export function requirementAction(id: string, uiTarget: string | null | undefined, viewer: PanelViewer, formIds: ReadonlySet<string>): GapAction {
+    const screen = gapAction(uiTarget, viewer);
+    return formIds.has(id) ? { kind: "form", requirementId: id, screen } : screen;
+}
+
 export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: PanelViewer): ReadinessPanelModel {
     const r = response.result;
+    const formIds = new Set(response.formRequirementIds ?? []);
+    const screens = response.screenTargets ?? {};
     const byId = new Map(r.requirements.map(req => [req.id, req]));
     // Un hueco que nace de otro se muestra una vez, en su raíz (schema §9).
     const shownAtRoot = (req: ReadinessRequirementView) => {
@@ -163,7 +182,7 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
             intents: req.gap.intents,
             alsoFixes: req.gap.rootOf.map(child => ({ id: child, title: byId.get(child)?.title ?? child })),
             ...(req.ratio ? { ratio: req.ratio } : {}),
-            action: gapAction(req.gap.uiTarget, viewer),
+            action: requirementAction(req.id, screens[req.id] ?? req.gap.uiTarget, viewer, formIds),
         };
     };
     const list = (ids: string[]) => ids.map(toGap).filter((g): g is PanelGap => g !== null);
@@ -180,7 +199,7 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         limitedIntents: r.limitedIntents.map(({ id, title }) => ({ id, title })),
         quality: r.qualityWarnings.map(w => {
             const req = byId.get(w.id);
-            return { id: w.id, title: req?.title ?? w.id, message: w.message, action: gapAction(w.uiTarget, viewer) };
+            return { id: w.id, title: req?.title ?? w.id, message: w.message, action: requirementAction(w.id, screens[w.id] ?? w.uiTarget, viewer, formIds) };
         }),
         platform: r.platformGaps.map(p => ({ id: p.id, title: byId.get(p.id)?.title ?? p.id, message: p.message })),
         coverage,
@@ -189,7 +208,14 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
     };
 }
 
-/** Los primeros bloqueantes, para la tarjeta de Inicio (C0 §1.6: veredicto y 3 bloqueantes). */
+/** Enlace al panel con el cajón de ese requisito abierto (`/admin/readiness?open=ID`). */
+export const panelFormHref = (requirementId: string) => `/admin/readiness?open=${encodeURIComponent(requirementId)}`;
+
+/**
+ * Los primeros bloqueantes, para la tarjeta de Inicio (C0 §1.6: veredicto y 3 bloqueantes). Un hueco con formulario
+ * enlaza al panel con su cajón abierto; los demás, a su pantalla.
+ */
 export function topBlockingGaps(response: ReadinessCurrentResponse, viewer: PanelViewer, limit = 3): PanelGap[] {
-    return buildReadinessPanel(response, viewer).blocking.slice(0, limit);
+    return buildReadinessPanel(response, viewer).blocking.slice(0, limit)
+        .map(g => (g.action.kind === "form" ? { ...g, action: gapAction(panelFormHref(g.action.requirementId), viewer) } : g));
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { VerticalsService } from './verticals.service';
 import { VerticalMigrationService } from './vertical-migration.service';
@@ -120,7 +122,7 @@ describe('the seeded sample service: country currency, never an example amount',
  * en el alta como al cambiar de vertical.
  */
 describe('R3: no template FAQs and no example amounts in provisioning', () => {
-    const read = (f: string) => require('node:fs').readFileSync(require('node:path').join(__dirname, f), 'utf8') as string;
+    const read = (f: string) => readFileSync(join(__dirname, f), 'utf8');
 
     it('ni el alta ni el cambio de vertical insertan FAQs', () => {
         for (const f of ['verticals.service.ts', 'vertical-migration.service.ts']) expect(read(f)).not.toMatch(/INSERT INTO faqs/i);

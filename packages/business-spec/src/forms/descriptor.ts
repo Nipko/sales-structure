@@ -415,6 +415,22 @@ export function formFor(req: CompiledRequirement, spec?: CompiledSpec): FormDesc
 /** ¿Este requisito se completa en el cajón del panel? */
 export const hasOwnerForm = (req: CompiledRequirement): boolean => formFor(req).mode === 'form';
 
+/**
+ * Pantalla de cada requisito cuyo dato vive en el catálogo (`CORE.OFFER.ITEMS`, `PRICE_MODEL`, `ITEM_DETAILS`): la del
+ * primer objeto habilitado del tenant que tenga catálogo. `ui_target` solo nombra una pantalla fija (la de servicios),
+ * que no sirve a un restaurante ni a una tienda.
+ */
+export function screenTargetsFor(spec: CompiledSpec, enabledObjects: readonly string[]): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const id of spec.order) {
+        const form = formFor(spec.requirements[id], spec);
+        if (form.mode !== 'screen' || form.screens.length < 2) continue;
+        const screen = enabledObjects.map(o => form.screens.find(s => s.object === o)).find(Boolean);
+        if (screen) out[id] = screen.uiTarget;
+    }
+    return out;
+}
+
 /** Requisitos con formulario del cajón (para que el panel sepa qué huecos abren el cajón sin pedir cada descriptor). */
 export function formRequirementIds(spec: CompiledSpec): string[] {
     return spec.order.filter(id => hasOwnerForm(spec.requirements[id]));

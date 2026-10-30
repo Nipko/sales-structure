@@ -8,7 +8,7 @@
 import { Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-    evaluate, formFor, formRequirementIds, fromLegacyRows, resolveValue,
+    evaluate, formFor, formRequirementIds, fromLegacyRows, resolveValue, screenTargetsFor,
     type CompiledSpec, type FormDescriptor, type ReadinessResult, type RequirementEvaluation, type TenantSnapshot, type ValueRecord,
     type ValueState, type Verdict,
 } from '@parallext/business-spec';
@@ -163,6 +163,11 @@ export class ReadinessService {
             if (isUndefinedTable(err)) return [];
             throw err;
         }
+    }
+
+    /** Pantalla del dato de catálogo según los objetos habilitados del tenant (`screenTargetsFor`). */
+    screenTargets(result: ReadinessResult): Record<string, string> {
+        return screenTargetsFor(this.spec, result.config.objects.map(o => o.object));
     }
 
     /** Requisitos que se completan en el cajón del panel (el resto enlaza a su pantalla). */

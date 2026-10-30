@@ -23,7 +23,10 @@ export class ReadinessController {
     async current(@Param('tenantId') tenantId: string, @Query('refresh') refresh?: string) {
         const view = await this.readiness.getCurrent(tenantId, { refresh: refresh === '1' || refresh === 'true' });
         // Qué huecos abren el formulario del cajón (C0 §1.6); el resto enlaza a la pantalla del objeto.
-        return { success: true, data: { ...view, formRequirementIds: this.readiness.formRequirementIds } };
+        return {
+            success: true,
+            data: { ...view, formRequirementIds: this.readiness.formRequirementIds, screenTargets: this.readiness.screenTargets(view.result) },
+        };
     }
 
     /** Historial: una fila por resultado distinto, la más reciente primero. */

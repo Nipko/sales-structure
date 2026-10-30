@@ -173,9 +173,15 @@ describe('ReadinessController', () => {
     });
 
     it('responde con el sobre { success, data } y pasa refresh=1', async () => {
-        const service = { getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []), formRequirementIds: ['CORE.IDENTITY.NAME'] };
+        const service = {
+            getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []),
+            formRequirementIds: ['CORE.IDENTITY.NAME'], screenTargets: jest.fn(() => ({ 'CORE.OFFER.ITEMS': '/admin/menu' })),
+        };
         const controller = new ReadinessController(service as any, {} as any);
-        await expect(controller.current(TENANT, '1')).resolves.toEqual({ success: true, data: { result: { verdict: 'listo' }, formRequirementIds: ['CORE.IDENTITY.NAME'] } });
+        await expect(controller.current(TENANT, '1')).resolves.toEqual({
+            success: true,
+            data: { result: { verdict: 'listo' }, formRequirementIds: ['CORE.IDENTITY.NAME'], screenTargets: { 'CORE.OFFER.ITEMS': '/admin/menu' } },
+        });
         expect(service.getCurrent).toHaveBeenCalledWith(TENANT, { refresh: true });
         await controller.current(TENANT);
         expect(service.getCurrent).toHaveBeenLastCalledWith(TENANT, { refresh: false });
@@ -197,5 +203,15 @@ describe('ReadinessController', () => {
         expect(ids).toEqual(expect.arrayContaining(['CORE.IDENTITY.NAME', 'CORE.HOURS.REGULAR', 'CORE.HANDOFF.HOURS_SLA', 'OBJ.LEAD.WRITE_MODE', 'OBJ.APPOINTMENT.CHANGE_RULES']));
         expect(ids).not.toContain('CORE.OFFER.ITEMS');
         expect(ids).not.toContain('CORE.OFFER.PRICE_MODEL');
+    });
+
+    it('el catálogo enlaza a la pantalla del objeto del tenant (restaurante: menú), no a la de servicios', async () => {
+        const { service } = build('spark-qa-comida-04');
+        const view = await service.getCurrent(TENANT);
+        const targets = service.screenTargets(view.result);
+        expect(targets['CORE.OFFER.ITEMS']).toBe('/admin/menu');
+        expect(targets['CORE.OFFER.PRICE_MODEL']).toBe('/admin/menu');
+        const dental = build();
+        expect(dental.service.screenTargets((await dental.service.getCurrent(TENANT)).result)['CORE.OFFER.ITEMS']).toBe('/admin/service-catalog');
     });
 });

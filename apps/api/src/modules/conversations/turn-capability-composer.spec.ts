@@ -352,3 +352,34 @@ describe('TurnCapabilityComposerService', () => {
         expect(result.contract?.publishedTools).not.toContain('cancel_class_booking');
     });
 });
+
+describe('«Lo averiguo» (R5, ADR 0011): register_pending_question sigue al contrato del turno', () => {
+    const resolveWith = async (readiness: unknown) => {
+        const f = build();
+        const service = new TurnCapabilityComposerService((f.service as any).effectiveCapability, f.payments as any,
+            f.verticalIntegrations as any, f.mcp as any, readiness as any);
+        return service.resolve({
+            tenantId, schemaName, config: config('salud', { knowledge: { enabled: true } }), industry: 'salud', subType: 'dental',
+            role: 'tenant_agent', channelType: 'whatsapp',
+        });
+    };
+
+    it('se publica, con su autoridad, solo si el contrato ofrece pending_question', async () => {
+        const offered = await resolveWith({ turnContract: jest.fn().mockResolvedValue({ offers: { pendingQuestion: true } }) });
+        expect(offered.contract?.publishedTools).toContain('register_pending_question');
+        expect(offered.tools.map(t => t.name)).toContain('register_pending_question');
+        expect(offered.authority.allowedTools).toContain('register_pending_question');
+    });
+
+    it('sin oferta, sin contrato, con un fallo de lectura o sin el puerto, no se publica', async () => {
+        for (const readiness of [
+            { turnContract: jest.fn().mockResolvedValue({ offers: { pendingQuestion: false } }) },
+            { turnContract: jest.fn().mockResolvedValue(null) },
+            { turnContract: jest.fn().mockRejectedValue(new Error('redis down')) },
+            undefined,
+        ]) {
+            const result = await resolveWith(readiness);
+            expect(result.contract?.publishedTools).not.toContain('register_pending_question');
+        }
+    });
+});

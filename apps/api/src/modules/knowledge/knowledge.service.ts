@@ -27,6 +27,7 @@ import {
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
+import { recordGapStatement } from '../pending-knowledge/pending-question-topic';
 // pdf-parse y mammoth son CommonJS sin tipos ESM utilizables: se cargan con
 // require a propósito. El disable apunta a `no-require-imports` porque
 // typescript-eslint 8 fusionó ahí la vieja `no-var-requires`.
@@ -487,60 +488,6 @@ export class KnowledgeService {
         }));
     }
 
-    // ─── AI Article Suggestions ──────────────────────────────────────────────
-
-    async generateArticleSuggestions(tenantId: string, maxSuggestions = 5) {
-        const schema = await this.tenantSchema(tenantId);
-
-        const unanswered = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT query, occurrences FROM kb_unanswered_queries
-             WHERE resolved = false
-             ORDER BY occurrences DESC, last_seen_at DESC
-             LIMIT 20`);
-
-        if (!unanswered?.length) {
-            const lang = await this.getTenantLanguage(tenantId);
-            return { suggestions: [], message: kbmsg(lang, 'suggestions.noUnanswered') };
-        }
-
-        const existingDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT title, category FROM knowledge_documents WHERE status = 'ready' ORDER BY created_at DESC LIMIT 30`);
-
-        const queryList = unanswered.map((q: any) => `- "${q.query}" (${q.occurrences}x)`).join('\n');
-        const docList = (existingDocs || []).map((d: any) => `- ${d.title}${d.category ? ` [${d.category}]` : ''}`).join('\n');
-
-        try {
-            const completion = await (await this.ensureOpenAI(tenantId)).chat.completions.create({
-                model: 'gpt-4o-mini',
-                temperature: 0.4,
-                max_tokens: 1500,
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are a knowledge base content strategist. Analyze unanswered customer queries and suggest new articles to write. Output valid JSON only, no markdown.`,
-                    },
-                    {
-                        role: 'user',
-                        content: `Unanswered queries (sorted by frequency):\n${queryList}\n\nExisting articles:\n${docList || '(none)'}\n\nSuggest up to ${maxSuggestions} new articles. For each, provide:\n- title: article title (in Spanish)\n- category: suggested category\n- outline: 2-3 bullet points of what to cover\n- queriesCovered: which queries this would answer\n- priority: "high" | "medium" | "low"\n\nReturn JSON array: [{"title","category","outline":[],"queriesCovered":[],"priority"}]`,
-                    },
-                ],
-            });
-
-            const text = completion.choices[0]?.message?.content?.trim() || '[]';
-            const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            const suggestions = JSON.parse(cleaned);
-            return { suggestions: Array.isArray(suggestions) ? suggestions.slice(0, maxSuggestions) : [], queriesAnalyzed: unanswered.length };
-        } catch (e: any) {
-            this.logger.error(`[AI Suggestions] LLM call failed: ${e.message}`);
-            const lang = await this.getTenantLanguage(tenantId).catch(() => 'es');
-            return {
-                suggestions: [],
-                error: 'suggestions_unavailable',
-                message: kbmsg(lang, 'suggestions.unavailable'),
-            };
-        }
-    }
-
     // ─── Document Versioning ────────────────────────────────────────────────
 
     async getDocumentVersions(tenantId: string, documentId: string) {
@@ -973,11 +920,14 @@ export class KnowledgeService {
                 score: null, relevance_passed: false, source_version: null, source_title: null });
             await this.analyticsTransaction(schema, conversationId, async execute => {
                 if (!hasRelevantResult) {
-                    const queryHash = crypto.createHash('sha256').update(query.toLowerCase().trim()).digest('hex').substring(0, 16);
-                    await execute(`INSERT INTO kb_unanswered_queries (query, query_hash, occurrences, last_seen_at)
-                        VALUES ($1, $2, 1, NOW()) ON CONFLICT (query_hash) WHERE resolved = false
-                        DO UPDATE SET occurrences = kb_unanswered_queries.occurrences + 1, last_seen_at = NOW()`,
-                    [query.substring(0, 500), queryHash]);
+                    // R5 (ADR 0011): a search with no relevant result is demand for the pending-knowledge loop
+                    // (`pending_questions`, state `gap`, deduplicated by the normalised question). It replaced the old
+                    // `kb_unanswered_queries` log, which had no owner, SLA or notice. A tenant not migrated yet skips it.
+                    const [table] = await execute<Array<{ t: string | null }>>(`SELECT to_regclass('pending_questions')::text AS t`);
+                    if (table?.t) {
+                        const gap = recordGapStatement({ question: query, conversationId, source: 'retrieval' });
+                        await execute(gap.sql, gap.params);
+                    }
                 }
                 // A null-document row preserves the conversation-scoped relevance gap.
                 // Every new row starts with was_used=false, regardless of its score.
@@ -1027,7 +977,7 @@ export class KnowledgeService {
         days = Math.max(1, Math.min(365, Number.isFinite(days) ? Math.floor(days) : 30));
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
 
-        const [topDocs, totalQueries, unanswered, avgScore, dailyVolume] = await Promise.all([
+        const [topDocs, totalQueries, avgScore, dailyVolume] = await Promise.all([
             this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT kd.id AS document_id, kd.title AS document_name, kd.source_type,
                         COUNT(DISTINCT krl.retrieval_batch_id)::int AS retrieval_count,
@@ -1053,13 +1003,6 @@ export class KnowledgeService {
                     COUNT(*) FILTER (WHERE observed)::int AS observed_searches,
                     (SELECT COUNT(*)::int FROM kb_retrieval_log WHERE created_at >= $1::timestamp AND attribution_version=0) AS legacy_rows
                  FROM searches`,
-                [since]),
-
-            this.prisma.executeInTenantSchema<any[]>(schema,
-                `SELECT id, query, occurrences, last_seen_at, resolved
-                 FROM kb_unanswered_queries
-                 WHERE resolved = false AND last_seen_at >= $1::timestamp
-                 ORDER BY occurrences DESC LIMIT 20`,
                 [since]),
 
             this.prisma.executeInTenantSchema<any[]>(schema,
@@ -1105,15 +1048,8 @@ export class KnowledgeService {
                 semanticSupport: 'not_evaluated',
             },
             topDocuments: topDocs || [],
-            unansweredQueries: unanswered || [],
             dailyVolume: dailyVolume || [],
         };
-    }
-
-    async resolveUnansweredQuery(tenantId: string, queryId: string) {
-        const schema = await this.tenantSchema(tenantId);
-        await this.prisma.executeInTenantSchema(schema,
-            `UPDATE kb_unanswered_queries SET resolved = true WHERE id = $1::uuid`, [queryId]);
     }
 
     // ─── Document Management ─────────────────────────────────────────────────
@@ -1947,13 +1883,6 @@ export class KnowledgeService {
         const since = new Date(Date.now() - days * 86_400_000).toISOString();
         const unavailableSections: KnowledgeGapReport['unavailableSections'] = [];
 
-        const unansweredQueries = await this.prisma.executeInTenantSchema<any[]>(schema,
-            `SELECT id, query, occurrences, last_seen_at
-             FROM kb_unanswered_queries
-             WHERE resolved = false
-             ORDER BY occurrences DESC
-             LIMIT 20`).catch(() => { unavailableSections.push('unansweredQueries'); return []; });
-
         const lowSatisfactionDocs = await this.prisma.executeInTenantSchema<any[]>(schema,
             `SELECT id, title, satisfaction_score, feedback_count
              FROM knowledge_documents
@@ -1993,7 +1922,6 @@ export class KnowledgeService {
 
         return {
             unavailableSections,
-            unansweredQueries: unansweredQueries || [],
             lowSatisfactionDocs: lowSatisfactionDocs || [],
             staleDocuments: staleDocuments || [],
             falsePositiveCounts: falsePositiveCounts || [],

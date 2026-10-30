@@ -52,6 +52,8 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
     'agent_config_proposals', 'conversation_traces', 'turn_traces', 'conversation_quality_scores',
     'agent_quality_snapshots', 'agent_quality_signals', 'analytics_events', 'daily_metrics',
     'kb_retrieval_log', 'kb_unanswered_queries', 'kb_feedback', 'kb_health_issues',
+    // The pending-knowledge queue (R5) is demand and owner bookkeeping; the agent reads its answers through requirement_values.
+    'pending_questions', 'pending_question_waiters',
     'knowledge_conflict_scans',
     'quality_sampling_runs', 'quality_sampling_items',
     // Active cases remain dependencies: a newly approved case must invalidate an older evaluation.

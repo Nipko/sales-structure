@@ -73,10 +73,10 @@ Las FAQs son pares de pregunta y respuesta que el agente usa para dar respuestas
 - Para editar: en **Biblioteca**, haz clic en el botón de **editar** (lápiz) del documento y cambia nombre, contenido o categoría. Guarda con **Guardar cambios**.
 - Cada edición crea una versión nueva. Con el botón de **Historial de versiones** (ícono de reloj) puedes ver las versiones anteriores y hacer clic en **Restaurar** para volver a una de ellas.
 
-## Calidad y sugerencias de la IA
+## Calidad
 
 - En la pestaña **Calidad**, cada documento recibe un puntaje de 0 a 100 según su contenido, si tiene categoría, cuánto se consulta y qué tan relevante resulta en las respuestas. Empieza mejorando los que estén en rojo.
-- En la pestaña **Analíticas**, la sección **Sugerencias de artículos (IA)** analiza las preguntas que tus clientes hicieron y el agente no pudo responder, y te propone artículos nuevos con su esquema. Haz clic en **Generar sugerencias** y luego en **Crear** sobre la que quieras redactar.
+- Lo que el agente no supo responder ya no se queda en una lista: va a **Preparación → Conocimiento pendiente**, donde lo respondes una vez o lo guardas como dato, y el cliente que esperaba recibe la respuesta.
 
 ## Analíticas: qué se consulta y qué falta
 
@@ -84,13 +84,13 @@ Cuando está habilitada, la pestaña **Analíticas** te muestra:
 
 - **Consultas únicas**, **tasa de acierto** y volumen diario de búsquedas del agente en tu base de conocimiento.
 - **Documentos más consultados** — tu contenido estrella.
-- **Preguntas sin respuesta** — lo que los clientes preguntaron y el agente no encontró. Desde ahí puedes **crear un artículo** con un clic o marcarlas con **Resolver**.
+- **Preguntas sin respuesta** — ahora se atienden en **Preparación → Conocimiento pendiente** (el enlace está aquí mismo).
 
 ## Brechas: encuentra los huecos de tu contenido
 
 La pestaña **Brechas** organiza lo que necesita tu atención:
 
-- **Consultas sin respuesta** — crea un artículo o FAQ que las cubra.
+- **Preguntas sin respuesta** — se atienden en **Preparación → Conocimiento pendiente**.
 - **Docs baja satisfacción** — artículos que recibieron reacciones negativas de tu equipo en el inbox; revísalos y mejóralos.
 - **Docs desactualizados** — contenido que lleva mucho tiempo sin cambios (precios y políticas suelen vencerse).
 
@@ -117,7 +117,7 @@ Cuando un cliente pregunta algo, el agente busca en tus documentos y FAQs los fr
 ## Preguntas frecuentes
 
 **El agente responde "no tengo esa información", ¿qué hago?**
-Es señal de que falta contenido. Escribe la misma pregunta en **Buscar en contexto**: si no hay resultados, crea un artículo o FAQ que la cubra. Revisa también **Analíticas → Preguntas sin respuesta**, donde esa consulta quedó registrada.
+Es señal de que falta contenido. Escribe la misma pregunta en **Buscar en contexto**: si no hay resultados, crea un artículo o FAQ que la cubra. Revisa también **Preparación → Conocimiento pendiente**, donde esa pregunta quedó registrada y puedes responderla.
 
 **¿Puedo importar mi sitio web completo?**
 Puedes importar página por página con **Importar URL** hasta el límite indicado en pantalla. Empieza por las páginas con más valor: preguntas frecuentes, precios y políticas.

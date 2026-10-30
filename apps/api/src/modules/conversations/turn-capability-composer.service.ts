@@ -1,5 +1,5 @@
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
     CONVERSATIONAL_CHANNELS,
@@ -26,6 +26,8 @@ import {
 } from './tools/vertical-integration-tools';
 import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { buildTurnAuthority, type TurnAuthorityInput } from './turn-authority';
+import { BUSINESS_READINESS, type BusinessReadinessPort } from './business-readiness.port';
+import { PENDING_QUESTION_TOOLS } from './tools/pending-question-tools';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 
 export interface ComposedTurnCapability {
@@ -122,7 +124,23 @@ export class TurnCapabilityComposerService {
         private readonly paymentOperations: PaymentOperationService,
         private readonly verticalIntegrations: VerticalIntegrationsService,
         private readonly mcpClient: McpClientService,
+        /** R5 (ADR 0011): las ofertas del contrato del turno. Ausente (specs a mano): no se publica «lo averiguo». */
+        @Optional() @Inject(BUSINESS_READINESS) private readonly businessReadiness?: BusinessReadinessPort,
     ) {}
+
+    /**
+     * «Lo averiguo» (C0 §1.5, R5): `register_pending_question` se publica solo si el contrato del turno lo ofrece
+     * (`CORE.PENDING.ROUTING` cumple). Sin contrato o con un fallo de lectura, no: nunca se ofrece algo sin efecto.
+     */
+    private async pendingQuestionOffered(tenantId: string): Promise<boolean> {
+        if (!this.businessReadiness?.turnContract) return false;
+        try {
+            return (await this.businessReadiness.turnContract(tenantId))?.offers?.pendingQuestion === true;
+        } catch (error: any) {
+            this.logger.debug(`Pending-question offer unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
 
     async resolve(input: ComposeTurnCapabilityInput): Promise<ComposedTurnCapability> {
         const cfgTools = input.config.tools ?? {};
@@ -295,6 +313,9 @@ export class TurnCapabilityComposerService {
                 return isNonCommittalTool(name);
             });
         }
+
+        // No compromete al negocio (promete una respuesta, no una reserva): también en un perfil bloqueado.
+        if (await this.pendingQuestionOffered(input.tenantId)) tools = uniqueTools([...tools, ...PENDING_QUESTION_TOOLS]);
 
         tools = uniqueTools([...tools, ...identityStepUpToolsFor(tools)]);
         const publishedTools = tools.map(tool => String(tool.name));

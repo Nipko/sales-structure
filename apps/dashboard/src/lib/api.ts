@@ -11,6 +11,7 @@ import type { GoLiveStatus } from "@/lib/go-live";
 import type {
     BusinessFactDefault, BusinessFactVersion, BusinessFactWriteResponse, RequirementDetailResponse,
 } from "@/lib/readiness-forms";
+import type { NotifySummary, PendingFilter, PendingList, PendingQuestion, PendingStoreResponse } from "@/lib/pending-knowledge";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
@@ -1722,6 +1723,21 @@ export const api = {
         apiPost<GoLiveStatus>(`/readiness/${tenantId}/go-live/off`, {}),
     acceptBusinessFactDefaults: (tenantId: string, ids: string[], specVersion: string) =>
         apiPost<{ specVersion: string; accepted: string[]; skipped: { id: string; reason: string }[] }>(`/readiness/${tenantId}/business-facts/defaults/accept`, { ids, specVersion }),
+    /** Bandeja de conocimiento pendiente (R5): `status` = active (gap + open) | answered | stored | dismissed | all. */
+    getPendingQuestions: (tenantId: string, status: PendingFilter = "active") =>
+        apiGet<PendingList>(`/readiness/${tenantId}/pending?status=${status}`),
+    /** «Responder solo esta vez»: texto puntual, no cambia la preparación; avisa a los clientes que esperan. */
+    answerPendingOnce: (tenantId: string, id: string, text: string) =>
+        apiPost<{ question: PendingQuestion; notified: NotifySummary }>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/answer`, { mode: "once", text }),
+    /** «Guardar como dato»: el valor del requisito (como el cajón) + el mensaje opcional para el cliente. */
+    storePendingAnswer: (tenantId: string, id: string, body: { value: unknown; expectedVersion?: number; text?: string }) =>
+        apiPost<PendingStoreResponse>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/answer`, { mode: "store", ...body }),
+    dismissPendingQuestion: (tenantId: string, id: string) =>
+        apiPost<PendingQuestion>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/dismiss`, {}),
+    closePendingQuestion: (tenantId: string, id: string) =>
+        apiPost<PendingQuestion>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/close`, {}),
+    renotifyPendingQuestion: (tenantId: string, id: string) =>
+        apiPost<NotifySummary>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/notify`, {}),
     getAgentAssessment: (tenantId: string, agentId?: string) =>
         apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>

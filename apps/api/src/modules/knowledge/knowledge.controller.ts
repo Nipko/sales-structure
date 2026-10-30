@@ -155,23 +155,6 @@ export class KnowledgeController {
         return { success: true, data };
     }
 
-    @Post('suggestions/:tenantId')
-    @Roles('tenant_admin', 'tenant_supervisor')
-    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @ApiOperation({ summary: 'AI-generated article suggestions based on unanswered queries' })
-    async getSuggestions(
-        @Param('tenantId') tenantId: string,
-        @Body() payload?: { maxSuggestions?: number },
-    ) {
-        const features = await this.throttle.getPlanFeatures(tenantId);
-        if (!features.knowledgeAnalytics) {
-            return { success: false, error: 'plan_upgrade_required' };
-        }
-        const data = await this.knowledgeService.generateArticleSuggestions(tenantId, payload?.maxSuggestions || 5);
-        return { success: true, data };
-    }
-
-    @Get('documents/:id/versions')
     @UseGuards(AuthGuard('jwt'), RolesGuard)
     @ApiOperation({ summary: 'Get version history for a document' })
     async getVersions(@Req() req: any, @Param('id') id: string) {
@@ -275,19 +258,6 @@ export class KnowledgeController {
         }
         const data = await this.knowledgeService.getAnalytics(tenantId, days ? parseInt(days, 10) : 30);
         return { success: true, data };
-    }
-
-    @Post('analytics/:tenantId/resolve/:queryId')
-    @Roles('tenant_admin', 'tenant_supervisor')
-    @UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)
-    @HttpCode(HttpStatus.OK)
-    @ApiOperation({ summary: 'Mark an unanswered query as resolved' })
-    async resolveQuery(
-        @Param('tenantId') tenantId: string,
-        @Param('queryId') queryId: string,
-    ) {
-        await this.knowledgeService.resolveUnansweredQuery(tenantId, queryId);
-        return { success: true };
     }
 
     // ─── KB Feedback & Gap Analysis ─────────────────────────────────────────

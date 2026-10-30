@@ -73,10 +73,10 @@ Les FAQ sont des paires question-réponse que l'agent utilise pour donner des r�
 - Pour modifier : dans **Bibliothèque**, cliquez sur le bouton **modifier** (crayon) du document et changez le nom, le contenu ou la catégorie. Enregistrez avec **Enregistrer les modifications**.
 - Chaque modification crée une nouvelle version. Avec le bouton **Historique des versions** (icône d'horloge), vous pouvez voir les versions antérieures et cliquer sur **Restaurer** pour revenir à l'une d'elles.
 
-## Qualité et suggestions de l'IA
+## Qualité
 
 - Dans l'onglet **Qualité**, chaque document reçoit un score de 0 à 100 selon son contenu, s'il a une catégorie, la fréquence à laquelle il est consulté et sa pertinence dans les réponses. Commencez par améliorer ceux qui sont en rouge.
-- Dans l'onglet **Analytique**, la section **Suggestions d'articles (IA)** analyse les questions que vos clients ont posées et auxquelles l'agent n'a pas pu répondre, et vous propose de nouveaux articles avec leur schéma. Cliquez sur **Générer des suggestions**, puis sur **Créer** sur celle que vous voulez rédiger.
+- Ce que l'agent n'a pas su répondre ne reste plus dans une liste : il va dans **Préparation → Connaissances en attente**, où vous y répondez une fois ou l'enregistrez comme donnée, et le client qui attendait reçoit la réponse.
 
 ## Analytique : ce qui est consulté et ce qui manque
 
@@ -84,13 +84,13 @@ Lorsqu'il est activé, l'onglet **Analytique** affiche :
 
 - **Requêtes uniques**, **taux de réussite** et volume quotidien de recherches de l'agent dans votre base de connaissances.
 - **Documents les plus consultés** — votre contenu vedette.
-- **Questions sans réponse** — ce que les clients ont demandé et que l'agent n'a pas trouvé. De là, vous pouvez **créer un article** en un clic ou les marquer avec **Résoudre**.
+- **Questions sans réponse** — elles se traitent désormais dans **Préparation → Connaissances en attente** (le lien est juste là).
 
 ## Lacunes : trouvez les trous de votre contenu
 
 L'onglet **Lacunes** organise ce qui nécessite votre attention :
 
-- **Requêtes sans réponse** — créez un article ou une FAQ qui les couvre.
+- **Questions sans réponse** — elles se traitent dans **Préparation → Connaissances en attente**.
 - **Docs à faible satisfaction** — articles ayant reçu des réactions négatives de votre équipe dans l'inbox ; révisez-les et améliorez-les.
 - **Docs obsolètes** — contenu qui n'a pas changé depuis longtemps (les tarifs et politiques ont tendance à expirer).
 
@@ -117,7 +117,7 @@ Quand un client pose une question, l'agent recherche les fragments les plus pert
 ## Questions fréquentes
 
 **L'agent répond « je n'ai pas cette information », que faire ?**
-C'est le signe qu'il manque du contenu. Saisissez la même question dans **Rechercher dans le contexte** : s'il n'y a aucun résultat, créez un article ou une FAQ qui la couvre. Consultez aussi **Analytique → Questions sans réponse**, où cette requête a été enregistrée.
+C'est le signe qu'il manque du contenu. Saisissez la même question dans **Rechercher dans le contexte** : s'il n'y a aucun résultat, créez un article ou une FAQ qui la couvre. Consultez aussi **Préparation → Connaissances en attente**, où cette question a été enregistrée et où vous pouvez y répondre.
 
 **Puis-je importer tout mon site web ?**
 Vous pouvez importer page par page avec **Importer URL** jusqu'à la limite affichée à l'écran. Commencez par les pages à plus forte valeur : questions fréquentes, tarifs et politiques.

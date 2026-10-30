@@ -39,9 +39,6 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
         'embed.limitReached':
             'Has alcanzado el límite de {{limit}} embeddings mensuales. Usado: {{used}}, necesarios: {{needed}}.',
 
-        // ── AI article suggestions ──
-        'suggestions.noUnanswered': 'No hay queries sin respuesta para analizar.',
-        'suggestions.unavailable': 'No pude generar sugerencias en este momento. Inténtalo de nuevo más tarde.',
     },
 
     en: {
@@ -66,8 +63,6 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
         'embed.limitReached':
             'You have reached the monthly limit of {{limit}} embeddings. Used: {{used}}, needed: {{needed}}.',
 
-        'suggestions.noUnanswered': 'No unanswered queries to analyse.',
-        'suggestions.unavailable': 'I could not generate suggestions right now. Please try again later.',
     },
 
     pt: {
@@ -92,8 +87,6 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
         'embed.limitReached':
             'Você atingiu o limite mensal de {{limit}} embeddings. Usados: {{used}}, necessários: {{needed}}.',
 
-        'suggestions.noUnanswered': 'Não há consultas sem resposta para analisar.',
-        'suggestions.unavailable': 'Não foi possível gerar sugestões agora. Tente novamente mais tarde.',
     },
 
     fr: {
@@ -118,8 +111,6 @@ export const KB_MSG: Record<'es' | 'en' | 'pt' | 'fr', Record<string, string>> =
         'embed.limitReached':
             "Vous avez atteint la limite mensuelle de {{limit}} embeddings. Utilisés : {{used}}, nécessaires : {{needed}}.",
 
-        'suggestions.noUnanswered': "Il n'y a pas de requêtes sans réponse à analyser.",
-        'suggestions.unavailable': "Je n'ai pas pu générer de suggestions pour le moment. Réessayez plus tard.",
     },
 };
 

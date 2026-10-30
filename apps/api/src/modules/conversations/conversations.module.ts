@@ -80,6 +80,9 @@ import { ReadinessModule } from '../readiness/readiness.module';
 import { ReadinessService } from '../readiness/readiness.service';
 import { BUSINESS_READINESS } from './business-readiness.port';
 import { TurnCapabilityComposerService } from './turn-capability-composer.service';
+import { PendingKnowledgeModule } from '../pending-knowledge/pending-knowledge.module';
+import { PendingQuestionsService } from '../pending-knowledge/pending-questions.service';
+import { PENDING_QUESTIONS } from './pending-questions.port';
 
 @Module({
     imports: [
@@ -101,6 +104,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         FaqsModule,
         PoliciesModule,
         ReadinessModule,
+        forwardRef(() => PendingKnowledgeModule),
         TenantsModule,
         VacationRentalModule,
         ToursModule,
@@ -136,6 +140,8 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
     providers: [
         // R4: EffectiveCapabilityService lee la evaluación del motor por un token (business-readiness.port.ts)
         { provide: BUSINESS_READINESS, useExisting: ReadinessService },
+        // R5 (ADR 0011): register_pending_question escribe la cola de conocimiento pendiente por un token (pending-questions.port.ts)
+        { provide: PENDING_QUESTIONS, useExisting: PendingQuestionsService },
         { provide: IsolatedEvalNamespace, useFactory: isolatedEvalNamespaceForPrisma, inject: [PrismaService] },
         ExpiredHoldSweeperService,
         ConversationsService,

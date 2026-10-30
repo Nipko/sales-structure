@@ -5330,10 +5330,10 @@
       "retrievalCount": "Queries",
       "usedCount": "Replies with an observable signal",
       "unanswered": "Unanswered questions",
+      "pendingMoved": "What the agent could not answer is now handled in Pending knowledge: answer it there, save it as data, and the customer gets the reply.",
+      "pendingOpen": "Open pending knowledge",
       "occurrences": "Times",
       "lastSeen": "Last seen",
-      "resolve": "Resolve",
-      "resolved": "Resolved",
       "noData": "No analytics data yet. Data is collected as conversations happen.",
       "planRequired": "KB analytics require Starter plan or higher.",
       "dailyVolume": "Daily volume",
@@ -5388,14 +5388,6 @@
         "negative_feedback": "There are negative ratings; review the comments and replies without assuming the document is false."
       }
     },
-    "suggestions": {
-      "title": "Article suggestions (AI)",
-      "generate": "Generate suggestions",
-      "generating": "Analyzing...",
-      "hint": "Click Generate to have AI analyze unanswered queries and suggest new articles.",
-      "empty": "There are no new suggestions to show.",
-      "unavailable": "Suggestions could not be generated. Please try again later."
-    },
     "libraryActions": {
       "editDocument": "Edit document",
       "deleteDocument": "Delete document",
@@ -5442,8 +5434,8 @@
       "title": "Content gap analysis",
       "subtitle": "Identify unanswered questions and underperforming documents",
       "loading": "Loading analysis...",
+      "pendingMoved": "Unanswered questions are handled in Pending knowledge.",
       "kpi": {
-        "unanswered": "Unanswered queries",
         "lowSatisfaction": "Low satisfaction docs",
         "stale": "Outdated docs",
         "falsePositives": "False positives"
@@ -15885,6 +15877,8 @@
     }
   },
   "readinessPanel": {
+    "pendingLink": "Pending knowledge",
+    "pendingLinkCount": "Pending knowledge ({count})",
     "goLive": {
       "title": "Serving real customers",
       "state": {
@@ -16272,5 +16266,63 @@
     "acceptSelected": "Accept {count, plural, one {# selected} other {# selected}}",
     "readOnly": "Only a business administrator can accept them.",
     "allDecided": "You have decided on all of them."
+  },
+  "readinessPending": {
+    "title": "Pending knowledge",
+    "subtitle": "What the agent could not answer. Answer it once or save it as data: the agent will state it from now on and waiting customers get the reply.",
+    "back": "Back to readiness",
+    "loading": "Loading…",
+    "tenantRequired": "Choose a business.",
+    "error": "The inbox could not be loaded.",
+    "empty": "No questions in this view.",
+    "readOnly": "Only a business administrator can answer.",
+    "summary": "{open, plural, =0 {Nobody is waiting} one {# question with customers waiting} other {# questions with customers waiting}} · {gap, plural, =0 {no other questions} one {# unanswered question} other {# unanswered questions}}{overdue, plural, =0 {} one { · # overdue} other { · # overdue}}",
+    "filters": {
+      "active": "To answer",
+      "answered": "Answered",
+      "stored": "Saved as data",
+      "dismissed": "Dismissed",
+      "all": "All"
+    },
+    "status": {
+      "gap": "unanswered",
+      "open": "customers waiting",
+      "answered": "answered",
+      "stored": "saved as data",
+      "closed": "closed",
+      "dismissed": "dismissed"
+    },
+    "demand": "{count, plural, one {# customer asked} other {# customers asked}}",
+    "waiters": "{count, plural, =0 {nobody is waiting} one {# is waiting for the answer} other {# are waiting for the answer}}",
+    "slaIn": "Due in: {hours} h",
+    "slaOverdue": "Overdue by {hours} h",
+    "requirement": "Data: {id}",
+    "noRequirement": "Not a business data point: answer it once or dismiss it.",
+    "fromRetrieval": "Detected because the search found no answer.",
+    "answerLabel": "Answer for the customer",
+    "answerPlaceholder": "Write the answer exactly as the customer will receive it…",
+    "answerHint": "When saving as data, this text is what the customer receives; if empty, they receive the saved data.",
+    "answerRequired": "Write the answer.",
+    "answerOnce": "Answer just this once",
+    "storeAsData": "Save as data",
+    "dismiss": "Dismiss",
+    "close": "Close",
+    "renotify": "Retry notice",
+    "answerText": "Answer: {text}",
+    "done": "Done.",
+    "notified": "Customer notice: {summary}",
+    "notifiedNone": "Nobody was waiting for this answer.",
+    "notify": {
+      "sent": "{count} sent",
+      "template_required": "{count} outside the 24-hour window (approved template missing)",
+      "opted_out": "{count} opted out of messages",
+      "skipped_human": "{count} already handled by a person",
+      "skipped_closed": "{count} with the conversation closed",
+      "no_channel": "{count} without a channel",
+      "sandbox": "{count} test conversations (not sent)",
+      "failed": "{count} failed",
+      "waiting": "{count} pending retry",
+      "unavailable": "{count} with no outbound available"
+    }
   }
 }

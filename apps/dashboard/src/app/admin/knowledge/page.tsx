@@ -19,8 +19,8 @@ import type { KnowledgeGapReport } from "@parallext/shared";
 import {
     BookOpen, Search, Plus, X, FileText, Globe, HelpCircle,
     RefreshCw, Edit3, Trash2, BarChart3, ExternalLink, CheckCircle2,
-    AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock, PlusCircle,
-    Upload, Sparkles, Award, Loader2, History, Filter, Languages, RotateCcw,
+    AlertCircle, TrendingUp, Target, Zap, Eye, Tag, GlobeLock,
+    Upload, Award, Loader2, History, Filter, Languages, RotateCcw,
     Calendar, ChevronDown, Clock, ThumbsDown, Star, XCircle,
 } from "lucide-react";
 import {
@@ -69,7 +69,6 @@ interface KBAnalytics {
         legacyRows: number;
     };
     topDocuments: Array<{ document_id: string; document_name: string; retrieval_count: number; used_count: number }>;
-    unansweredQueries: Array<{ id: string; query: string; occurrences: number; last_seen_at: string; resolved: boolean }>;
     dailyVolume: Array<{ date: string; queries: number; hits: number }>;
 }
 
@@ -158,11 +157,6 @@ export default function KnowledgePage() {
     const [gapReport, setGapReport] = useState<KnowledgeGapReport | null>(null);
     const [gapLoading, setGapLoading] = useState(false);
 
-
-    // AI Suggestions
-    const [suggestions, setSuggestions] = useState<any[]>([]);
-    const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-    const [suggestionsResult, setSuggestionsResult] = useState<"idle" | "empty" | "error" | "plan">("idle");
 
     // Language filter
     const [activeLanguage, setActiveLanguage] = useState<string | null>(null);
@@ -399,12 +393,6 @@ export default function KnowledgePage() {
         }
     };
 
-    // Create article from unanswered query
-    const handleCreateFromQuery = (query: string) => {
-        setCreateForm({ title: query, content: "", category: "" });
-        setShowCreateModal(true);
-    };
-
     // Search
     const handleSearch = async () => {
         if (!searchQuery) return setSearchResults([]);
@@ -416,24 +404,6 @@ export default function KnowledgePage() {
             setSearchResults(Array.isArray(data) ? data : []);
         } catch {
             setSearchResults([]);
-        }
-    };
-
-    // Resolve unanswered query
-    const handleResolve = async (queryId: string) => {
-        if (!activeTenantId) return;
-        try {
-            await api.fetch(`/knowledge/analytics/${activeTenantId}/resolve/${queryId}`, { method: "POST" });
-            if (analytics) {
-                setAnalytics({
-                    ...analytics,
-                    unansweredQueries: analytics.unansweredQueries.map(q =>
-                        q.id === queryId ? { ...q, resolved: true } : q
-                    ),
-                });
-            }
-        } catch (e: any) {
-            showToast(e.message || "Error", "error");
         }
     };
 
@@ -506,30 +476,6 @@ export default function KnowledgePage() {
             .catch(() => {})
             .finally(() => setGapLoading(false));
     }, [tab, activeTenantId, canEditKnowledge, canSeeGlobalAnalytics]);
-
-    // AI suggestions
-    const handleGenerateSuggestions = async () => {
-        if (!activeTenantId) return;
-        setSuggestionsLoading(true);
-        setSuggestions([]);
-        setSuggestionsResult("idle");
-        try {
-            const res = await api.fetch(`/knowledge/suggestions/${activeTenantId}`, { method: "POST", body: JSON.stringify({}) });
-            if (res?.error === "plan_upgrade_required") {
-                setSuggestionsResult("plan");
-                showToast(t("analytics.planRequired"), "error");
-            } else if (res?.success && !res.data?.error && Array.isArray(res.data?.suggestions)) {
-                setSuggestions(res.data.suggestions);
-                setSuggestionsResult(res.data.suggestions.length ? "idle" : "empty");
-            } else {
-                setSuggestionsResult("error");
-            }
-        } catch {
-            setSuggestionsResult("error");
-        } finally {
-            setSuggestionsLoading(false);
-        }
-    };
 
     // Load version history
     const handleViewVersions = async (doc: KBDocument) => {
@@ -1044,103 +990,15 @@ export default function KnowledgePage() {
                                     </div>
                                 </div>
 
-                                {/* Unanswered Queries */}
+                                {/* R5 (ADR 0011): lo que el agente no supo responder vive en la bandeja de conocimiento pendiente */}
                                 <div className="p-5 rounded-[14px] border border-border bg-card">
-                                    <h3 className="text-sm font-semibold mb-4 m-0">{t("analytics.unanswered")}</h3>
-                                    <div className="flex flex-col gap-2">
-                                        {analytics.unansweredQueries.map((q, i) => (
-                                            <div key={q.id || i} className="flex items-center justify-between py-2 px-3 rounded-lg bg-background">
-                                                <div className="flex-1 mr-3">
-                                                    <span className={cn("text-sm", q.resolved && "line-through text-muted-foreground")}>{q.query}</span>
-                                                    <div className="text-[11px] text-muted-foreground mt-0.5">
-                                                        {t("analytics.occurrences")}: {q.occurrences} • {t("analytics.lastSeen")}: {new Date(q.last_seen_at).toLocaleDateString()}
-                                                    </div>
-                                                </div>
-                                                {!q.resolved && canEditKnowledge ? (
-                                                    <div className="flex items-center gap-1.5">
-                                                        <button onClick={() => handleCreateFromQuery(q.query)} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20" title={tc("create")}>
-                                                            <PlusCircle size={12} />
-                                                        </button>
-                                                        <button onClick={() => handleResolve(q.id)} className="flex items-center gap-1 px-2.5 py-1 rounded-md border border-border bg-transparent text-xs font-semibold cursor-pointer text-foreground hover:bg-muted">
-                                                            <CheckCircle2 size={12} /> {t("analytics.resolve")}
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[11px] text-success font-semibold">{t("analytics.resolved")}</span>
-                                                )}
-                                            </div>
-                                        ))}
-                                        {analytics.unansweredQueries.length === 0 && (
-                                            <div className="text-center py-4 text-muted-foreground text-sm">{t("analytics.noData")}</div>
-                                        )}
-                                    </div>
+                                    <h3 className="text-sm font-semibold mb-2 m-0">{t("analytics.unanswered")}</h3>
+                                    <p className="text-sm text-muted-foreground mt-0 mb-3">{t("analytics.pendingMoved")}</p>
+                                    <Link href="/admin/readiness/pending" className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline">
+                                        {t("analytics.pendingOpen")}
+                                    </Link>
                                 </div>
                             </div>
-
-                            {/* AI Article Suggestions */}
-                            {canEditKnowledge && (<div className="p-5 rounded-[14px] border border-border bg-card">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-sm font-semibold m-0 flex items-center gap-2">
-                                        <Sparkles size={16} className="text-amber-500" /> {t("suggestions.title")}
-                                    </h3>
-                                    {canEditKnowledge && (<button
-                                        onClick={handleGenerateSuggestions}
-                                        disabled={suggestionsLoading}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-500 text-xs font-semibold cursor-pointer hover:bg-amber-500/20 disabled:opacity-50"
-                                    >
-                                        {suggestionsLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                                        {suggestionsLoading ? t("suggestions.generating") : t("suggestions.generate")}
-                                    </button>)}
-                                </div>
-
-                                {suggestions.length > 0 ? (
-                                    <div className="flex flex-col gap-3">
-                                        {suggestions.map((s, i) => (
-                                            <div key={i} className="p-3.5 rounded-xl bg-background border border-border">
-                                                <div className="flex items-start justify-between gap-2">
-                                                    <div className="flex-1">
-                                                        <div className="font-semibold text-sm flex items-center gap-2">
-                                                            {s.title}
-                                                            <span className={cn(
-                                                                "text-[10px] px-2 py-0.5 rounded-md font-semibold",
-                                                                s.priority === "high" ? "bg-red-500/10 text-red-500" :
-                                                                s.priority === "medium" ? "bg-amber-500/10 text-amber-500" :
-                                                                "bg-blue-500/10 text-blue-400"
-                                                            )}>
-                                                                {s.priority}
-                                                            </span>
-                                                        </div>
-                                                        {s.category && (
-                                                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-primary/10 text-primary font-semibold inline-block mt-1">
-                                                                {s.category}
-                                                            </span>
-                                                        )}
-                                                        {s.outline?.length > 0 && (
-                                                            <ul className="mt-2 ml-4 text-xs text-muted-foreground list-disc space-y-0.5">
-                                                                {s.outline.map((item: string, j: number) => <li key={j}>{item}</li>)}
-                                                            </ul>
-                                                        )}
-                                                    </div>
-                                                    {canEditKnowledge && (<button
-                                                        onClick={() => handleCreateFromQuery(s.title)}
-                                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-primary/30 bg-primary/10 text-xs font-semibold cursor-pointer text-primary hover:bg-primary/20 shrink-0"
-                                                    >
-                                                        <PlusCircle size={12} /> {tc("create")}
-                                                    </button>)}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div role={suggestionsResult === "error" ? "alert" : "status"} className="text-center py-4 text-muted-foreground text-sm">
-                                        {suggestionsLoading ? t("suggestions.generating") :
-                                            suggestionsResult === "empty" ? t("suggestions.empty") :
-                                            suggestionsResult === "error" ? t("suggestions.unavailable") :
-                                            suggestionsResult === "plan" ? t("analytics.planRequired") :
-                                            t("suggestions.hint")}
-                                    </div>
-                                )}
-                            </div>)}
                         </div>
                     )}
                 </div>
@@ -1209,48 +1067,18 @@ export default function KnowledgePage() {
                     {!gapLoading && gapReport && (
                         <div className="flex flex-col gap-6">
                             {!!gapReport.unavailableSections?.length && <p role="status" className="text-sm text-amber-600">{t("gaps.partial")}</p>}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <KPICard icon={HelpCircle} label={t("gaps.kpi.unanswered")} value={gapReport.unavailableSections?.includes('unansweredQueries') ? '—' : gapReport.unansweredQueries?.length ?? 0} />
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                 <KPICard icon={ThumbsDown} label={t("gaps.kpi.lowSatisfaction")} value={gapReport.unavailableSections?.includes('lowSatisfactionDocs') ? '—' : gapReport.lowSatisfactionDocs?.length ?? 0} />
                                 <KPICard icon={Clock} label={t("gaps.kpi.stale")} value={gapReport.unavailableSections?.includes('staleDocuments') ? '—' : gapReport.staleDocuments?.length ?? 0} />
                                 <KPICard icon={XCircle} label={t("gaps.kpi.falsePositives")} value={gapReport.unavailableSections?.includes('falsePositiveCounts') ? '—' : gapReport.falsePositiveCounts?.reduce((total: number, item: any) => total + Number(item.false_positive_count || 0), 0) ?? 0} />
                             </div>
 
-                            {gapReport.unansweredQueries?.length > 0 && (
-                                <div className="p-5 rounded-[14px] border border-border bg-card">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <HelpCircle size={18} className="text-amber-500" />
-                                        <h3 className="text-sm font-semibold m-0">{t("gaps.unanswered.title")}</h3>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground mb-4 mt-0">{t("gaps.unanswered.description")}</p>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b border-border text-left">
-                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground">{t("gaps.unanswered.query")}</th>
-                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-center">{t("gaps.unanswered.occurrences")}</th>
-                                                    <th className="py-2.5 px-3 text-xs font-semibold text-muted-foreground text-right">{t("gaps.unanswered.lastSeen")}</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {gapReport.unansweredQueries.map((q: any, i: number) => (
-                                                    <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
-                                                        <td className="py-2.5 px-3 text-foreground">{q.query}</td>
-                                                        <td className="py-2.5 px-3 text-center">
-                                                            <span className="inline-flex items-center justify-center min-w-[28px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-500 text-xs font-semibold">
-                                                                {q.occurrences}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-2.5 px-3 text-right text-muted-foreground text-xs">
-                                                            {new Date(q.last_seen_at).toLocaleDateString()}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            )}
+                            {/* R5 (ADR 0011): las preguntas sin respuesta se atienden en la bandeja de conocimiento pendiente */}
+                            <p className="text-sm text-muted-foreground m-0">
+                                <HelpCircle size={14} className="inline mr-1 text-amber-500" aria-hidden="true" />
+                                {t("gaps.pendingMoved")}{" "}
+                                <Link href="/admin/readiness/pending" className="font-semibold text-primary hover:underline">{t("analytics.pendingOpen")}</Link>
+                            </p>
 
                             {gapReport.lowSatisfactionDocs?.length > 0 && (
                                 <div className="p-5 rounded-[14px] border border-border bg-card">
@@ -1337,7 +1165,7 @@ export default function KnowledgePage() {
                                 </div>
                             )}
 
-                            {(!gapReport.unavailableSections?.length && gapReport.unansweredQueries?.length === 0 && gapReport.lowSatisfactionDocs?.length === 0 && gapReport.staleDocuments?.length === 0 && gapReport.falsePositiveCounts?.length === 0) && (
+                            {(!gapReport.unavailableSections?.length && gapReport.lowSatisfactionDocs?.length === 0 && gapReport.staleDocuments?.length === 0 && gapReport.falsePositiveCounts?.length === 0) && (
                                 <div className="text-center py-10">
                                     <CheckCircle2 size={40} className="mx-auto mb-3 text-emerald-500" />
                                     <p className="text-muted-foreground">{t("gaps.allClear")}</p>

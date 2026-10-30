@@ -1,5 +1,7 @@
 /**
  * Lo que EffectiveCapabilityService lee de la preparación del negocio (R4, ADR 0010): la última evaluación del motor.
+ * R5 (ADR 0011): TurnCapabilityComposerService lee además las ofertas del contrato del turno, para publicar
+ * `register_pending_question` solo cuando `CORE.PENDING.ROUTING` cumple.
  *
  * Es un token y no la clase ReadinessService a propósito: el contrato de capacidades lo cargan también los scripts de
  * auditoría (docs/audits, native-backlog.ts) sin el paquete @parallext/business-spec compilado, y la clase lo arrastra
@@ -11,4 +13,6 @@ export const BUSINESS_READINESS = 'BUSINESS_READINESS';
 
 export interface BusinessReadinessPort {
     getCurrent(tenantId: string): Promise<{ result: Pick<ReadinessResult, 'config' | 'blockingGaps'> }>;
+    /** El contrato del turno (caché de la última evaluación), o null. */
+    turnContract?(tenantId: string): Promise<{ offers: { pendingQuestion: boolean } } | null>;
 }

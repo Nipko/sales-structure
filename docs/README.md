@@ -34,7 +34,7 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 |---|---|---|---|---|
 | [business-requirements-format.md](domain/business-requirements-format.md) | Formato de la especificación de requisitos (B2 v0.2 + R1) | aprobado | 2026-10-30 | `packages/business-spec/spec/requirement.schema.json` |
 | [business-requirements.md](domain/business-requirements.md) | Requisitos por tipo de negocio | **generado** | — | `packages/business-spec/spec/*.yaml` |
-| [business-readiness-runtime.md](domain/business-readiness-runtime.md) | Preparación del negocio en ejecución: API, historial, caché y panel (R2) | vigente | 2026-10-30 | `apps/api/src/modules/readiness/`, `apps/dashboard/src/app/admin/readiness/` |
+| [business-readiness-runtime.md](domain/business-readiness-runtime.md) | Preparación del negocio en ejecución: API, historial, caché y panel (R2); valores con procedencia, migración L1–L7 y retiro de las reglas L (R3) | vigente | 2026-10-30 | `apps/api/src/modules/readiness/`, `packages/business-spec/src/{provenance,backfill,validate-value}.ts`, `apps/api/scripts/readiness/`, `apps/dashboard/src/app/admin/readiness/` |
 | [business-types-catalog.md](domain/business-types-catalog.md) | 20 industrias y 80 tipos de negocio: seleccionables, en espera, legacy | **generado** | — | `vertical-definitions.ts`, `subtype-experience-profile.ts` |
 | [billing-annual-cycle.md](domain/billing-annual-cycle.md) | Ciclo mensual/anual del motor Wompi, cambios de plan, billing-ops | vigente | 2026-09-19 | `modules/billing/recurring/` |
 | [stripe-international-subscriptions-2026-09.md](domain/stripe-international-subscriptions-2026-09.md) | Suscripciones fuera de Colombia con Stripe | vigente | 2026-09-30 | `modules/billing/payment-routing.service.ts` |

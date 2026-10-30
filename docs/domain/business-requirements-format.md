@@ -338,6 +338,8 @@ La v0.2 se trajo al repositorio como `1.0.0-rc.1`. Para que cada predicado sea e
 
 **Datos heredados (§7.5) en R1:** L5 es aproximada (la plantilla de la persona vive en código, así que toda configuración de persona con `template_id` se trata como sembrada) y L4 se extiende a valores por defecto de columna equivalentes (`companies.country 'CO'`, `properties.check_in_time/check_out_time`, `products.requires_prescription`, listas `jsonb` vacías).
 
+**Procedencia real (§7.1 regla 4) desde R3:** cada valor se guarda con `{status, origin, confirmed_by, confirmed_at, source_ref}` en `requirement_values` (valores del negocio) o en las columnas estándar de su tabla (ítems y textos). El motor usa la procedencia real donde existe y las reglas L1–L7 solo para lo que no la tiene; la migración (`backfill-provenance`) aplica las reglas una vez con la misma función que la lectura. Dos precisiones de R3: un `price_status = example` manda en cualquier tabla (un precio de ejemplo nunca es confirmado, aunque la fila tenga `price_type`), y una lista vacía por defecto de columna (L4) sigue sin ser «vacío confirmado» también con procedencia real. Cuándo se retira cada regla: `docs/domain/business-readiness-runtime.md`.
+
 ## 14. Adiciones de R1.1 (spec 1.1.0-rc.1)
 
 Medición del criterio 6 (qaTruth contra la revisión humana) y sus arreglos F1–F7 y F10. Cambio menor de la especificación: solo `sources.accepts_text_evidence` (§7.4); la estructura del dato no cambia.

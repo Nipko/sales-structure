@@ -23,6 +23,7 @@
         "preflight:agreed-terms": "node scripts/preflight-agreed-terms.cjs",
         "reconcile:vertical-provisioning": "node scripts/reconcile-vertical-provisioning.js",
         "readiness:report": "node scripts/readiness-report.cjs",
+        "readiness:backfill-provenance": "node scripts/readiness/backfill-provenance.cjs",
         "migrate:bi-api-keys": "node scripts/migrate-bi-api-keys.js"
     },
     "dependencies": {

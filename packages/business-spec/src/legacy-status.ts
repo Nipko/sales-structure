@@ -4,7 +4,7 @@
  * Puro. La lectura la hace SnapshotReader (apps/api/src/modules/readiness) y entrega `LegacyTenantRows`.
  * Desde R3 la foto usa la procedencia real cuando existe (`provenance.ts`: columnas de §2.2 y `requirement_values`)
  * y estas reglas deciden solo lo que no la tiene. Se retiran tabla por tabla cuando la procedencia real cubra la tabla
- * y ningún editor la escriba sin ella (C0 §2.9, K4; estado en docs/architecture/readiness.md).
+ * y ningún editor la escriba sin ella (C0 §2.9, K4; estado por regla en docs/domain/business-readiness-runtime.md).
  */
 import {
     PROVENANCE_TABLES, applyRequirementValues, realRowProvenance, toMs, type RowProvenance,

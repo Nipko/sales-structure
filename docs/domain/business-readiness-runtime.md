@@ -1,6 +1,6 @@
-# Preparación del negocio en tiempo de ejecución (R2–R3)
+# Preparación del negocio en tiempo de ejecución (R2–R3b)
 
-Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2), [ADR 0007](../decisions/0007-procedencia-y-valores-del-negocio-r3.md) (R3, procedencia) y [ADR 0008](../decisions/0008-formularios-del-panel-r3.md) (R3, formularios).
+Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2), [ADR 0007](../decisions/0007-procedencia-y-valores-del-negocio-r3.md) (R3, procedencia), [ADR 0008](../decisions/0008-formularios-del-panel-r3.md) (R3, formularios) y [ADR 0009](../decisions/0009-unificacion-horario-politicas-identidad-r3b.md) (R3b, lo que lee el agente).
 
 ## Flujo
 
@@ -18,8 +18,15 @@ GET /readiness/:tenantId[?refresh=1]
 PUT /readiness/:tenantId/business-facts/:requirementId
   └─ BusinessFactsService.write()
        ├─ validateRequirementValue(spec, id, valor)               ← el paquete; 400 con `issues` si no cumple
+       ├─ R3b: proyección al almacenamiento de hoy (horario, políticas, identidad) en la MISMA transacción
        ├─ UNA sentencia: requirement_values (version + 1) + requirement_value_versions (con actor)
-       └─ evento business_fact.written → ReadinessInvalidationListener borra la caché
+       └─ evento business_fact.written → cachés de preparación y del agente
+
+Turno del agente (R3b)
+  └─ BusinessFactsReader.hours() / policy() / notOffered() / identity()
+       ├─ fuentes: public.tenants + companies (is_primary) + policies activas + requirement_values (RUNTIME_FACT_IDS)
+       └─ resolveBusinessHours / resolvePolicy / resolveNotOffered / resolveIdentity  ← @parallext/business-spec, puro
+            misma regla que la foto: valor del dueño vigente, si no el almacenamiento de hoy tal cual
 ```
 
 - **Una sola regla.** El veredicto, los huecos y su nivel los decide el motor. La API solo lee, guarda y sirve; el panel solo agrupa. `readiness:report` (CLI) y el panel dan el mismo veredicto sobre la misma foto (lo prueban `readiness.service.spec.ts` y `readiness-panel.spec.ts` con las 7 fotos golden).
@@ -61,7 +68,65 @@ Una escritura de `super_admin` exige suplantación: el actor guarda el usuario e
 
 - **Ítems y textos.** Una fila tiene procedencia real si trae `origin` y `content_status`, y `source_ref.row_updated_at` coincide con su `updated_at`. El `content_status` solo no prueba nada (su default de columna es `confirmed`). Si una pantalla que no conoce estas columnas edita la fila, su `updated_at` cambia y la fila vuelve a las reglas L (L6: editada → confirmada). Las listas vacías por defecto de columna (L4: `allergens`, `includes`, `required_fields`…) siguen sin contar como «vacío confirmado» también con procedencia real. Un `price_status = example` manda en cualquier tabla: un precio de ejemplo nunca cuenta como confirmado, aunque la fila declare `price_type`.
 - **Valores.** Una fila de `requirement_values` escrita por `BusinessFactsService` manda sobre todo lo que dedujeron las reglas para ese requisito y alcance. Una fila **migrada** (`source_ref.migrated_from` + `migrated_hash`) reemplaza solo al valor heredado del que salió, y solo mientras ese almacenamiento conserve el valor migrado; si cambió después (sus pantallas siguen vivas hasta R3b), la copia se ignora y manda la lectura con reglas L. Los demás valores heredados del mismo requisito se siguen leyendo, así que una contradicción entre dos almacenamientos sigue a la vista.
-- `snapshot.source.notes` cuenta cuántas filas y valores usaron procedencia real y cuántas copias migradas se ignoraron.
+- **Valores proyectados (R3b).** Una fila escrita por `BusinessFactsService` con `source_ref.projected_to` y `projected_hash` manda como cualquier valor del dueño mientras el almacenamiento `projected_to` siga diciendo lo que la proyección escribió (misma huella de lo que la foto lee de ahí, también cuando no lee nada). Si una pantalla vieja lo editó después, la fila se ignora y manda la lectura con reglas L.
+- `snapshot.source.notes` cuenta cuántas filas y valores usaron procedencia real y cuántas copias migradas o proyecciones editadas se ignoraron.
+
+## Lo que lee el agente (R3b)
+
+Diseño: C0 §2.3 (horario único, políticas estructuradas, `not_offered`, identidad) y §5 R3b. Decisiones: [ADR 0009](../decisions/0009-unificacion-horario-politicas-identidad-r3b.md).
+
+El agente lee horario, políticas, `not_offered` e identidad **solo** por `BusinessFactsReader` (`apps/api/src/modules/readiness/business-facts.reader.ts`). El lector carga las fuentes (`public.tenants`, la fila de identidad de `companies`, las filas activas de `policies` y las filas de `requirement_values` de `RUNTIME_FACT_IDS`) y la decisión la toma el paquete (`packages/business-spec/src/business-facts.ts`) con **la misma regla que la foto del motor**: el panel y el agente no pueden decir cosas distintas del mismo dato.
+
+| Lectura | Requisito | Quién la usa | Si no hay valor del dueño vigente |
+|---|---|---|---|
+| `hours()` | `CORE.HOURS.REGULAR` (+ `CORE.HANDOFF.HOURS_SLA.out_of_hours_message`) | turno (`loadTenantBusinessHours`), contexto sellado de evaluación, compuerta fuera de horario de automatizaciones, fecha local de alojamiento, estado de configuración del agente | `settings.businessHours` tal cual |
+| `policy(type)` | `CORE.POLICY.CANCELLATION_CHANGES`, `REFUND_RETURNS`, `WARRANTY`, `CORE.PRIVACY.NOTICE`, `CORE.DELIVERY.TERMS` | `get_policy` (turno vivo) | fila activa de `policies` (`terms` no tiene requisito: siempre `policies`) |
+| `notOffered()` | `CORE.OFFER.NOT_OFFERED` | `<not_offered>` del prompt (`VerticalTurnContextService` y respaldo del turno), respuesta de «catálogo sobre FAQ» | nada: sin valor confirmado no hay `<not_offered>` |
+| `identity(base)` | `CORE.IDENTITY.NAME`, `.DESCRIPTION`, `CORE.LOCATIONS.LIST`, `CORE.CONTACT.CHANNELS` | identidad del turno y del contexto sellado (encima de `BusinessInfoService`) | la fila de `companies` |
+
+**Precedencia** (ADR 0007 §2, ADR 0009):
+- Un valor escrito por `BusinessFactsService` manda. Si se proyectó al almacenamiento de hoy (`source_ref.projected_to` + `projected_hash`), manda **solo mientras esa proyección siga intacta**: si una pantalla vieja edita después el almacenamiento, la edición es lo más reciente y manda, en el agente y en el motor a la vez (`applyRequirementValues`).
+- Un valor migrado (`migrated_from`) es una copia del almacenamiento de hoy: mientras la fuente no cambie es idéntico a ella, y si cambió ya no vale. En los dos casos el agente sigue leyendo la fuente tal cual: sin valores del dueño, lo que ve el agente es exactamente lo de antes (lo prueban `business-facts.spec.ts` en los 7 tenants QA y `business-facts.reader.spec.ts`).
+- La forma del horario es la de `settings.businessHours` (días en inglés, `{enabled, open, close}`). Un día con varios tramos lleva el envolvente en `open/close` y los tramos en `windows`: la compuerta fuera de horario abre solo dentro de un tramo y el prompt dice cada tramo. La validación de reservas contra el horario (`business-window.ts`) sigue con el envolvente; la agenda decide.
+- El mensaje fuera de horario del dueño (`HOURS_SLA.out_of_hours_message`) reemplaza al de la cuenta (`settings.businessHours.afterHoursMessage`); el `afterHoursMessageOverride` del agente sigue ganando.
+- `get_policy` devuelve `{type, title, content, version}` y, solo si el dueño declaró campos estructurados, `terms`. El texto es `renderPolicyText(valor)`: el resumen y una línea por campo; es el mismo texto que se proyecta a `policies.content`.
+- Caché: las fuentes se guardan 60 s en Redis (`business-facts:sources:{tenant}`), salvo para las políticas (texto de consentimiento: siempre la versión durable) y en contextos sin persistencia. `business_fact.written` borra esa clave, `biz_hours:{tenant}` y `business-info:{tenant}:primary` (`BusinessFactsCacheListener`); si la proyección tocó `settings` o `tenants.name`, `BusinessFactProjectionListener` hace lo que la pantalla vieja hace al guardar (`TenantsService.finalizeConfigurationUpdate`, aviso de dependencias de calidad).
+
+**Lo que sigue fuera del lector, y por qué** (ADR 0009 §8):
+- `agent_personas.config_json.hours`: `aiOutsideHours` y `afterHoursMessageOverride` son conducta del agente (como `schedule_mode`, D-14), no hechos del negocio. El horario del agente sigue siendo el respaldo cuando el negocio no tiene horario, hasta la release siguiente.
+- El consentimiento (`prepareContactConsent`) referencia la fila de `policies` (`consent_records.policy_id`); `legal_text_versions` y `consent_records` no cambian. La proyección crea la versión que el consentimiento referencia.
+- La evaluación sellada reproduce su copia congelada de `policies` (`get_policy` con `structuredKnowledgeInputs`).
+- `RegionalProfileService` usa `settings.businessHours.timezone` como zona inferida de la región (`CORE.IDENTITY.REGION`, no el horario); la proyección la mantiene igual a la zona de `CORE.HOURS.REGULAR`.
+- Escritores viejos que siguen vivos: la pantalla de horario (`TenantsService`), el asistente de configuración (`persona.controller`), la propuesta del copiloto (`account.businessHours`), las pantallas de políticas (`PoliciesService`) y de identidad (`BusinessInfoService`), y el alta (`tenants.name`). Lo que escriben manda por la regla de la huella.
+- `definition.businessHours` de las recetas de vertical es la agenda sembrada de la plataforma, no el horario del negocio.
+
+### Escritura doble (expand) y lo que se retira en la release siguiente
+
+`BusinessFactsService.write()` escribe un valor **confirmado, de alcance global y no migrado** de estos requisitos también en su almacenamiento de hoy, **en la misma transacción** (si el valor da 409, la proyección se deshace). Las sentencias viven en `business-facts.statements.ts` (`legacyPatchStatements`).
+
+| Requisito | Se proyecta a | Notas |
+|---|---|---|
+| `CORE.HOURS.REGULAR` | `tenants.settings.businessHours` (+ sube `agent_personas.version`, como la pantalla) | un tramo por día (el envolvente): la pantalla vieja no sabe de varios; conserva `afterHoursMessage` |
+| `CORE.IDENTITY.NAME` | `tenants.name` | `companies.name` no se toca (lo edita la pantalla de identidad); el agente lee `display_name` |
+| `CORE.IDENTITY.DESCRIPTION` | `companies.about` (fila `is_primary`) y `settings.customerTypes` | `category_label` solo vive en `requirement_values` |
+| `CORE.LOCATIONS.LIST` | `companies.address/city/country` de la sede principal | las demás sedes y la modalidad solo en `requirement_values` |
+| `CORE.CONTACT.CHANNELS` | `companies.phone` (o WhatsApp), `email`, `website`, `social_links` | |
+| `CORE.POLICY.*`, `CORE.PRIVACY.NOTICE`, `CORE.DELIVERY.TERMS` | versión nueva activa en `policies` (`cancellation`, `return`, `warranty`, `privacy`, `shipping`) | sin tabla `policies` en el esquema no se proyecta |
+
+`CORE.OFFER.NOT_OFFERED` y `CORE.HANDOFF.HOURS_SLA` no tienen almacenamiento viejo que proyectar.
+
+**Release siguiente (contract)** — se retira, con aprobación del dueño para lo que tiene datos (K3, C0 §7.3):
+
+| Qué | Cuándo se puede |
+|---|---|
+| Las proyecciones de `legacyPatchStatements` y `BusinessFactProjectionListener` | cuando las pantallas de horario, políticas, identidad, el asistente y el copiloto escriban por `BusinessFactsService` |
+| La lectura de respaldo de `settings.businessHours`, `policies` y `companies` en `business-facts.ts` | ídem; el lector pasa a leer solo `requirement_values` |
+| `tenants.settings.businessHours` (clave de `settings`) y `agent_personas.config_json.hours.schedule` como horario | ídem, más la zona de la región sin `businessHours.timezone` |
+| Tabla `policies` | migrar `consent_records` a la versión de `requirement_value_versions`, contar, respaldar y aprobación explícita del dueño (C0 §7.3) |
+| `companies.is_primary` como identidad, `companies.about/address/city/country/phone/email/website/social_links` como fuente del agente | ídem: aprobación explícita del dueño; la fila sigue siendo de CRM |
+| `tenants.name` como identidad visible | cuando el alta escriba `CORE.IDENTITY.NAME` (también retira L2) |
+| El enlace secundario «pantalla actual» del cajón (ADR 0008 §6) | cuando la pantalla vieja deje de escribir |
+
 
 ## Migración de los tenants existentes (`backfill-provenance`, C0 §2.9)
 
@@ -83,16 +148,16 @@ node scripts/readiness/backfill-provenance.cjs --fixtures packages/business-spec
 
 ## Reglas L: cuándo se retira cada una
 
-Las reglas viven en `packages/business-spec/src/legacy-status.ts`. Una regla de una tabla se borra del código cuando se cumplen las dos condiciones: (1) la migración corrió en producción para esa tabla con el dry-run al 100 % y el veredicto igual, y (2) todo escritor de la tabla escribe procedencia (si no, una edición desde una pantalla vieja necesita la regla para no quedar mal leída). Al cierre de R3 la migración no ha corrido en producción, así que **ninguna regla se retiró**:
+Las reglas viven en `packages/business-spec/src/legacy-status.ts`. Una regla de una tabla se borra del código cuando se cumplen las dos condiciones: (1) la migración corrió en producción para esa tabla con el dry-run al 100 % y el veredicto igual, y (2) todo escritor de la tabla escribe procedencia (si no, una edición desde una pantalla vieja necesita la regla para no quedar mal leída). Al cierre de R3 la migración no había corrido. **Al cierre de R3b** la condición (1) se cumple en los 23 esquemas, pero la (2) no se cumple en ninguna tabla: en esta release los almacenamientos de horario, políticas e identidad siguen escribiéndose (proyección de `BusinessFactsService` y pantallas viejas, ADR 0009), y una edición vieja vuelve a necesitar su regla. **Ninguna regla se retiró**; la columna dice qué falta:
 
 | Regla | Tablas / almacenamientos | Se retira cuando |
 |---|---|---|
 | L1 | `services`, `membership_plans` (`price_status`) | backfill en producción + las pantallas de servicios y membresías escriben `price_type`/`price_status` y el runtime lee `price_type` (fin del `quote`) |
-| L2 | `tenants.name`, `settings.subType`, `businessInfoDraft`, `customerTypes` | backfill en producción + el alta escribe `CORE.IDENTITY.*` por `BusinessFactsService` (R3b: identidad) |
+| L2 | `tenants.name`, `settings.subType`, `businessInfoDraft`, `customerTypes` | ~~backfill en producción~~ (hecho) + el alta escribe `CORE.IDENTITY.*` por `BusinessFactsService` (R3b dejó `tenants.name` y `customerTypes` como proyección; el alta sigue escribiéndolos directo) |
 | L3 | todas las tablas de §2.2 | backfill en producción + las pantallas de catálogo y FAQs escriben procedencia (formularios de R3) |
 | L4 | listas y valores por defecto de columna | no se retira con el backfill: lo reemplazan los formularios que confirman «vacío» y el alcance `item:` de los depósitos (R3b) |
-| L5 | `agent_personas.config_json.behavior.*`, `hours` | backfill en producción + la configuración de traspaso, temas prohibidos e instrucciones se escribe por `BusinessFactsService` |
-| L6 | todas | igual que L3 para ítems; para valores, cuando cada almacenamiento relocalizado deja de escribirse (R3b: horario, políticas, identidad) |
+| L5 | `agent_personas.config_json.behavior.*`, `hours` | ~~backfill en producción~~ (hecho) + la configuración de traspaso, temas prohibidos e instrucciones se escribe por `BusinessFactsService`; para `hours`, la release siguiente de R3b (el horario del agente deja de ser respaldo) |
+| L6 | todas | igual que L3 para ítems; para valores, cuando cada almacenamiento relocalizado deja de escribirse: la release siguiente de R3b (contract), al retirar las proyecciones y las pantallas viejas de horario, políticas e identidad |
 | L7 | `menu_items`, `products`, `tour_packages`, `properties`, `real_estate_listings`, `courses`, `insurance_plans`, `vehicles` | backfill en producción + sus pantallas escriben `price_type` |
 
 ## Siembra del alta (R3, D5)
@@ -121,7 +186,7 @@ Cada hueco tiene una acción:
 
 El descriptor sale de `formFor(requisito, spec)` (`packages/business-spec/src/forms/descriptor.ts`): un campo por clave de `data.structure`, con el componente que decide su descripción (`enum […]`, `enum_list […]`, `bool`, `duration`, `money`, `weekly_hours`, `lista de {…}`, `text_i18n`…). Los 13 bloqueantes del núcleo y `OBJ.*.WRITE_MODE` / `OBJ.*.CHANGE_RULES` llevan ajustes explícitos para la forma que leen sus evaluadores (horario por día con tramos `{open, close}`, plazo y cargo de cancelación, `ref` a la política general o condiciones propias, campos que solo se piden con `request_to_business`…). Los componentes por tipo están en `apps/dashboard/src/components/readiness/`; la validación del cliente (`readiness-forms.ts`) interpreta el descriptor y `readiness-forms.spec.ts` la cruza con `validateRequirementValue` en todos los formularios: lo que el cliente deja guardar, la API lo acepta.
 
-**Hasta R3b**, el agente sigue leyendo los almacenamientos viejos (ADR 0007 §11): por eso el cajón conserva el enlace a la pantalla actual del dato, como acción secundaria.
+**Desde R3b** el agente lee lo que guarda el cajón (`BusinessFactsReader`) y la escritura se proyecta a la pantalla vieja. El enlace a la pantalla actual sigue como acción secundaria mientras esa pantalla escriba: una edición allí manda (ADR 0009 §3); se retira en la release siguiente.
 
 ### Valores por defecto
 
@@ -131,5 +196,6 @@ El descriptor sale de `formFor(requisito, spec)` (`packages/business-spec/src/fo
 
 - **Retirado en R2:** `ReadinessCitationV1` y `readinessAudit` del contrato público; las tareas `knowledge`, `hours`, `appointments` y `team` de la tarjeta; los 20 chequeos de datos del negocio de `AgentQualityService`.
 - **Retirado en R3:** la siembra de FAQs de plantilla (alta, extras de tours, dental e inmobiliaria, re-siembra y cambio de vertical) y los montos de ejemplo de los servicios y planes de muestra. Con los formularios: la acción «Pronto podrás completarlo aquí» de los huecos sin pantalla (`readinessPanel.action.comingSoon`) y el enlace de los huecos con formulario como acción principal (queda como secundario dentro del cajón hasta R3b).
-- **Sigue hasta R3b:** `settings.businessHours`, `agent_personas.config_json.hours`, la tabla `policies` y `companies` como identidad (expand: la migración ya escribió el lado nuevo); `price_status = quote`.
+- **Retirado en R3b:** la lectura directa del agente de `settings.businessHours`, `policies` y `companies` (pasa por `BusinessFactsReader`); el `notOffered` de plataforma por perfil en el prompt (`VerticalTurnContextService`, el respaldo del turno), en el contrato de dominio (`prompt.notOffered` y su `unresolved`) y en los packs de evaluación (escenarios `declared_limit`/`limit_N`: 18.704 casos por canal en lugar de 19.768); el «no ofrecemos X» de «catálogo sobre FAQ» sin entrada del negocio (ahora «no veo X»); la regla de prompt 20 como lista de plataforma (se reescribió para la lista del negocio).
+- **Sigue hasta la release siguiente (contract de R3b):** `settings.businessHours`, `agent_personas.config_json.hours` como horario, la tabla `policies` y `companies` como identidad, escritos por las pantallas viejas y por la proyección (tabla de la sección «Escritura doble»); `price_status = quote`.
 - **Sigue hasta R4:** `VerticalReadinessService`, `READINESS`, `TOOL_GROUP_READINESS` y `readiness-predicate-authority.util.ts` (C0 §4.2).

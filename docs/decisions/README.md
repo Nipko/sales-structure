@@ -12,6 +12,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0006](0006-contenido-de-plantilla-y-defaults-en-la-verdad-qa.md) | Contenido de plantilla y valores por defecto en la verdad QA (R1.1) | aprobada | 2026-10-30 |
 | [0007](0007-procedencia-y-valores-del-negocio-r3.md) | Procedencia y valores del negocio: lo que C0 no fijaba (R3) | aprobada | 2026-10-30 |
 | [0008](0008-formularios-del-panel-r3.md) | Formularios del panel de preparación: lo que C0 no fijaba (R3, interfaz) | aprobada | 2026-10-30 |
+| [0009](0009-unificacion-horario-politicas-identidad-r3b.md) | Unificación de horario, políticas, not_offered e identidad: lo que C0 no fijaba (R3b) | aprobada | 2026-10-30 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

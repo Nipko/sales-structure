@@ -15879,6 +15879,7 @@
   "readinessPanel": {
     "pendingLink": "Conocimiento pendiente",
     "pendingLinkCount": "Conocimiento pendiente ({count})",
+    "rehearsalLink": "Ensayo",
     "goLive": {
       "title": "Atención a clientes reales",
       "state": {
@@ -16323,6 +16324,60 @@
       "failed": "{count} con error",
       "waiting": "{count} pendiente(s) de reintento",
       "unavailable": "{count} sin salida disponible"
+    }
+  },
+  "readinessRehearsal": {
+    "title": "Ensayo antes de salir",
+    "subtitle": "Preguntas simuladas de clientes contra tu agente, con lo que tu negocio sabe hoy: qué responde bien, qué no sabe y por qué.",
+    "consultative": "El ensayo no escribe nada ni envía mensajes, y no bloquea la salida: te muestra cómo respondería hoy tu agente.",
+    "back": "Volver a la preparación",
+    "loading": "Cargando…",
+    "tenantRequired": "Elige un negocio.",
+    "error": "No se pudo cargar el ensayo.",
+    "empty": "Todavía no hay ensayos. Ejecuta uno para ver cómo responde tu agente.",
+    "readOnly": "Solo un administrador del negocio puede ejecutar el ensayo.",
+    "run": "Ejecutar ensayo",
+    "repeat": "Repetir el mismo ensayo",
+    "runs": "Ensayo",
+    "runLabel": "{date} · {total} preguntas · {status}",
+    "running": "Ensayando… {done} de {total} preguntas",
+    "progress": "Progreso del ensayo",
+    "passRate": "Tu agente hizo lo correcto en el {rate} % de las preguntas",
+    "noRate": "Sin preguntas calificadas todavía",
+    "counts": "{answered} responde bien · {missing} no lo sabe porque falta un dato · {wrong} respondió mal{inconclusive, plural, =0 {} one { · # sin veredicto} other { · # sin veredicto}}",
+    "passHatK": "Repetido {k} veces: el {rate} % de las preguntas sale bien en todas",
+    "cost": "Modelo: {models} · {tokens} tokens · US$ {cost} · verificador usado {judge} veces",
+    "notRun": "{count, plural, one {# pregunta quedó sin probar} other {# preguntas quedaron sin probar}}",
+    "byIntent": "Resultados por tema",
+    "expected": "Esperado: {code}",
+    "customer": "Cliente",
+    "agent": "Agente",
+    "reason": "Por qué: {reason}",
+    "judged": "lo decidió el verificador de paráfrasis",
+    "fixData": "Completar el dato: {requirement}",
+    "productMiss": "Es un fallo del agente, no de tus datos: lo revisa el equipo de la plataforma.",
+    "status": {
+      "running": "en curso",
+      "completed": "terminado",
+      "stopped": "detenido",
+      "failed": "falló",
+      "interrupted": "interrumpido"
+    },
+    "outcome": {
+      "answered": "Responde bien",
+      "missing_data": "No lo sabe: falta un dato",
+      "wrong": "Respondió mal",
+      "inconclusive": "Sin veredicto",
+      "error": "No se pudo probar"
+    },
+    "errors": {
+      "rehearsal_running": "Ya hay un ensayo en curso.",
+      "rehearsal_quota_exceeded": "Llegaste al máximo de ensayos de hoy.",
+      "rehearsal_no_agent": "No hay un agente activo para ensayar.",
+      "rehearsal_no_cases": "Con los datos actuales no hay preguntas que ensayar.",
+      "ai_message_quota_exceeded": "Se agotó la cuota de mensajes de IA: el ensayo se detuvo.",
+      "rehearsal_deadline": "El ensayo llegó a su tiempo máximo y se detuvo.",
+      "process_restarted": "El ensayo se interrumpió por un reinicio del servicio."
     }
   }
 }

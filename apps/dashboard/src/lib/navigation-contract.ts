@@ -124,6 +124,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
     keywords: ["valores por defecto", "defaults", "aceptar", "accept", "valores padrão", "valeurs par défaut"] },
   { id: "readinessPending", pattern: "/admin/readiness/pending", titleKey: "readinessPending.title", scope: "tenant", parentId: "readiness",
     keywords: ["conocimiento pendiente", "preguntas sin respuesta", "lo averiguo", "pending knowledge", "unanswered", "conhecimento pendente", "connaissances en attente"] },
+  { id: "readinessRehearsal", pattern: "/admin/readiness/rehearsal", titleKey: "readinessRehearsal.title", scope: "tenant", parentId: "readiness",
+    keywords: ["ensayo", "probar el agente", "preguntas simuladas", "rehearsal", "dry run", "ensaio", "répétition"] },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
   { id: "knowledge", pattern: "/admin/knowledge", titleKey: "nav.items.knowledgeBase", scope: "tenant" },

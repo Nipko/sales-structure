@@ -1,6 +1,6 @@
 # 0006 — Contenido de plantilla y valores por defecto en la verdad QA (R1.1)
 
-- Estado: propuesta (pendiente del dueño)
+- Estado: aprobada (decidida con la autorización autónoma del dueño del 30-oct-2026; se revisa con él a su regreso)
 - Fecha: 2026-10-30 · Decide: dueño · Autor: Claude (R1.1)
 - Ámbito: `packages/business-spec` (`fromLegacyRows`, `qaTruth`), revisión humana de los casos QA. No toca tablas ni el runtime del agente.
 

@@ -222,20 +222,14 @@ describe('what a tenant is told about one tool', () => {
         // could not possibly help.
         const faqColumns = { faqs: new Set(['id', 'question', 'answer', 'is_published']) };
 
-        it('cites the predicate shared by the tool and the repaired check', () => {
+        it('does not hand the predicate citation to the surfaces: the readiness gap explains a missing fact (R2)', () => {
             const rows = build({
                 missionIntentKeys: [domain.intents.find(entry => entry.key === 'ask_question')!.key],
                 contract: contract({ publishedTools: ['search_faqs'] }),
                 readinessDefinitions: READINESS as any,
                 readinessColumns: faqColumns,
             });
-            const citation = find(rows, 'search_faqs').readinessAudit
-                .find(entry => entry.key === 'faq_content')!;
-            expect(citation).toMatchObject({
-                table: 'faqs', predicate: 'is_published = true', verdict: 'satisfied',
-                writePath: '/admin/knowledge/faqs',
-            });
-            expect(citation.dimensions).toEqual(['active']);
+            expect(Object.keys(find(rows, 'search_faqs'))).not.toContain('readinessAudit');
             expect(READINESS.faq_content?.where).toContain('is_published');
         });
 
@@ -262,7 +256,6 @@ describe('what a tenant is told about one tool', () => {
                 readinessColumns: faqColumns,
             });
             expect(find(rows, 'search_faqs').state).toBe('pending');
-            expect(find(rows, 'search_faqs').readinessAudit[0].verdict).toBe('missing_data');
         });
 
         it('still calls a genuinely empty catalogue missing data, and pending', () => {
@@ -276,9 +269,7 @@ describe('what a tenant is told about one tool', () => {
                 readinessDefinitions: READINESS as any,
                 readinessColumns: { products: new Set(['id', 'name', 'is_available']) },
             });
-            const row = find(rows, 'search_products');
-            expect(row.readinessAudit[0]).toMatchObject({ key: 'catalog_items', verdict: 'missing_data' });
-            expect(row.state).toBe('pending');
+            expect(find(rows, 'search_products').state).toBe('pending');
         });
 
         it('does not invent a read error for a vertical this tenant never provisioned', () => {
@@ -295,7 +286,8 @@ describe('what a tenant is told about one tool', () => {
                 readinessDefinitions: READINESS as any,
                 readinessColumns: {},
             });
-            expect(find(rows, 'search_products').readinessAudit[0].verdict).toBe('missing_data');
+            // Missing data, not a read error: the state stays `pending`, never `unknown`.
+            expect(find(rows, 'search_products').state).toBe('pending');
         });
 
         it('reports a read error when the whole contract could not be evaluated', () => {
@@ -305,7 +297,7 @@ describe('what a tenant is told about one tool', () => {
                 readinessDefinitions: READINESS as any,
                 readinessColumns: { products: new Set(['is_available']) },
             });
-            expect(find(rows, 'search_products').readinessAudit[0].verdict).toBe('read_error');
+            expect(find(rows, 'search_products').state).toBe('unknown');
         });
 
         it('does not report a readiness answer as satisfied when there is no contract to read', () => {
@@ -316,10 +308,6 @@ describe('what a tenant is told about one tool', () => {
             });
             const row = find(rows, 'search_products');
             expect(row.state).toBe('unknown');
-            // The channel projection could not be read, so its readiness
-            // answers were not read either. `satisfied` here would be the same
-            // lie, told about a whole channel.
-            expect(row.readinessAudit[0].verdict).toBe('read_error');
         });
 
         it('reports no stale divergence after listings readiness matches the tool', () => {
@@ -329,10 +317,7 @@ describe('what a tenant is told about one tool', () => {
                 readinessDefinitions: READINESS as any,
                 readinessColumns: { real_estate_listings: new Set(['status', 'is_active']) },
             });
-            const citation = find(rows, 'search_listings').readinessAudit
-                .find(entry => entry.key === 'listings')!;
-            expect(citation.verdict).toBe('satisfied');
-            expect(citation.auditedDivergence).toBeNull();
+            expect(find(rows, 'search_listings').state).toBe('prepared');
         });
     });
 });

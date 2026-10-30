@@ -72,7 +72,7 @@ describe("a snooze clears the snoozed signal before the server answers", () => {
     signalId, agentId: "a1", agentName: "Ventas", code,
     severity: "critical" as const, href: "/admin/channels/whatsapp", evidenceCount: 1,
   });
-  const top = action("top-signal", "fix_business_identity");
+  const top = action("top-signal", "fix_fallback_message");
   const delivery = action("delivery-signal", "fix_whatsapp_delivery");
 
   it("clears the delivery action the banner may be showing, not only the top one", () => {

@@ -5,7 +5,8 @@ import { AgentAssessmentService, connectFirstChannelTask, preferredSetupChannel 
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const AGENT = '22222222-2222-4222-8222-222222222222';
 function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolean; mission?: any; runs?: any[];
-    teamNotApplicable?: boolean;
+    /** The readiness verdict of the business (`ReadinessService.currentVerdict`); default `listo`. */
+    verdict?: 'no_listo' | 'limitado' | 'listo' | null;
     /**
      * The tenant's readiness tables, as the catalogue would report them.
      * `undefined` keeps the provisioned shape; `null` makes the catalogue read
@@ -38,25 +39,45 @@ function harness(options: { missing?: boolean; drift?: boolean; unknown?: boolea
                 : sql.includes('FROM eval_runs') ? evalRows : [])),
         tenant: { findUnique: jest.fn().mockResolvedValue({ industry: 'restaurantes', settings: { verticalConfig: { subType: 'casual_dining' } } }) } };
     const check = (code: string, status = 'pass') => ({ code, status, evidence: status === 'unknown' ? { sourceAvailability: 'unavailable' } : {}, dimension: 'business_scope', critical: true, weight: 1 });
-    const overview = { agent: { id: AGENT, version: 2, name: 'Luna' }, preparation: { dimensions: [{ checks: [check('persona_identity'), check('knowledge_coverage', options.unknown ? 'unknown' : 'pass'), check('tool_appointments', 'not_applicable'),
-        ...(options.teamNotApplicable ? [check('human_handoff_route', 'not_applicable')] : [])] }] }, tested: { status: 'ready', stale: false } };
+    const overview = { agent: { id: AGENT, version: 2, name: 'Luna' }, preparation: { dimensions: [{ checks: [check('persona_identity', options.unknown ? 'unknown' : 'pass'), check('rag_knowledge'), check('test_drive_permissions', 'not_applicable')] }] }, tested: { status: 'ready', stale: false } };
     const quality = { getOverview: jest.fn().mockResolvedValue(overview) };
     const capabilities = { resolve: jest.fn().mockResolvedValue({ contract: { publishedTools: ['search_menu'], resolvedAt: '2026-09-06T00:00:00Z' } }) };
-    return { service: new AgentAssessmentService(prisma as any, quality as any, capabilities as any), prisma, quality, capabilities, overview };
+    const readiness = { currentVerdict: jest.fn().mockResolvedValue(options.verdict === undefined ? 'listo' : options.verdict) };
+    return { service: new AgentAssessmentService(prisma as any, quality as any, capabilities as any, undefined, readiness as any), prisma, quality, capabilities, overview, readiness };
 }
 
 describe('shared agent assessment', () => {
-    it('treats missing business context and hours as initial setup, not deterioration', async () => {
-        const h = harness();
-        h.overview.preparation.dimensions[0].checks = [
-            { code: 'business_identity', status: 'pass', evidence: { configured: true } },
-            { code: 'business_context', status: 'warning', evidence: { goals: 0, audiences: 0 } },
-            { code: 'business_hours', status: 'warning', evidence: { configured: false } },
-        ] as any;
-        const result = await h.service.getAssessment(TENANT, AGENT);
-        for (const key of ['business', 'hours']) expect(result.tasks.find(task => task.key === key))
-            .toMatchObject({ status: 'warning', state: 'pending' });
-        expect(result.state).not.toBe('degraded');
+    describe('the business task is the readiness verdict (C0 §4.2, R2)', () => {
+        it.each([
+            ['listo', 'pass', 'prepared'],
+            // «verdict ≠ no_listo»: limited passes the essential (its gaps live in the panel).
+            ['limitado', 'pass', 'prepared'],
+            // Not ready is setup still to do, not deterioration.
+            ['no_listo', 'fail', 'pending'],
+            // An unreadable verdict is never "ready".
+            [null, 'unknown', 'unknown'],
+        ] as const)('%s → %s / %s, linked to the readiness panel', async (verdict, status, state) => {
+            const h = harness({ verdict });
+            const result = await h.service.getAssessment(TENANT, AGENT);
+            expect(h.readiness.currentVerdict).toHaveBeenCalledWith(TENANT);
+            expect(result.tasks.find(task => task.key === 'business')).toMatchObject({
+                status, state, href: '/admin/readiness', tourId: null, checks: [] });
+            expect(result.state).not.toBe('degraded');
+        });
+
+        it('the setup card keeps only channel, agent and the verdict as essentials, and no business-data task', async () => {
+            const result = await harness().service.getAssessment(TENANT, AGENT);
+            const keys = result.tasks.map(task => task.key);
+            for (const retired of ['knowledge', 'team', 'hours', 'appointments']) expect(keys).not.toContain(retired);
+            expect(keys.slice(0, 3)).toEqual(['channel', 'agent', 'business']);
+        });
+
+        it('without the readiness service the verdict is unknown, never "ready"', async () => {
+            const h = harness();
+            const service = new AgentAssessmentService(h.prisma as any, h.quality as any, h.capabilities as any);
+            expect((await service.getAssessment(TENANT, AGENT)).tasks.find(task => task.key === 'business'))
+                .toMatchObject({ status: 'unknown', state: 'unknown' });
+        });
     });
 
     it('still surfaces real credential risks instead of hiding them as setup', async () => {
@@ -134,13 +155,13 @@ describe('shared agent assessment', () => {
     it('routes an unknown task to its unreadable check and does not offer a corrective tour', async () => {
         const h = harness();
         h.overview.preparation.dimensions[0].checks = [
-            { code: 'knowledge_coverage', status: 'warning', href: '/admin/knowledge' },
-            { code: 'media_privacy_policy', status: 'unknown', href: '/admin/settings/policies?type=privacy',
+            { code: 'persona_identity', status: 'warning', href: `/admin/agent/${AGENT}?tab=persona&focus=name` },
+            { code: 'fallback_message', status: 'unknown', href: `/admin/agent/${AGENT}?tab=persona&focus=fallback`,
                 evidence: { sourceAvailability: 'unavailable' } },
         ] as any;
         const result = await h.service.getAssessment(TENANT, AGENT);
-        expect(result.tasks.find(task => task.key === 'knowledge')).toMatchObject({ status: 'unknown',
-            pendingCheckCode: 'media_privacy_policy', href: '/admin/settings/policies?type=privacy', tourId: null });
+        expect(result.tasks.find(task => task.key === 'agent')).toMatchObject({ status: 'unknown',
+            pendingCheckCode: 'fallback_message', href: `/admin/agent/${AGENT}?tab=persona&focus=fallback`, tourId: null });
     });
 
     it('resolves a default agent server-side and reuses the runtime composer on each assigned channel', async () => {
@@ -164,10 +185,10 @@ describe('shared agent assessment', () => {
         });
         expect(JSON.stringify(assessment.configuration)).not.toMatch(/SECRET|NEVER EXPOSE/);
     });
-    it('keeps unavailable knowledge unknown even when other preparation checks pass', async () => {
+    it('keeps an unreadable agent check unknown even when other preparation checks pass', async () => {
         const { service } = harness({ unknown: true });
         const result = await service.getAssessment(TENANT, AGENT);
-        expect(result.tasks.find(task => task.key === 'knowledge')?.status).toBe('unknown');
+        expect(result.tasks.find(task => task.key === 'agent')?.status).toBe('unknown');
     });
 
     it('keeps a blocked second channel visible in the tool summary', async () => {
@@ -218,9 +239,13 @@ describe('shared agent assessment', () => {
         // roll-up, so one inapplicable task made the whole agent permanently
         // unreadable — a business without that capability could never be
         // reported as operating, however much of it worked.
-        const { service } = harness({ teamNotApplicable: true });
-        const assessment = await service.getAssessment(TENANT, AGENT);
-        const team = assessment.tasks.find(task => task.key === 'team')!;
+        const h = harness();
+        h.overview.preparation.dimensions[0].checks = [
+            { code: 'persona_identity', status: 'not_applicable', evidence: {} },
+            { code: 'custom_prompt', status: 'not_applicable', evidence: {} },
+        ] as any;
+        const assessment = await h.service.getAssessment(TENANT, AGENT);
+        const team = assessment.tasks.find(task => task.key === 'agent')!;
         expect(team.status).toBe('not_applicable');
         expect(team.state).toBeNull();
         // `status` still carries the answer, so nothing was hidden by removing
@@ -236,7 +261,7 @@ describe('shared agent assessment', () => {
     it('never rolls a whole agent up to operating while a part could not be read', async () => {
         const { service } = harness({ unknown: true });
         const assessment = await service.getAssessment(TENANT, AGENT);
-        expect(assessment.tasks.find(task => task.key === 'knowledge')?.state).toBe('unknown');
+        expect(assessment.tasks.find(task => task.key === 'agent')?.state).toBe('unknown');
         // An unreadable table is not an empty table, and it is not a pass either.
         expect(assessment.state).toBe('unknown');
     });
@@ -299,7 +324,6 @@ describe('shared agent assessment', () => {
             blockedMenu(capabilities);
             const result = await service.getAssessment(TENANT, AGENT);
             const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
-            expect(menu.readinessAudit[0]).toMatchObject({ key: 'menu_items', verdict: 'missing_data' });
             expect(menu.state).toBe('pending');
         });
 
@@ -310,7 +334,6 @@ describe('shared agent assessment', () => {
             blockedMenu(capabilities);
             const result = await service.getAssessment(TENANT, AGENT);
             const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
-            expect(menu.readinessAudit[0]).toMatchObject({ key: 'menu_items', verdict: 'read_error' });
             // Not `pending`: `pending` says there is something here for the
             // owner to do, and there is not.
             expect(menu.state).toBe('unknown');
@@ -326,7 +349,6 @@ describe('shared agent assessment', () => {
             blockedMenu(capabilities);
             const result = await service.getAssessment(TENANT, AGENT);
             const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
-            expect(menu.readinessAudit[0]).toMatchObject({ verdict: 'missing_data' });
             expect(menu.state).toBe('pending');
         });
 
@@ -337,10 +359,10 @@ describe('shared agent assessment', () => {
             const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
             // Nothing was proven about the columns, so the readiness report's
             // own answer stands rather than being overridden either way.
-            expect(menu.readinessAudit[0]).toMatchObject({ verdict: 'missing_data' });
+            expect(menu.state).toBe('pending');
         });
 
-        it('cites the predicate the tool runs on a published tool too', async () => {
+        it('hands no predicate citation to the surfaces on a published tool either (R2)', async () => {
             const { service, capabilities } = harness();
             capabilities.resolve.mockResolvedValue({
                 contract: { publishedTools: ['get_menu'], excluded: [], unmetReadiness: [], degraded: false,
@@ -348,14 +370,8 @@ describe('shared agent assessment', () => {
             } as any);
             const result = await service.getAssessment(TENANT, AGENT);
             const menu = (result.tools as any[]).find(tool => tool.tool === 'get_menu')!;
-            expect(menu.readinessAudit[0]).toMatchObject({
-                key: 'menu_items', table: 'menu_items',
-                predicate: 'is_active = true AND is_available = true', verdict: 'satisfied',
-                writePath: '/admin/menu',
-            });
-            // The shipped check and the tool now read the same sellable menu.
-            // A leftover divergence would make the assessment accuse a closed gap.
-            expect(menu.readinessAudit[0].auditedDivergence).toBeNull();
+            expect(menu).not.toHaveProperty('readinessAudit');
+            expect(menu.state).toBe('prepared');
         });
     });
 });

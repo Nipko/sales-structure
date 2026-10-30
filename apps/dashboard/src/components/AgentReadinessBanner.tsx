@@ -16,25 +16,11 @@ interface Props {
 }
 
 /**
- * Where pending prices are fixed when the check carries no `href` (an API
- * older than the plans half). The check counts example amounts to confirm and
- * rows with no amount at all, each for services and for a gym's membership
- * plans; the API picks Membresías when only plans are pending, of either kind,
- * and this reads the same four numbers. Services live in Citas; sending a gym
- * whose only pending prices are plans there lands on a list with nothing to do.
- */
-function examplePriceTarget(check?: AgentQualityCheck | null): string {
-  const evidence: Record<string, unknown> = check?.evidence ?? {};
-  const services = (Number(evidence.examplePriceServices) || 0) + (Number(evidence.noPriceServices) || 0);
-  const plans = (Number(evidence.examplePricePlans) || 0) + (Number(evidence.noPricePlans) || 0);
-  return services === 0 && plans > 0 ? "/admin/memberships" : "/admin/appointments?tab=services";
-}
-
-/**
  * Where a person actually fixes each critical check. Anything not listed here
  * falls back to the quality center, which explains the check in full — never to
  * a page that cannot resolve it (that mismatch is the defect this replaces).
  * The check's own `href` always wins; this is only for when it has none.
+ * Business-data facts are not checks here (R2): the readiness panel links them.
  */
 const BLOCKER_TARGETS: Record<string, (agentId: string, check?: AgentQualityCheck | null) => string> = {
   agent_active: (id) => `/admin/agent/${id}?focus=active`,
@@ -47,30 +33,15 @@ const BLOCKER_TARGETS: Record<string, (agentId: string, check?: AgentQualityChec
   llm_limits: (id) => `/admin/agent/${id}?tab=persona&focus=name`,
   behavior_rules: (id) => `/admin/agent/${id}?tab=instructions&focus=rules`,
   forbidden_topics: (id) => `/admin/agent/${id}?tab=instructions&focus=rules`,
-  handoff_triggers: (id) => `/admin/agent/${id}?tab=instructions&focus=handoff`,
   channel_assignment: (id) => `/admin/agent/${id}?focus=channels`,
   channel_coverage: (id) => `/admin/agent/${id}?focus=channels`,
   operational_channel_scope: (id) => `/admin/agent/${id}?focus=channels`,
   channel_connection: () => "/admin/channels",
-  business_identity: () => "/admin/settings/business-info",
-  business_contact: () => "/admin/settings/business-info",
-  business_context: () => "/admin/settings/business-info",
-  business_hours: () => "/admin/settings/business-hours",
-  after_hours_behavior: () => "/admin/settings/business-hours",
-  human_handoff_route: () => "/admin/users",
-  knowledge_coverage: () => "/admin/knowledge",
   rag_knowledge: () => "/admin/knowledge",
   rag_configuration: () => "/admin/knowledge",
   tool_knowledge: () => "/admin/knowledge",
-  tool_faqs: () => "/admin/knowledge/faqs",
-  tool_policies: () => "/admin/settings/policies",
   media_privacy_policy: () => "/admin/settings/policies?type=privacy",
-  tool_appointments: () => "/admin/appointments?tab=config",
-  services_example_price: (_id, check) => examplePriceTarget(check),
-  tool_vehicles: () => "/admin/vehicles",
   test_drive_permissions: (id) => `/admin/agent/${id}`,
-  test_drive_service: () => "/admin/appointments?tab=services",
-  test_drive_staff: () => "/admin/appointments?tab=config",
 };
 
 const STATUS_STYLES: Record<AgentQualityOverview["status"], string> = {

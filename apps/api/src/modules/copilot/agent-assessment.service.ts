@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { READINESS } from '../verticals/vertical-readiness.service';
 import { readinessTablesToInspect } from '../../common/utils/readiness-predicate-authority.util';
 import { AgentQualityService } from '../quality/agent-quality.service';
+import { ReadinessService } from '../readiness/readiness.service';
 import { TurnCapabilityComposerService } from '../conversations/turn-capability-composer.service';
 import { getVerticalCatalog } from '../../common/utils/vertical-catalog.util';
 
@@ -142,7 +143,26 @@ export class AgentAssessmentService {
         private readonly quality: AgentQualityService,
         private readonly capabilities: TurnCapabilityComposerService,
         @Optional() private readonly revisions?: EvaluationRevisionService,
+        @Optional() private readonly readiness?: ReadinessService,
     ) {}
+
+    /**
+     * The `business` setup task is the readiness verdict of the business
+     * (C0 §4.2, R2): one owner for "does the business have its data". It never
+     * throws; an unreadable verdict is `unknown`, never "ready".
+     */
+    private async businessReadinessTask(tenantId: string): Promise<{ status: AgentSetupTask['status']; state: AgentOperationalState }> {
+        const verdict = this.readiness ? await this.readiness.currentVerdict(tenantId) : null;
+        switch (verdict) {
+            // The task asks exactly «verdict ≠ no_listo» (C0 §4.2): limited passes.
+            // It is publishable once the owner acknowledges what stays «no consta»,
+            // and those gaps are listed by the readiness panel, not by this task.
+            case 'listo':
+            case 'limitado': return { status: 'pass', state: 'prepared' };
+            case 'no_listo': return { status: 'fail', state: 'pending' };
+            default: return { status: 'unknown', state: 'unknown' };
+        }
+    }
 
     /**
      * The service that captures the tenant's live evaluation dependencies.
@@ -359,15 +379,9 @@ export class AgentAssessmentService {
         const defaults: Record<string, { href: string; tourId: AgentSetupTask['tourId']; dependsOn: AgentSetupTask['key'][] }> = {
             channel: { href: '/admin/channels', tourId: 'connect_channel', dependsOn: ['agent'] },
             agent: { href: `/admin/agent/${agent.id}`, tourId: 'agent_handoff_rules', dependsOn: ['mission'] },
-            business: { href: '/admin/settings/business-info', tourId: 'business_identity', dependsOn: [] },
-            knowledge: { href: '/admin/knowledge', tourId: 'knowledge_base', dependsOn: ['business'] },
-            team: { href: '/admin/users', tourId: 'human_handoff_route', dependsOn: [] },
-            hours: { href: '/admin/settings/business-hours', tourId: 'business_hours', dependsOn: [] },
-            appointments: { href: '/admin/appointments', tourId: 'appointments_setup', dependsOn: ['hours'] },
         };
         for (const [key, codes] of Object.entries(AGENT_SETUP_TASK_CHECKS)) {
             const relevant = checks.filter(check => codes.includes(check.code));
-            if (key === 'appointments' && relevant.every(check => check.status === 'not_applicable')) continue;
             const taskStatus = setupTaskStatus(relevant);
             const firstPending = relevant.find(check => check.status === taskStatus && ['fail', 'warning', 'unknown'].includes(check.status));
             tasks.push(connectFirstChannelTask(withState({ key: key as AgentSetupTask['key'], status: taskStatus, checks: relevant,
@@ -382,6 +396,9 @@ export class AgentAssessmentService {
                     ? null : findGuidedTourForQualityCode(firstPending?.code, firstPending?.evidence)?.id ?? defaults[key].tourId,
                 ...(key === 'channel' ? { channelType: preferredChannel } : {}) }), operationalConnections));
         }
+        const business = await this.businessReadinessTask(tenantId);
+        tasks.push(withState({ key: 'business', status: business.status, checks: [], href: '/admin/readiness', tourId: null, dependsOn: [] },
+            business.state));
         const catalog = getVerticalCatalog(industry, subType);
         if (catalog) {
             const relevant = checks.filter(check => check.href === catalog.route && check.code.startsWith('tool_'));
@@ -424,7 +441,7 @@ export class AgentAssessmentService {
             status: requiredTests.some(test => test.state === 'unknown') ? 'unknown'
                 : requiredTests.some(test => test.evidence === 'failed') ? 'fail'
                     : proven || (!requiredTests.length && overview.tested.status === 'ready' && !overview.tested.stale) ? 'pass' : 'warning',
-            checks: [], href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'knowledge'] },
+            checks: [], href: `/admin/agent/${agent.id}/test`, tourId: 'run_agent_tests', dependsOn: ['mission', 'agent', 'business'] },
             // Like the mission task, `warning` here means "not proven yet", not
             // "something broke". Deriving the shared word from the status would
             // spell an agent that has simply never been tested `degraded`, which
@@ -515,12 +532,9 @@ export class AgentAssessmentService {
                 ...tools.map(tool => tool.state),
                 ...requiredTests.filter(test => test.state !== 'pending').map(test => test.state),
             ]),
-            // No cast. The contract carries `readinessAudit` now, so the
-            // shape the surfaces read is the shape this hands over — the cast
-            // was what let a field every screen depends on live outside the
-            // one declaration they all share, and it was hiding a second
-            // thing too: this builds frozen arrays and the contract asked for
-            // mutable ones.
+            // No cast: the shape the surfaces read is the shape this hands
+            // over. The arrays are frozen, and the contract declares them
+            // read-only for that reason.
             tools,
             configuration: { persona: { name: text(config.persona?.name), role: text(config.persona?.role), greeting: text(config.persona?.greeting), fallbackMessage: text(config.persona?.fallbackMessage),
                 personality: { tone: text(config.persona?.personality?.tone), formality: text(config.persona?.personality?.formality),

@@ -76,17 +76,16 @@ Durante tu día 0, el paso de conexión del asistente no muestra **Mostrarme dó
 
 ## La tarjeta "Puesta en marcha"
 
-En **Inicio** aparece **Puesta en marcha** mientras falte alguno de los **cuatro esenciales**
+En **Inicio** aparece **Puesta en marcha** mientras falte alguno de los **esenciales**
 disponibles para tu plan y tu rol, en este orden:
 
 - **conectar un canal** (WhatsApp, Instagram, Messenger, Telegram o el chat web);
 - **revisar a tu agente** (nombre, mensaje cuando no puede responder, reglas y motivos para pasar a un humano);
-- **contar qué hace tu negocio** en Información del negocio;
-- **invitar a una persona** que reciba los chats cuando la IA los pase.
+- **preparar tu negocio**: el veredicto del panel de preparación del negocio, que lista lo que falta (identidad, horario, pagos, políticas, catálogo, la persona que recibe los chats cuando la IA los pase…) con el enlace a la pantalla donde se completa cada dato.
 
-El paso marcado **Siguiente** es el que conviene hacer ahora. Cargar conocimiento, confirmar el horario,
-preparar citas o el catálogo mejoran al agente, pero no son requisito para que responda: viven en
-**Salud de agentes**, no en esta tarjeta. En Inicio, mientras esté la tarjeta, es ella la
+El paso marcado **Siguiente** es el que conviene hacer ahora. Lo que no bloquea
+la atención (lo necesario y lo recomendado del panel de preparación, las pruebas) mejora al agente,
+pero no es requisito para que responda: no vive en esta tarjeta. En Inicio, mientras esté la tarjeta, es ella la
 que te dice qué falta: ahí no se muestra el aviso global **Hay algo importante que resolver en tus agentes.**
 
 Cada ítem tiene **Continuar**, que abre la pantalla donde se hace y, cuando existe un recorrido para ese paso, también **Mostrarme dónde**, que además resalta paso a paso el campo o el botón exacto. Algunos pasos no tienen recorrido — el catálogo propio de tu industria, por ejemplo — y los roles que no pueden ejecutar recorridos ven solo **Continuar**. Cada paso pendiente abre una ruta permitida. La tarjeta desaparece al completarlos y

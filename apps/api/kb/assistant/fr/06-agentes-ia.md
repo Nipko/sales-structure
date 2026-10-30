@@ -39,7 +39,7 @@ Un agent ne fonctionne bien que si le minimum est défini. À l'enregistrement, 
 - **Au moins une règle** de comportement.
 - **Au moins un motif** dans **Quand passer à un humain**.
 
-Si vous videz l'un de ces champs pour le réécrire, enregistrez seulement une fois qu'il est complet : un agent sans message de repli ou sans motifs de transfert apparaît dans la **Santé des agents** comme un point important à régler, dans **Réponse en cas d'incertitude** ou **Motifs de transfert**.
+Si vous videz l'un de ces champs pour le réécrire, enregistrez seulement une fois qu'il est complet : un agent sans message de repli apparaît dans la **Santé des agents** comme un point important à régler, dans **Réponse en cas d'incertitude**. Les motifs de transfert et la personne qui reçoit le transfert sont vérifiés par le panneau de préparation de l'entreprise, pas par la Santé des agents.
 
 **Si votre agent tourne en mode prompt personnalisé**, cette liste change. Lorsque votre compte dispose de cette fonction et que l'agent l'utilise, un texte unique que vous rédigez remplace la personnalité guidée : la **Santé des agents** marque l'identité, le ton, le message d'accueil, le message de repli et les règles comme **Non applicable**, et exige à la place que ce prompt ne soit pas vide. Ce qui **reste obligatoire**, c'est au moins un motif dans **Quand passer à un humain** : sans lui la conversation n'atteint jamais une personne, quoi que dise le prompt. Si vous voyez « Non applicable » là où ce guide dit « obligatoire », c'est pour cette raison, pas à cause d'une erreur.
 

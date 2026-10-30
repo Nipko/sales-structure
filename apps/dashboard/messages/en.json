@@ -1024,6 +1024,7 @@
       "automationTemplates": "Templates",
       "sales": "Sales",
       "agentQuality": "Agent health",
+      "readiness": "Business readiness",
       "agentSimulation": "Test agent",
       "procedures": "Procedures",
       "organizations": "Organizations",
@@ -12923,6 +12924,13 @@
         "connectLead": "Connect {channel}"
       },
       "pendingReason": "Pending: {check}",
+      "readinessVerdict": {
+        "no_listo": "Some missing facts block service:",
+        "limitado": "It can serve customers; some answers stay \"not on record\" until the facts are completed.",
+        "listo": "Your business has what it needs to serve customers.",
+        "openPanel": "See everything that is missing",
+        "askAdmin": "Ask an administrator"
+      },
       "verificationUnavailable": "Awaiting verification. Retry when the lookup is available.",
       "title": "Getting started",
       "description": "The minimum for your agent to answer a customer. Start with the highlighted step; the rest takes minutes.",
@@ -12934,12 +12942,8 @@
       "items": {
         "agent": "Review your agent",
         "channel": "Connect and assign a channel",
-        "knowledge": "Load what the agent must know",
         "catalog": "Load your catalog",
-        "business": "Tell us what your business does",
-        "team": "Have someone available to receive chats",
-        "hours": "Confirm your hours",
-        "appointments": "Set up services and availability",
+        "business": "Get your business ready to serve customers",
         "mission": "Agree the agent mission",
         "tests": "Test agent outcomes"
       },
@@ -12984,14 +12988,7 @@
         "fix_channel_connection": "{credentialIssue, select, none {{agent} has no connected channel that can receive messages. Connect {disconnected} or assign a channel that is already connected.} expiring {{agent} is replying normally over {connectedChannels}, but that channel’s authorisation expires soon. Renew it before it stops sending.} unknown {{agent} is connected to {connectedChannels}, but we could not verify that channel’s authorisation. Open it in Channels to confirm it is still valid.} other {{agent} is connected to {connectedChannels}, but that authorisation no longer works ({credentialIssue}): until it is renewed, the agent cannot send replies.}}",
         "fix_channel_coverage": "{agent} is assigned to {assigned} channels and only {connected} are connected. Not connected: {disconnected}. Connect that channel or remove it from the agent's assignment.",
         "fix_channel_assignment": "{agent} has no channel assigned, so right now it serves nobody. Pick the channels this agent should answer.",
-        "fix_human_handoff_route": "There is no active person who can take the conversation when {agent} hands it to a human. Invite at least one agent or supervisor.",
-        "fix_handoff_triggers": "{agent} has no reasons to hand a conversation to a person, so it tries to answer everything. Add at least one escalation trigger.",
-        "fix_business_identity": "Basic business information is missing, so {agent} answers without knowing who it represents. Fill in the name and what the business does.",
         "fix_rag_knowledge": "{agent} has no indexed knowledge to consult and answers only from its instructions. Upload documents or turn on a knowledge source.",
-        "fix_knowledge_coverage": "The knowledge you loaded does not cover the questions coming in, and some topics have no answer. Add content or publish what is still a draft.",
-        "fix_tool_appointments": "Booking is on but not fully set up, so {agent} will say there are no slots. Add services and availability blocks.",
-        "fix_services_example_price": "{priceScope, select, plans {{count, plural, one {There is # membership plan with an example price from your industry.} other {There are # membership plans with an example price from your industry.}}} both {{count, plural, one {There is # example price from your industry across services and plans.} other {There are # example prices from your industry across services and plans.}}} other {{count, plural, one {There is # service with an example price from your industry.} other {There are # services with an example price from your industry.}}}} {agent} will not mention an example price until you confirm it.",
-        "fix_business_hours": "The business has no hours defined, so {agent} cannot say when you are open or what to answer after hours. Set the schedule or mark 24/7.",
         "fix_fallback_message": "The message for when {agent} cannot answer is missing, so the conversation ends in a dead end. Write what it should say and who takes over.",
         "fix_behavior_rules": "{agent} has no behavior rules, so it improvises in every conversation. Write at least one rule about what to do and what not to do.",
         "run_eval": "{agent} has not passed an automated test yet, so there is no evidence of how it answers. Run an evaluation before letting it work alone.",
@@ -12999,13 +12996,9 @@
         "collect_production_evidence": "There are not enough real conversations from {agent} to measure performance yet. Keep it working and come back when the sample grows.",
         "resolve_knowledge_gaps": "Some questions could not be answered by {agent} with the available knowledge. Review those gaps and add the missing content.",
         "generic": "This action is open for {agent}. Open the screen, fix what is missing, and the status updates on its own.",
-        "fix_tool_vehicles": "Add at least one available vehicle so {agent} can present real options.",
         "fix_test_drive_permissions": "The mission for {agent} includes test drives. Enable appointments and booking permission, or adjust the mission if it should only provide vehicle information.",
-        "fix_test_drive_service": "Create an in-person or hybrid service with a fixed duration for test drives. An online consultation cannot reserve a vehicle.",
-        "fix_test_drive_staff": "Assign an active business user and configure an availability window long enough for the test drive. The exact slot is checked when booking.",
         "fix_whatsapp_delivery": "{reason, select, timezone_missing {{agent} can't answer on WhatsApp because your number's billing time zone hasn't been confirmed; pick it on the WhatsApp screen and its replies go out again.} funding_absent {Your WhatsApp account has no payment method in Meta: Meta charges for the messages, not us, and from October 1, 2026 it stops delivering {agent}'s replies unless you add one.} funding_restricted {Meta restricted charges on your WhatsApp account, so it won't deliver {agent}'s replies until you sort out the payment in Meta and resume the number on the WhatsApp screen.} currency_unknown {We don't know yet which currency Meta charges you in for WhatsApp, and since you have spend protection on, {agent}'s replies wait until we do.} other {Your WhatsApp account is stopping {agent}'s replies before they go out; check what it's missing on the WhatsApp screen.}}",
-        "fix_channel_unanswered": "{cause, select, conflict {Two agents are assigned to {channels} and, since we don't pick one for you, neither answers. Leave that channel with a single agent.} mixed {Nobody answers on {channels}: some of those channels have no agent and others have two at once. Leave each channel with a single agent.} other {No agent answers on {channels}: messages that arrive there go unanswered. Assign that channel to an agent or mark one as the default agent.}}",
-        "services_no_price": "{priceScope, select, plans {{count, plural, one {There is # membership plan without a price.} other {There are # membership plans without a price.}}} both {{count, plural, one {There is # service or membership plan without a price.} other {There are # services and membership plans without a price.}}} other {{count, plural, one {There is # service without a price.} other {There are # services without a price.}}}} While the price is missing, {agent} tells the customer it is still to be confirmed."
+        "fix_channel_unanswered": "{cause, select, conflict {Two agents are assigned to {channels} and, since we don't pick one for you, neither answers. Leave that channel with a single agent.} mixed {Nobody answers on {channels}: some of those channels have no agent and others have two at once. Leave each channel with a single agent.} other {No agent answers on {channels}: messages that arrive there go unanswered. Assign that channel to an agent or mark one as the default agent.}}"
       },
       "channelNames": {
         "whatsapp": "WhatsApp",
@@ -13176,48 +13169,28 @@
     "checks": {
       "agent_active": "Active agent",
       "persona_identity": "Agent identity and role",
-      "business_identity": "Business identity",
-      "business_contact": "Business contact details",
-      "business_context": "Context, goals, and audience",
       "agent_language": "Configured language",
       "brand_voice": "Brand voice and tone",
       "greeting": "Initial greeting",
       "fallback_message": "Unknown-answer response",
       "behavior_rules": "Behavior rules",
       "custom_prompt": "Custom prompt",
-      "knowledge_coverage": "Knowledge coverage",
       "rag_knowledge": "Knowledge base ready",
       "rag_configuration": "Retrieval configuration",
       "tool_knowledge": "Knowledge tool",
-      "tool_faqs": "Frequently asked questions",
-      "tool_policies": "Business policies",
       "media_privacy_policy": "Privacy for images and audio",
-      "tool_catalog": "Available catalog",
-      "tool_appointments": "Scheduling and availability",
-      "services_example_price": "Unconfirmed prices",
       "tool_orders": "Order management",
-      "tool_ecommerce": "Commerce integration",
-      "tool_offers": "Current offers",
       "tool_crm": "CRM actions",
       "channel_assignment": "Channel assigned to agent",
       "operational_channel_scope": "Certified conversational channels only",
       "channel_connection": "Operational channel connection",
       "forbidden_topics": "Restricted topics",
-      "handoff_triggers": "Handoff reasons",
-      "human_handoff_route": "Human support route",
-      "business_hours": "Business hours",
-      "after_hours_behavior": "After-hours behavior",
       "llm_limits": "Model response limits",
       "vertical_tool": "Industry operational tool",
       "unknown": "Configuration check",
-      "tool_vehicles": "Available vehicle inventory",
-      "tool_vehicle_rentals": "Vehicle rental inventory",
-      "tool_pet_boarding": "Daycare and boarding capacity",
       "tool_repair_orders": "Workshop orders",
       "tool_payments": "Payment provider",
       "test_drive_permissions": "Permission to book test drives",
-      "test_drive_service": "Test-drive service",
-      "test_drive_staff": "Test-drive staff and availability",
       "channel_unanswered": "Every connected channel has an agent that replies",
       "whatsapp_delivery": "WhatsApp can deliver replies"
     },
@@ -15909,6 +15882,83 @@
       "smtpUnknown": "The server did not confirm the result. Check the inbox and logs before sending again.",
       "ineligible": "The recipient no longer meets the audience criteria.",
       "invalidInput": "Check the fields, their limits and translations before saving."
+    }
+  },
+  "readinessPanel": {
+    "title": "Business readiness",
+    "subtitle": "Which business data the agent can already use and what is missing to serve customers well.",
+    "loading": "Calculating readiness…",
+    "tenantRequired": "Choose a business to see its readiness.",
+    "error": "Readiness could not be calculated.",
+    "refresh": "Recalculate",
+    "evaluatedAt": "calculated on {date}",
+    "summary": "{blocking} blocking · {necessary} necessary · {coverage}% of recommended",
+    "verdict": {
+      "no_listo": {
+        "title": "Not ready yet",
+        "description": "Data is missing without which the agent cannot serve real customers."
+      },
+      "limitado": {
+        "title": "Ready with limits",
+        "description": "It can serve customers, but some questions will get “not on record” until you complete the necessary data."
+      },
+      "listo": {
+        "title": "Ready",
+        "description": "The agent has the data it needs to serve customers."
+      }
+    },
+    "groups": {
+      "blocking": {
+        "title": "Blocking",
+        "description": "Without this data the agent cannot go live.",
+        "empty": "Nothing blocking."
+      },
+      "necessary": {
+        "title": "Necessary",
+        "description": "The agent serves customers, but will answer “not on record” on these topics.",
+        "empty": "Nothing necessary is missing."
+      },
+      "recommended": {
+        "title": "Recommended",
+        "description": "They improve the answers. Coverage: {pct}%.",
+        "show": "Show recommended"
+      },
+      "quality": {
+        "title": "Quality",
+        "description": "Sample, template, contradictory or inherited data worth reviewing."
+      },
+      "platform": {
+        "title": "Platform",
+        "description": "We take care of it; nothing for you to do."
+      }
+    },
+    "limitedIntents": "{count, plural, one {# question will get} other {# questions will get}} “not on record”",
+    "whyItMatters": "Affects:",
+    "alsoFixes": "Completing it also solves:",
+    "ratio": "{ok} of {total} complete",
+    "action": {
+      "fix": "Complete",
+      "askAdmin": "Ask an administrator",
+      "comingSoon": "Soon you will complete it here"
+    },
+    "cause": {
+      "ausente": "missing",
+      "ejemplo": "sample",
+      "sembrado": "template",
+      "contradictorio": "contradictory",
+      "parcial": "incomplete",
+      "caducado": "expired",
+      "hecho_sin_declarar": "not declared",
+      "plataforma": "platform"
+    },
+    "coverage": {
+      "title": "Coverage by area",
+      "value": "{ok}/{total} · {pct}%"
+    },
+    "history": {
+      "title": "History",
+      "empty": "No history yet.",
+      "counts": "{blocking} blocking · {necessary} necessary"
     }
   }
 }

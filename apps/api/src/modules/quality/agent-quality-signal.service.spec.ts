@@ -600,13 +600,13 @@ describe('AgentQualitySignalService', () => {
             // Day 0: the banner hides a missing business description, and a
             // WhatsApp that refuses every reply must not hide behind it.
             const { service, sqlCalls } = createHarness({
-                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_business_identity', severity: 'critical',
+                topRows: [{ id: SIGNAL_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_fallback_message', severity: 'critical',
                     href: '/admin/settings/business-info', evidence_count: 0, check_status: 'fail' }],
                 deliveryRows: [{ id: ACTOR_ID, agent_id: AGENT_ID, agent_name: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
                     href: '/admin/channels/whatsapp', evidence_count: 0, check_status: 'fail', delivery_issue: 'timezone_missing' }],
             });
             const summary = await service.getAttentionSummary(TENANT_ID);
-            expect(summary.topAction).toMatchObject({ code: 'fix_business_identity' });
+            expect(summary.topAction).toMatchObject({ code: 'fix_fallback_message' });
             expect(summary.deliveryAction).toEqual({
                 signalId: ACTOR_ID, agentId: AGENT_ID, agentName: 'Luna', code: 'fix_whatsapp_delivery', severity: 'critical',
                 href: '/admin/channels/whatsapp', evidenceCount: 0, checkStatus: 'fail', deliveryIssue: 'timezone_missing',

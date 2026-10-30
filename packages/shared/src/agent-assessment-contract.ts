@@ -24,47 +24,6 @@ export function isAgentMissionV1(value: unknown): value is AgentMissionV1 {
         && list(mission.successCriteria) && list(mission.handoffConditions);
 }
 
-/**
- * Why a readiness requirement says what it says.
- *
- * A bare key told an owner nothing: `faq_content` names no table, no
- * condition and no screen. This carries the predicate the TOOL evaluates —
- * not the one the readiness check happens to run, which in thirteen of
- * eighteen cases is a different question — plus the verdict, the screen whose
- * write really moves it, and the divergence when the two disagree.
- *
- * It lives in the contract because the surfaces render it. It was reaching
- * them already, through a cast: the assessment handed its tools over as
- * `any`, so a field every screen depends on was outside the one shape they
- * are all supposed to read. The enums are `string` here on purpose — the
- * authority for their values is the API register, and a second copy of a
- * union in the contract is a second thing to keep in step.
- */
-export interface ReadinessCitationV1 {
-    key: string;
-    /** The predicate the tool evaluates, e.g. `is_published = true`. */
-    predicate: string;
-    table: string;
-    /** Which of active/availability/capacity/price/currency/ownership/account it decides. */
-    dimensions: readonly string[];
-    /** `satisfied`, `missing_data`, `read_error` — never a bare boolean. */
-    verdict: string;
-    /** The screen whose write moves this check, which is not always the CTA's. */
-    writePath: string;
-    /** Present when the shipped check decides less than its tool does. */
-    auditedDivergence: {
-        kind: string;
-        missingDimensions: readonly string[];
-        /** What a tenant experiences because of it. */
-        consequence: string;
-        /** The exact change that closes it. */
-        correction: string;
-        /** The file that has to change. */
-        owner: string;
-        absentColumn?: string;
-    } | null;
-}
-
 /** Mirrors `buildAgentToolExplanations`; kept here so every surface reads one shape. */
 export interface AgentToolExplanationV1 {
     tool: string;
@@ -83,18 +42,19 @@ export interface AgentToolExplanationV1 {
         reason: string | null; detail: string | null; repairRoute: string | null;
         readiness: readonly string[];
     };
-    /**
-     * One citation per readiness requirement, in the order `requires.readiness`
-     * lists them. REQUIRED: a surface that could omit it would go back to
-     * printing key names, which is the state this replaced.
-     */
-    readinessAudit: readonly ReadinessCitationV1[];
     example: string | null;
     safeTest: { available: boolean; href: string | null };
     result: 'not_verified' | 'verified' | 'failed' | 'stale';
 }
 
-export type AgentSetupTaskKey = 'mission' | 'channel' | 'agent' | 'business' | 'knowledge' | 'catalog' | 'team' | 'hours' | 'appointments' | 'tests';
+/**
+ * The setup tasks. `business` is the readiness verdict of the business
+ * (`@parallext/business-spec`, panel /admin/readiness): it passes when the
+ * verdict is not `no_listo` (C0 §4.2, R2). The old business, knowledge, team,
+ * hours and appointments tasks counted business data with rules of their own;
+ * that question has one owner now.
+ */
+export type AgentSetupTaskKey = 'mission' | 'channel' | 'agent' | 'business' | 'catalog' | 'tests';
 export interface AgentSetupTask {
     key: AgentSetupTaskKey;
     status: AgentQualityCheckStatus;
@@ -184,13 +144,13 @@ export interface AgentAssessment {
 /**
  * The tasks without which the agent cannot answer a customer at all. These are
  * the day-0 essentials: the setup card on Home shows only these, in this order,
- * and only they decide whether the agent "can attend today". Everything else
- * (mission, knowledge, hours, appointments, catalog, tests) makes the agent
- * BETTER and lives in the health panel; a template-derived mission or a test
- * that was never run is unfinished polish, not a reason to tell a new owner
- * that their working agent "is not ready".
+ * and only they decide whether the agent "can attend today". `business` is the
+ * readiness verdict (≠ `no_listo`). Everything else (mission, catalog, tests)
+ * makes the agent BETTER and lives in the health panel; a template-derived
+ * mission or a test that was never run is unfinished polish, not a reason to
+ * tell a new owner that their working agent "is not ready".
  */
-export const AGENT_SETUP_ESSENTIAL_TASKS: readonly AgentSetupTaskKey[] = ['channel', 'agent', 'business', 'team'];
+export const AGENT_SETUP_ESSENTIAL_TASKS: readonly AgentSetupTaskKey[] = ['channel', 'agent', 'business'];
 
 export function isEssentialSetupTask(key: AgentSetupTaskKey): boolean {
     return AGENT_SETUP_ESSENTIAL_TASKS.includes(key);
@@ -207,14 +167,13 @@ export function isEssentialSetupTask(key: AgentSetupTaskKey): boolean {
  * stop that still delivers today — no payment method in Meta before the
  * 1-oct-2026 pricing change — is a `warning`, which the roll-up keeps apart
  * from `fail`.
+ *
+ * The technical knowledge checks (`rag_knowledge`, `rag_configuration`,
+ * `media_privacy_policy`) belong to no task: they stay in the health panel,
+ * where they always were, without becoming a day-0 essential.
  */
-export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey, 'mission' | 'catalog' | 'tests'>, readonly string[]>> = {
+export const AGENT_SETUP_TASK_CHECKS: Readonly<Record<Exclude<AgentSetupTaskKey, 'mission' | 'business' | 'catalog' | 'tests'>, readonly string[]>> = {
     channel: ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope',
         'channel_unanswered', 'whatsapp_delivery'],
-    agent: ['agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules', 'handoff_triggers'],
-    business: ['business_identity', 'business_contact', 'business_context'],
-    knowledge: ['knowledge_coverage', 'rag_knowledge', 'rag_configuration', 'tool_faqs', 'tool_policies', 'media_privacy_policy'],
-    team: ['human_handoff_route'],
-    hours: ['business_hours', 'after_hours_behavior'],
-    appointments: ['tool_appointments', 'test_drive_permissions', 'test_drive_service', 'test_drive_staff'],
+    agent: ['agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules'],
 };

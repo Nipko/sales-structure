@@ -24,6 +24,7 @@ import {
 import { channelStepDeferral, type SetupChannelDeferral } from "@/lib/home-day-zero";
 import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
 import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
+import { topBlockingGaps, type PanelGap, type ReadinessVerdict } from "@/lib/readiness-panel";
 
 /**
  * The single source of progress for a new account.
@@ -47,6 +48,12 @@ import { QUALITY_HEALTH_REFRESH_EVENT } from "@/lib/quality-health-events";
  * that reminder, so on an account with nothing connected it says "Conecta
  * Instagram" and opens Instagram — the same channel "Salud de agentes" and
  * Assist name.
+ *
+ * The business step is the readiness verdict of the business (C0 §1.6, R2):
+ * while it is not done the card says the verdict and the first three
+ * blocking gaps, each linked to the screen where it is fixed — or, for a role
+ * that cannot open that screen, "ask an administrator" instead of a dead link.
+ * The full list lives on /admin/readiness.
  *
  * "Recorrido: retomar la configuración" (`resume_setup_wizard`) starts on
  * this card's next step (`setup-next`): that element exists whenever the
@@ -82,6 +89,7 @@ export default function InitialSetupCard({
   const eligible = ['tenant_admin', 'tenant_supervisor', 'super_admin'].includes(role ?? '');
   const [tourContext, setTourContext] = useState<Pick<GuidedTourStartDetail, "agentId" | "verticalCatalogRoute">>({});
   const [items, setItems] = useState<EssentialSetupItem[]>([]);
+  const [readiness, setReadiness] = useState<{ verdict: ReadinessVerdict; blocking: PanelGap[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const loadRevision = useRef(0);
@@ -101,6 +109,14 @@ export default function InitialSetupCard({
     }
     setLoading(true);
     setError(false);
+    // The verdict's detail is a nicety on top of the server's task: losing it
+    // never turns the card into an error, the step still says what to do.
+    void Promise.resolve().then(() => api.getReadiness(tenantId)).then((response) => {
+      if (revision !== loadRevision.current) return;
+      setReadiness(response.success && response.data
+        ? { verdict: response.data.result.verdict, blocking: topBlockingGaps(response.data, { role, impersonating }) }
+        : null);
+    }).catch(() => { if (revision === loadRevision.current) setReadiness(null); });
     try {
       const response = await api.getAgentAssessment(tenantId);
       if (!response.success || !response.data) throw new Error("assessment_unavailable");
@@ -115,7 +131,7 @@ export default function InitialSetupCard({
     } finally {
       if (revision === loadRevision.current) setLoading(false);
     }
-  }, [canAccess, tenantId, eligible]);
+  }, [canAccess, tenantId, eligible, role, impersonating]);
 
   useEffect(() => {
     void load();
@@ -209,6 +225,20 @@ export default function InitialSetupCard({
                         {deferral && <span className="block text-xs font-normal">{t(DEFERRAL_REASON_KEYS[deferral.reason])}</span>}
                         {item.key !== 'channel' && item.pendingCheck && !item.verification && tq.has(`checks.${item.pendingCheck.code}`)
                           && <span className="block text-xs font-normal">{t("pendingReason", { check: tq(`checks.${item.pendingCheck.code}`) })}</span>}
+                        {item.key === "business" && !item.done && !item.verification && readiness && (
+                          <span className="mt-1 block text-xs font-normal">
+                            {t(`readinessVerdict.${readiness.verdict}`)}
+                            {/* Spans, not a list: this sits inside the step's label. */}
+                            {readiness.blocking.map((gap) => (
+                              <span key={gap.id} className="mt-0.5 block pl-3">
+                                {"· "}
+                                {gap.action.kind === "link"
+                                  ? <Link href={gap.action.href} className="underline hover:text-indigo-700 dark:hover:text-indigo-300">{gap.message}</Link>
+                                  : <>{gap.message}{gap.action.kind === "ask_admin" && <> — {t("readinessVerdict.askAdmin")}</>}</>}
+                              </span>
+                            ))}
+                          </span>
+                        )}
                       </span>
                     </div>
                     {!item.done && (
@@ -222,7 +252,7 @@ export default function InitialSetupCard({
                           href={deferral?.href ?? item.href}
                           className="inline-flex min-h-8 items-center gap-1 rounded-md px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 forced-colors:focus-visible:outline-[Highlight] focus-visible:ring-2 focus-visible:ring-indigo-500 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
                         >
-                          {t(deferral ? "resume" : "continue")} <ArrowRight size={12} aria-hidden="true" />
+                          {t(deferral ? "resume" : item.key === "business" ? "readinessVerdict.openPanel" : "continue")} <ArrowRight size={12} aria-hidden="true" />
                         </Link>}
                         {canShowMe && !item.verification && (
                           <button

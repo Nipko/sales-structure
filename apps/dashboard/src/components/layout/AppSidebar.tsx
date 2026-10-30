@@ -94,6 +94,7 @@ import {
   Settings,
   Shield,
   ShieldCheck,
+  ClipboardCheck,
   ShoppingCart,
   Siren,
   Sparkles,
@@ -341,6 +342,7 @@ const tenantSections: NavSectionDef[] = [
       // del negocio, no una metrica operativa. Un agente no tiene por que
       // verlos.
       { labelKey: "sales", href: "/admin/sales", icon: Wallet, capability: "canManageBilling" },
+      { labelKey: "readiness", href: "/admin/readiness", icon: ClipboardCheck, capability: "canSeeGlobalAnalytics" },
       { labelKey: "agentQuality", href: "/admin/agent/quality", icon: ShieldCheck, capability: "canSeeGlobalAnalytics", accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "agentAnalytics", href: "/admin/agent-analytics", icon: Gauge, capability: "canSeeGlobalAnalytics" },
     ],

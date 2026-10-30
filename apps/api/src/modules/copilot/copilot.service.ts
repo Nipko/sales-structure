@@ -30,7 +30,6 @@ import {
     type ToolDefinition,
     AGENT_CONFIGURATION_PATHS,
     getAgentOperation,
-    misleadingAssistOperations,
     type AgentRoutedOperation,
     type AgentChangeMode,
     CAPABILITY_EXCLUSION_TEXT,
@@ -1347,13 +1346,6 @@ Reglas estrictas:
         // the article routes above are.
         const reachable = (route: string) =>
             dashboardRoleCanOpen(route, String(request.context.userRole ?? ''));
-        // A write that cannot move the check the person was sent to fix is worse
-        // than no write: they apply it, the banner stays red, and the next thing
-        // they distrust is the assessment. Declared in the resolution table and
-        // stated here rather than left to the model.
-        const misleading = misleadingAssistOperations()
-            .map(pair => `${pair.operation} NO resuelve ${pair.code}: ${pair.because}`)
-            .join(' ');
         // Two halves, and only the first one depends on being able to create.
         //
         // They used to be one string behind `canCreateContent`, so a
@@ -1363,7 +1355,6 @@ Reglas estrictas:
         // where to book got a guess instead of the screen that books.
         const creationContext = canCreateContent
             ? `12. **CREACIÓN ASISTIDA:** con propose_content_object puedes preparar la creación de: ${creatableOperations.join(', ')}. Solo prepara una propuesta para revisión; nada se crea hasta que la persona la aplique. Nunca afirmes haber creado algo desde este chat. Usa el texto que dio el dueño: no inventes precios, duraciones ni redacción legal; si falta un dato, pídelo.
-Y estas creaciones NO cierran el punto de calidad que lo parece; no las ofrezcas como el arreglo de ese punto: ${misleading}
 `
             : '';
         const blockedVerdicts = (operationVerdicts ?? []).filter(entry => entry.availability === 'blocked');

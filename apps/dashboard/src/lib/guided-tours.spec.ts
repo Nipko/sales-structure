@@ -315,7 +315,7 @@ describe("guided tour copy", () => {
   it.each(['es', 'en', 'pt', 'fr'])("has all tour and verification copy in %s", locale => {
     const localized = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'messages', `${locale}.json`), 'utf8'));
     const keys = [...guidedTourMessageKeys(), 'guidedTours.connect_channel.steps.channel.title', 'guidedTours.connect_channel.steps.channel.content',
-      'qualityHealth.setup.items.appointments', 'qualityHealth.setup.verificationUnavailable', 'qualityHealth.focus.verificationUnavailable',
+      'qualityHealth.setup.items.business', 'qualityHealth.setup.verificationUnavailable', 'qualityHealth.focus.verificationUnavailable',
       'qualityHealth.focus.verifiedResolved', 'productTour.finishFormFirst'];
     keys.push(...['ready', 'verify', 'unsupported', 'assign', 'coverage', 'reassign', 'credentials', 'connect'].map(key => `qualityHealth.setup.channelActions.${key}`),
       ...['title', 'draftScope', 'unsupported', 'disconnected', 'stale', 'remove'].map(key => `agent.assignmentReview.${key}`),

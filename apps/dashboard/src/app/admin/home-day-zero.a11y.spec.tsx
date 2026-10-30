@@ -45,6 +45,7 @@ jest.mock("@/lib/api", () => ({
         getCommercialOverview: jest.fn(),
         getOverviewStats: jest.fn(),
         getAgentAssessment: jest.fn(),
+        getReadiness: jest.fn(),
         getBillingSubscription: jest.fn(),
         getTenants: jest.fn(),
         getStages: jest.fn(),
@@ -132,8 +133,8 @@ function assessment(
                     checks: [{ code: "channel_connection", status: channel, evidence: {} }],
                 },
                 { key: "agent", status: "pass", href: "/admin/agent/agent-1", tourId: null, checks: [] },
-                { key: "business", status: rest, href: "/admin/settings/business-info", tourId: null, checks: [] },
-                { key: "team", status: rest, href: "/admin/users", tourId: null, checks: [] },
+                // Since R2 the business step is the readiness verdict (C0 §4.2).
+                { key: "business", status: rest, href: "/admin/readiness", tourId: null, checks: [] },
             ],
         },
     };
@@ -408,11 +409,14 @@ describe("Home in day 0 without a channel", () => {
     });
 
     it("does not leave a blank page when the card has no step this person may open", async () => {
-        // A supervisor cannot open Canales, Equipo or the business settings, so
-        // the card filters every pending step out and draws nothing. Hiding the
-        // rest of Home too left a greeting over an empty page.
+        // A supervisor cannot open Canales or the agent editor, so the card
+        // filters every pending step out and draws nothing. Hiding the rest of
+        // Home too left a greeting over an empty page. Since R2 a supervisor CAN
+        // open the readiness panel, so the business step is done here (verdict
+        // ≠ no_listo) to keep every pending step out of their reach.
         mockRole = "tenant_supervisor";
         mockUser = owner({ role: "tenant_supervisor" });
+        jest.mocked(api.getAgentAssessment).mockResolvedValue(assessment("fail", "pass") as any);
         const screen = await renderHome();
         try {
             expect(screen.container.querySelector('[aria-labelledby="initial-setup-card-title"]')).toBeNull();
@@ -454,6 +458,38 @@ describe("Home in day 0 with a channel", () => {
             expect(surfaces[0].querySelector("#tour-target-setup-next")).not.toBeNull();
             // A first channel is only asked for while there is none.
             expect(api.fetch).not.toHaveBeenCalledWith(expect.stringContaining("/recipe"));
+        } finally { screen.unmount(); }
+    });
+
+    it("says the readiness verdict on the business step, with the first blocking gaps linked to their screens", async () => {
+        jest.mocked(api.getReadiness).mockResolvedValue({ success: true, data: {
+            evaluationId: "e1", evaluatedAt: "2026-10-30T12:00:00.000Z", trigger: "on_demand", cached: true,
+            result: {
+                specVersion: "1.0.0-rc.1", asOf: "2026-10-30T12:00:00.000Z", resultHash: "h", verdict: "no_listo",
+                counts: { applicable: 2, blocking: 2, blockingFailing: 2, necessary: 0, necessaryFailing: 0, recommended: 0, recommendedFailing: 0 },
+                requirements: [
+                    { id: "CORE.HOURS.REGULAR", title: "Horario", layer: "core", level: "bloqueante", applies: true, result: "no_cumple",
+                        valueState: "ausente", platform: false, derived: false,
+                        gap: { cause: "ausente", message: "Falta el horario de atención", intents: [], uiTarget: "/admin/settings/business-hours",
+                            uiToday: "/admin/settings/business-hours", rootOf: [] } },
+                    { id: "CORE.PAYMENT.METHODS", title: "Medios de pago", layer: "core", level: "bloqueante", applies: true, result: "no_cumple",
+                        valueState: "ausente", platform: false, derived: false,
+                        gap: { cause: "ausente", message: "Faltan los medios de pago", intents: [], uiTarget: null, uiToday: "nuevo", rootOf: [] } },
+                ],
+                blockingGaps: ["CORE.HOURS.REGULAR", "CORE.PAYMENT.METHODS"], necessaryGaps: [], recommendedGaps: [],
+                platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
+            },
+        } } as any);
+        const screen = await renderHome();
+        try {
+            const card = screen.container.querySelector('[aria-labelledby="initial-setup-card-title"]')!;
+            for (let i = 0; i < 3; i++) await act(async () => { await Promise.resolve(); });
+            expect(card.textContent).toContain("Faltan datos que bloquean la atención");
+            const hours = Array.from(card.querySelectorAll("a")).find(link => link.textContent === "Falta el horario de atención");
+            expect(hours?.getAttribute("href")).toBe("/admin/settings/business-hours");
+            // No screen yet (R3 brings its form): said, never linked.
+            expect(card.textContent).toContain("Faltan los medios de pago");
+            expect(Array.from(card.querySelectorAll("a")).some(link => link.textContent === "Faltan los medios de pago")).toBe(false);
         } finally { screen.unmount(); }
     });
 

@@ -1,4 +1,4 @@
-import { AGENT_OPERATION_REGISTRY, misleadingAssistOperations } from '@parallext/shared';
+import { AGENT_OPERATION_REGISTRY } from '@parallext/shared';
 import { CopilotService, CopilotChatRequest } from './copilot.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -352,30 +352,6 @@ describe('CopilotService authenticated context', () => {
         expect(response.actions).toEqual([
             expect.objectContaining({ href: '/admin/agent/quality?agent=22222222-2222-4222-8222-222222222222' }),
         ]);
-    });
-
-    it('tells the model which assisted creations do not close the check they look like they close', async () => {
-        // Assist can write a knowledge resource of type faq and an inactive
-        // legal text. Neither moves `tool_faqs` or `tool_policies`, which count
-        // rows of two other tables — and a person who applies the write and
-        // watches the banner stay red stops believing the assessment. The pairs
-        // come from the resolution table, so this cannot drift from it.
-        const { service, llmRouter } = createService(null, null, {
-            propose: jest.fn(),
-            // The warning belongs to the half that can create, so the verdicts
-            // have to say something is creatable for it to be reachable at all.
-            listOperations: jest.fn(async () => misleadingAssistOperations().map(pair => ({
-                key: pair.operation, domain: 'knowledge', route: '/admin/knowledge',
-                availability: 'executable' as const, reason: null,
-            }))),
-        });
-        jest.spyOn(service as any, 'searchKb').mockReturnValue([]);
-        await service.chat(chatRequest({ actorId: 'user-1' } as any));
-        const prompt = llmRouter.execute.mock.calls[0][0].systemPrompt;
-        for (const pair of misleadingAssistOperations()) {
-            expect(prompt).toContain(`${pair.operation} NO resuelve ${pair.code}`);
-        }
-        expect(misleadingAssistOperations().length).toBeGreaterThan(0);
     });
 
     /**

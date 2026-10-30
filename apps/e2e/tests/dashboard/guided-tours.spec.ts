@@ -110,7 +110,7 @@ test.describe("recorridos guiados", () => {
     await expect(tourCard(page)).toBeVisible();
     expect((await stepCounter(page)).step).toBe(1);
     // Y llegó a la pantalla del paso, en vez de quedarse explicando el inicio.
-    await expect(page).toHaveURL(/\/admin\/settings\/business-info/);
+    await expect(page).toHaveURL(/\/admin\/agent/);
     await expectHermetic(state);
   });
 

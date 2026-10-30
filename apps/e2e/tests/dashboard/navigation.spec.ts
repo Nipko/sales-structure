@@ -25,7 +25,7 @@ function qualityOverviewAllPassing() {
       dimensions: [
         {
           dimension: "business_scope",
-          checks: [check("persona_identity", "business_scope"), check("business_identity", "business_scope")],
+          checks: [check("persona_identity", "business_scope"), check("agent_active", "business_scope")],
         },
         {
           dimension: "conversation_brand",
@@ -33,18 +33,18 @@ function qualityOverviewAllPassing() {
         },
         {
           dimension: "knowledge_grounding",
-          checks: [check("knowledge_coverage", "knowledge_grounding")],
+          checks: [check("rag_knowledge", "knowledge_grounding")],
         },
         {
           dimension: "safety_handoff",
-          checks: [check("handoff_triggers", "safety_handoff"), check("human_handoff_route", "safety_handoff")],
+          checks: [check("forbidden_topics", "safety_handoff")],
         },
         {
           dimension: "actions_outcomes",
           checks: [
             check("channel_assignment", "actions_outcomes"),
             check("channel_connection", "actions_outcomes"),
-            { ...check("tool_appointments", "actions_outcomes"), status: "not_applicable" as const },
+            { ...check("tool_orders", "actions_outcomes"), status: "not_applicable" as const },
           ],
         },
       ],

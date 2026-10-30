@@ -1,8 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import {
     AGENT_CONFIG_TOOL_FAMILIES, AGENT_ISSUE_RESOLUTIONS, AGENT_OPERATION_REGISTRY, AGENT_QUALITY_ISSUE_CODES,
-    agentIssueResolutionDefects, getAgentOperation, misleadingAssistOperations, resolutionForIssueCode,
+    agentIssueResolutionDefects, getAgentOperation, resolutionForIssueCode,
 } from '@parallext/shared';
 import { AgentQualityService } from './agent-quality.service';
 
@@ -130,7 +128,7 @@ function recommendationCodes(): string[] {
 describe('every blocker and recommendation has a resolution', () => {
     it('builds a real universe, not an empty one', () => {
         // A broken fixture would make every claim below pass against nothing.
-        expect(checkCodes.length).toBeGreaterThan(40);
+        expect(checkCodes.length).toBeGreaterThan(30);
         expect(new Set(checkCodes).size).toBe(checkCodes.length);
         // The thirteen vertical codes come from a loop, so their presence is the
         // proof that this is the running code and not a list of literals.
@@ -196,34 +194,11 @@ describe('every blocker and recommendation has a resolution', () => {
 });
 
 /**
- * The two places where the obvious answer is the wrong one, pinned against the
- * code that makes them wrong rather than against a comment. If somebody later
- * points the FAQ operation at the `faqs` table, or lets the legal-text
- * operation write into `policies`, these fail and the table has to be corrected
- * instead of quietly becoming a lie.
+ * An `assist_operation` row that says `closes` claims the check reads what the
+ * operation writes. (The two rows where that was false — the FAQ and policy
+ * data checks — were retired in R2 with the checks themselves, C0 §4.2.)
  */
 describe('the writes that look like they would fix a check, and do not', () => {
-    const source = fs.readFileSync(path.join(__dirname, 'agent-quality.service.ts'), 'utf8');
-
-    it('names both cases, with a reason', () => {
-        const pairs = misleadingAssistOperations();
-        expect(pairs.map(pair => pair.code).sort()).toEqual(['tool_faqs', 'tool_policies']);
-        for (const pair of pairs) expect(pair.because.length).toBeGreaterThan(60);
-    });
-
-    it('tool_faqs counts a different table from the one the FAQ operation writes', () => {
-        expect(getAgentOperation('knowledge.faq.create')!.target.table).toBe('knowledge_resources');
-        // The check's number comes from `faqs`, and only published rows count.
-        expect(source).toMatch(/'faqs',\s*`SELECT COUNT\(\*\)::int AS count[\s\S]{0,120}FROM faqs/);
-        expect(source).toMatch(/FROM faqs\s*\n\s*WHERE is_published = true/);
-    });
-
-    it('tool_policies counts a different table from the one the legal-text operation writes', () => {
-        expect(getAgentOperation('policies.legal_text.create')!.target.table).toBe('legal_text_versions');
-        expect(source).toMatch(/'policies',\s*`SELECT COUNT\(\*\)::int AS count[\s\S]{0,240}FROM policies/);
-        expect(source).toMatch(/COUNT\(\*\) FILTER \(WHERE type = 'privacy'\)::int AS privacy_count/);
-        expect(source).toMatch(/FROM policies\s*\n\s*WHERE is_active = true/);
-    });
 
     it('no other executable operation is claimed to close a check it cannot reach', () => {
         // Every `assist_operation` resolution that says `closes` is asserting the

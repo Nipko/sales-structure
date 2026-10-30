@@ -91,6 +91,9 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
     // Read-only quality evidence is visible to supervisors. Agent editing below
     // remains tenant_admin-only.
     { prefix: "/admin/agent/quality", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
+    // Preparación del negocio (C0 §1.6): de solo lectura en R2, la ven quienes ven la calidad. Cada hueco
+    // enlaza a su pantalla solo si el rol la puede abrir (apps/dashboard/src/lib/readiness-panel.ts).
+    { prefix: "/admin/readiness", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN, ROLE_KEYS.TENANT_SUPERVISOR], requiresImpersonationForSuperAdmin: true },
 
     // ── Tenant_admin only (also super_admin when impersonating) ─
     { prefix: "/admin/users", roles: [ROLE_KEYS.SUPER_ADMIN, ROLE_KEYS.TENANT_ADMIN], requiresImpersonationForSuperAdmin: true },

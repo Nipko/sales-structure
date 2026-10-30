@@ -76,15 +76,14 @@ Durante o seu dia 0, a etapa de conexão do assistente não mostra **Mostrar ond
 
 ## O cartão "Primeiros passos"
 
-**Primeiros passos** aparece no **Início** enquanto faltar algum dos **quatro essenciais**
+**Primeiros passos** aparece no **Início** enquanto faltar algum dos **essenciais**
 disponíveis para seu plano e seu papel, nesta ordem:
 
 - **conectar um canal** (WhatsApp, Instagram, Messenger, Telegram ou o chat web);
 - **revisar seu agente** (nome, mensagem para quando não souber responder, regras e motivos para passar a um humano);
-- **contar o que seu negócio faz** em Informações do negócio;
-- **convidar uma pessoa** que receba as conversas quando a IA as transferir.
+- **preparar seu negócio**: o veredito do painel de preparação do negócio, que lista o que falta (identidade, horário, pagamentos, políticas, catálogo, a pessoa que recebe as conversas quando a IA as transferir…) com o link para a tela onde cada dado se completa.
 
-A etapa marcada **Próximo** é a que vale a pena fazer agora. Carregar conhecimento, confirmar o horário, preparar agendamentos ou o catálogo melhoram o agente, mas não são requisito para ele responder: ficam em **Saúde dos agentes**, não neste cartão. No Início, enquanto o cartão estiver lá, é ele que diz o que falta: o aviso global **Há algo importante para resolver nos seus agentes.** não aparece ali.
+A etapa marcada **Próximo** é a que vale a pena fazer agora. O que não bloqueia o atendimento (o necessário e o recomendado do painel de preparação, os testes) melhora o agente, mas não é requisito para ele responder: não fica neste cartão. No Início, enquanto o cartão estiver lá, é ele que diz o que falta: o aviso global **Há algo importante para resolver nos seus agentes.** não aparece ali.
 
 Cada item tem **Continuar**, que abre a tela onde isso é feito e, quando existe roteiro para aquela etapa, também **Mostrar onde**, que ainda destaca passo a passo o campo ou o botão exato. Algumas etapas não têm roteiro — o catálogo próprio do seu setor, por exemplo — e os papéis que não podem executar roteiros veem apenas **Continuar**. Cada etapa pendente abre uma rota permitida. O cartão desaparece ao concluir tudo e
 não vira uma pílula flutuante `8/9`. Se o Parallly não puder verificar uma fonte,

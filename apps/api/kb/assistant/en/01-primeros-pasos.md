@@ -76,17 +76,16 @@ During your day 0, the wizard's connection step does not show **Show me where**:
 
 ## The "Getting started" card
 
-**Getting started** appears on **Home** while any of the **four essentials**
+**Getting started** appears on **Home** while any of the **essentials**
 available for your plan and role is still missing, in this order:
 
 - **connect a channel** (WhatsApp, Instagram, Messenger, Telegram, or Web Chat);
 - **review your agent** (name, message for when it cannot answer, rules, and reasons to hand off to a person);
-- **describe what your business does** in Business information;
-- **invite a person** who receives the chats when the AI hands them over.
+- **get your business ready**: the verdict of the business readiness panel, which lists what is missing (identity, hours, payments, policies, catalog, the person who receives the chats when the AI hands them over…) with a link to the screen where each fact is completed.
 
-The step marked **Next** is the one worth doing now. Loading knowledge, confirming business
-hours, setting up appointments, or the catalog improve the agent, but they are not required
-for it to answer: they live in **Agent health**, not on this card. On Home, while the card is there,
+The step marked **Next** is the one worth doing now. What does not block
+answering (the necessary and recommended items of the readiness panel, tests) improves the agent,
+but it is not required for it to answer: it is not on this card. On Home, while the card is there,
 it is the card that tells you what is missing: the global banner **Something important needs fixing in your agents.** does not show there.
 
 Each item has **Continue**, which opens the screen where it is done and, when a tour covers that step, also **Show me where**, which highlights the exact field or button step by step. Some steps have no tour — your industry's own catalog, for example — and roles that cannot run tours see only **Continue**. Each pending step opens an allowed route. The card disappears when all steps are done

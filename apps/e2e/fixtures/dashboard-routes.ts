@@ -186,18 +186,32 @@ export const pendingAssessment = (tenantId = TENANT): ApiRoutes => ({
     },
     channels: [],
     tasks: [
+      { key: "agent", status: "fail", state: "pending", checks: [],
+        href: `/admin/agent/${AGENT}?tab=instructions&focus=rules`, tourId: "agent_handoff_rules", dependsOn: ["mission"] },
+      // Since R2 the business step is the readiness verdict (C0 §4.2): no tour,
+      // it opens the readiness panel.
       { key: "business", status: "fail", state: "pending", checks: [],
-        href: "/admin/settings/business-info", tourId: "business_identity", dependsOn: [] },
-      { key: "knowledge", status: "fail", state: "pending", checks: [],
-        href: "/admin/knowledge", tourId: "knowledge_base", dependsOn: ["business"] },
-      { key: "hours", status: "pass", state: "operating", checks: [],
-        href: "/admin/settings/business-hours", tourId: "business_hours", dependsOn: [] },
+        href: "/admin/readiness", tourId: null, dependsOn: [] },
     ],
     state: "pending",
-    nextTask: "business",
+    nextTask: "agent",
     requiredTests: [],
     blockers: [],
     recommendations: [],
+  }),
+  // The verdict the setup card's business step reads (`GET /readiness/:tenantId`).
+  [`readiness/${tenantId}`]: ok({
+    evaluationId: null, evaluatedAt: "2026-09-09T12:00:00.000Z", trigger: "on_demand", cached: true,
+    result: {
+      specVersion: "1.0.0-rc.1", asOf: "2026-09-09T12:00:00.000Z", resultHash: "e2e", verdict: "no_listo",
+      counts: { applicable: 1, blocking: 1, blockingFailing: 1, necessary: 0, necessaryFailing: 0, recommended: 0, recommendedFailing: 0 },
+      requirements: [{ id: "CORE.HOURS.REGULAR", title: "Horario", layer: "core", level: "bloqueante", applies: true,
+        result: "no_cumple", valueState: "ausente", platform: false, derived: false,
+        gap: { cause: "ausente", message: "Falta el horario de atención", intents: [], uiTarget: "/admin/settings/business-hours",
+          uiToday: "/admin/settings/business-hours", rootOf: [] } }],
+      blockingGaps: ["CORE.HOURS.REGULAR"], necessaryGaps: [], recommendedGaps: [],
+      platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
+    },
   }),
 });
 

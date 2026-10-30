@@ -39,7 +39,7 @@ Un agente solo atiende bien si tiene lo mínimo definido. Al guardar, el editor 
 - **Al menos una regla** de comportamiento.
 - **Al menos un motivo** en **Cuándo pasar a un humano**.
 
-Si vacías uno de esos campos para reescribirlo, guarda recién cuando esté completo: un agente sin mensaje de respaldo o sin motivos de escalamiento aparece en **Salud de agentes** como una cosa importante por resolver, en **Respuesta cuando no sabe** o en **Motivos de escalamiento**.
+Si vacías uno de esos campos para reescribirlo, guarda recién cuando esté completo: un agente sin mensaje de respaldo aparece en **Salud de agentes** como una cosa importante por resolver, en **Respuesta cuando no sabe**. Los motivos de escalamiento y la persona que recibe el traspaso los revisa el panel de preparación del negocio, no Salud de agentes.
 
 **Si tu agente está en modo prompt personalizado**, esta lista cambia. Cuando tu cuenta tiene habilitada esa función y el agente la usa, un único texto que escribes tú reemplaza a la personalidad guiada: **Salud de agentes** marca como **No aplica** la identidad, el tono, el saludo, el mensaje de respaldo y las reglas, y en su lugar exige que ese prompt no esté vacío. Lo que **sigue siendo obligatorio** es al menos un motivo en **Cuándo pasar a un humano**: sin eso la conversación nunca llega a una persona, escribas lo que escribas en el prompt. Si ves “No aplica” donde esta guía dice “obligatorio”, es por eso, no por un error.
 

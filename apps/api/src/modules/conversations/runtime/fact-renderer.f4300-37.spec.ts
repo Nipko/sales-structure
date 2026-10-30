@@ -75,6 +75,12 @@ describe('F4300-37 · 1. the price of a record is its price field, never a 0 or 
         expect(priced.text).not.toMatch(/\b0 COP|free of charge/);
         expect(priced.fallbacks).toEqual([{ reason: 'missing_price' }]);
         expect(render(`The nightly rate is ${token(nightPrice)}.`, room, 'en', ASK).text).toBe('The nightly rate is 150,000 COP.');
+        // Production QA 30-oct (hotel, French): «nettoyage» is the fee too; the night price of the same sentence is kept.
+        const french = render(`Le prix par nuit pour cette chambre est de ${token(nightPrice)}, avec une tarification de nettoyage de ${token(cleaningFee)}.`,
+            room, 'fr', 'Quel est le prix par nuit et quelles sont les commodités offertes ?');
+        expect(french.fallbacks).toEqual([]);
+        expect(french.text).toMatch(/150\s000\sCOP/u);
+        expect(french.text).toContain('sans frais');
     });
 
     it('a record with only a 0 / fee amount has no price to restate', () => {

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
     AGENT_OPERATION_REGISTRY,
@@ -21,8 +21,10 @@ import { ServicesService } from '../appointments/services.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { ensureContentProposalSchema } from './agent-configuration-proposal-schema';
 import { PROPOSAL_TTL_MINUTES, proposalHash } from './agent-proposal-digest';
+import { BusinessFactsService } from '../readiness/business-facts.service';
 import {
     AGENT_CONTENT_OPERATION_HANDLERS,
+    ASSIST_OPERATION_REQUIREMENTS,
     type ContentOperationActor,
     type ContentOperationContext,
     type ContentOperationHandler,
@@ -60,6 +62,8 @@ export class AgentContentProposalService {
         private readonly catalog: CatalogService,
         private readonly services: ServicesService,
         private readonly verticals: VerticalsService,
+        /** R6 (ADR 0012): estampa la procedencia de lo que Assist crea para un requisito. Opcional en pruebas viejas. */
+        @Optional() private readonly facts?: BusinessFactsService,
     ) {}
 
     // ─── The registry, as this caller sees it ───────────────────────────────
@@ -146,11 +150,14 @@ export class AgentContentProposalService {
 
         await this.assertGate(definition, context);
         const digest = this.proposalDigest({ operation: definition.key, requested_by: actor.id, input: validated.value });
+        // R6: la propuesta lleva el requisito al que sirve (C0 §2.8, §4.3), si sirve a uno.
+        const requirement = ASSIST_OPERATION_REQUIREMENTS[definition.key] ?? null;
         const inserted = await this.prisma.executeInTenantSchema<any[]>(context.schemaName,
-            `INSERT INTO agent_content_proposals (operation, requested_by, request_key, digest, input, expires_at)
-             VALUES ($1,$2::uuid,$3,$4,$5::jsonb,NOW()+interval '${PROPOSAL_TTL_MINUTES} minutes')
+            `INSERT INTO agent_content_proposals (operation, requested_by, request_key, digest, input, expires_at, requirement_id, target_ref)
+             VALUES ($1,$2::uuid,$3,$4,$5::jsonb,NOW()+interval '${PROPOSAL_TTL_MINUTES} minutes',$6,$7)
              ON CONFLICT (requested_by, request_key) DO NOTHING RETURNING *`,
-            [definition.key, actor.id, requestKey, digest, JSON.stringify(validated.value)]);
+            [definition.key, actor.id, requestKey, digest, JSON.stringify(validated.value),
+                requirement?.requirementId ?? null, requirement?.targetRef ?? null]);
         if (inserted[0]) return this.publicProposal(inserted[0]);
 
         // Lost a race on the same key. Whatever landed first is authoritative,
@@ -214,6 +221,7 @@ export class AgentContentProposalService {
         const created = await handler.create(context, validated.value as any);
         await this.prisma.executeInTenantSchema(context.schemaName,
             'UPDATE agent_content_proposals SET created_object_id = $2::uuid WHERE id = $1::uuid', [proposalId, created.id]);
+        await this.stampProvenance(context, definition.key, proposalId, digest, created);
 
         // Audited with the real actor. Under impersonation `actor.id` is the
         // tenant's own admin — recording only that would read as the customer
@@ -252,6 +260,29 @@ export class AgentContentProposalService {
     }
 
     // ─── Internals ──────────────────────────────────────────────────────────
+
+    /**
+     * R6 (C0 §4.3, ADR 0012): what Assist creates for a readiness requirement carries provenance. The person applying
+     * the proposal is the one who confirms it (`confirmed_by`), and `source_ref` points back at the proposal and its
+     * digest. Best effort AFTER the effect, like the audit: the object exists either way, and without the stamp the
+     * row simply falls back to the legacy rules it was read with before R6.
+     */
+    private async stampProvenance(context: ContentOperationContext, key: AgentExecutableOperationKey, proposalId: string,
+        digest: string, created: { id: string; provenanceRow?: { table: string; id: string } | null }): Promise<void> {
+        const requirement = ASSIST_OPERATION_REQUIREMENTS[key];
+        const row = created.provenanceRow;
+        if (!requirement || !row || !this.facts) return;
+        try {
+            await this.facts.stampRowProvenance(context.tenantId, {
+                table: row.table, id: row.id, origin: 'copilot',
+                sourceRef: { via: 'assist', proposal_id: proposalId, operation: key, digest, requirement_id: requirement.requirementId, object_id: created.id },
+            }, { kind: 'user', userId: context.actor.id, role: context.actor.role, ...(context.actor.delegation ? { delegation: context.actor.delegation } : {}) });
+            await this.prisma.executeInTenantSchema(context.schemaName,
+                'UPDATE agent_content_proposals SET target_ref = $2 WHERE id = $1::uuid', [proposalId, `${row.table}:${row.id}`]);
+        } catch (error: any) {
+            this.logger.warn(`Assist provenance not stamped for ${key} ${created.id}: ${error?.message || error}`);
+        }
+    }
 
     /** Resolves a key against the whitelist. Anything else never reaches a service. */
     private executable(operation: unknown): AgentExecutableOperation {

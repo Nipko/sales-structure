@@ -2,6 +2,10 @@
  * Pre-built AI Agent persona templates.
  * Each template provides a ready-to-use agent configuration
  * that the user can customize during the setup wizard.
+ *
+ * Legacy catalogue: only returned when no tenantId is sent (persona.controller)
+ * and used as a fallback by id. The per-template `industries` list was removed in
+ * K3 (2026-10-30): nothing read it and its keys were not manifest industries.
  */
 
 export interface PersonaTemplate {
@@ -9,7 +13,6 @@ export interface PersonaTemplate {
     icon: string;
     nameKey: string;       // i18n key
     descKey: string;       // i18n key
-    industries: string[];  // matching industries from onboarding
     config: {
         persona: {
             name: string;
@@ -45,7 +48,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'target',
         nameKey: 'templates.salesQualifier',
         descKey: 'templates.salesQualifierDesc',
-        industries: ['retail', 'ecommerce', 'services', 'education', 'technology', 'other'],
         config: {
             persona: {
                 name: 'Sofia',
@@ -86,7 +88,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'headphones',
         nameKey: 'templates.customerSupport',
         descKey: 'templates.customerSupportDesc',
-        industries: ['retail', 'ecommerce', 'technology', 'services', 'finance', 'other'],
         config: {
             persona: {
                 name: 'Carlos',
@@ -127,7 +128,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'calendar',
         nameKey: 'templates.appointmentScheduler',
         descKey: 'templates.appointmentSchedulerDesc',
-        industries: ['health', 'services', 'beauty', 'education', 'legal', 'other'],
         config: {
             persona: {
                 name: 'Laura',
@@ -168,7 +168,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'shopping-cart',
         nameKey: 'templates.ecommerceAssistant',
         descKey: 'templates.ecommerceAssistantDesc',
-        industries: ['retail', 'ecommerce', 'fashion', 'other'],
         config: {
             persona: {
                 name: 'Valentina',
@@ -209,7 +208,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'building',
         nameKey: 'templates.realEstate',
         descKey: 'templates.realEstateDesc',
-        industries: ['real_estate', 'construction', 'services', 'other'],
         config: {
             persona: {
                 name: 'Andrés',
@@ -250,7 +248,6 @@ export const PERSONA_TEMPLATES: PersonaTemplate[] = [
         icon: 'utensils',
         nameKey: 'templates.restaurant',
         descKey: 'templates.restaurantDesc',
-        industries: ['food', 'hospitality', 'restaurant', 'other'],
         config: {
             persona: {
                 name: 'Camila',

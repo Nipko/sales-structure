@@ -1,0 +1,342 @@
+# Referencia de capacidades del producto
+
+_Estado documental: septiembre de 2026; comunicaciones y pagos de WhatsApp revisados el 30 de septiembre; industrias y tipos de negocio alineados con el catálogo generado el 8 de octubre._
+
+Esta referencia explica qué parte de Parallly puede esperar cada tipo de usuario y
+cómo se decide qué aparece en web y móvil. No es una promesa comercial ni una
+certificación de extremo a extremo. Cuando una pantalla, un plan o una integración
+difiera de este texto, prevalecen los contratos de código y la configuración vigente
+indicados abajo.
+
+## Fuentes de verdad
+
+| Tema | Autoridad vigente |
+|------|-------------------|
+| Navegación y rutas web | `apps/dashboard/src/lib/navigation-contract.ts` |
+| Acceso por rol | `apps/dashboard/src/lib/roles.ts` y `navigation-access.ts` |
+| Orden del menú | `apps/dashboard/src/components/layout/AppSidebar.tsx` |
+| Hub de Configuración | `apps/dashboard/src/app/admin/settings/_settings-config.ts` |
+| Capacidades por industria y tipo de negocio | `packages/shared/src/vertical-capability-manifest.ts` |
+| Estado de certificación por industria | `packages/shared/src/vertical-product-policy.ts` |
+| Industrias y tipos de negocio (ids, nombres, disponibilidad, menú, herramientas) | [`docs/domain/business-types-catalog.md`](../domain/business-types-catalog.md), generado desde el código |
+| Contrato efectivo por turno | `effective-capability.service.ts` + `turn-capability-composer.service.ts` |
+| Backlog comprobable por industria | endpoint `/verticals/audit/native-backlog` y ruta de plataforma `/admin/vertical-audit` |
+| Workspace móvil | `apps/mobile/src/lib/verticalWorkspace.ts` |
+| Acciones móviles por rol | `apps/mobile/src/lib/verticalOperationPolicy.ts` |
+| Límites y precios de planes | Filas activas de `billing_plans`; el seed solo es un valor inicial |
+| Ayuda de Parallly Assist | `apps/api/kb/assistant/{es,en,pt,fr}` cargada por la API |
+| Calidad de cada agente IA | `packages/shared/src/agent-quality-contract.ts`, endpoints `/quality/:tenantId/agents*`, `/attention-summary`, `/signals*` y ruta `/admin/agent/quality` |
+
+## Superficies del producto
+
+| Superficie | Alcance |
+|------------|---------|
+| Web tenant | Configuración completa del negocio, canales, agentes IA, CRM, operación, analítica y facturación según rol/plan |
+| App móvil | Compañera operativa: inbox, CRM, pipeline, tareas, disponibilidad y workspace seguro del tipo de negocio; no replica toda la administración web |
+| Consola de plataforma | Operación cross-tenant para `super_admin`; separada de los workspaces tenant salvo impersonación explícita |
+| Comunicaciones de plataforma | `/admin/communications`: borradores de correo administrativo, selección de usuarios activos, vista previa de audiencia, prueba al operador y resultados de aceptación SMTP. Requiere migración/despliegue; no acredita entrega ni lectura. Ver [manual operativo](../operations/platform-communications.md). |
+| Portal público | Reserva, base de conocimiento y otras experiencias públicas habilitadas por el tenant |
+
+## Canales y superficies conversacionales
+
+| Superficie | Estado verificable |
+|------------|--------------------|
+| WhatsApp, Instagram, Messenger y Telegram | Canales conversacionales con flujos de conexión administrados desde la plataforma, sujetos a rol, plan y configuración vigente |
+| Web Chat Widget | Superficie conversacional operativa con configuración, snippet público, sesiones y mensajería por Socket.IO |
+| Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
+| SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
+
+Conectar una superficie crea la conexión técnica, pero no publica un agente. La
+configuración del agente se guarda como borrador, se prueba, se prepara y aprueba como
+candidato, y sólo entonces se publica. Las asignaciones de conexión y la condición de
+agente predeterminado del borrador toman efecto en esa publicación.
+
+## Costo de entrega de WhatsApp: quién le paga a Meta
+
+Desde el **1 de octubre de 2026**, Meta cobra los **mensajes de servicio entregados que
+exceden el cupo gratuito** a la **cuenta de WhatsApp Business del tenant**. Parallly es
+proveedor de tecnología ante Meta: no paga ese consumo, no lo refactura y no lo incluye
+en ningún plan. El medio de pago se configura en Meta, sobre la cuenta del tenant.
+Según las páginas oficiales de Meta actualizadas el **28 de septiembre de 2026**, sin
+un método de pago válido **Meta no entrega el excedente cobrable**. Esta regla comercial
+no garantiza por sí sola que una conexión en Parallly pueda enviar: también se aplican
+las comprobaciones técnicas indicadas abajo.
+
+La cuota gratis es de **1.000 mensajes de servicio por número y por mes calendario**, sin
+acumulación, cerrada en la zona horaria de la cuenta de WhatsApp Business; no cubre
+plantillas. Para calcular el cupo en el producto, la fuente de código es
+`WHATSAPP_FREE_SERVICE_ALLOWANCE`; las comunicaciones fechadas conservan la regla
+comercial consultada. Para estimar cargos se usan las tarjetas vigentes de Meta y
+el país del destinatario.
+
+La política comercial de Meta se contrasta con [Precios de WhatsApp Business Platform](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing)
+y su [anuncio de servicio y utilidad](https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages).
+Las plantillas de utilidad son cobrables también dentro de la ventana de 24 horas,
+salvo las excepciones gratuitas que Meta documente; no consumen el cupo de servicio.
+
+**Preparación técnica en Parallly:** el estado de conexión, la zona horaria de
+facturación y el resultado de la consulta de financiación son datos distintos.
+`GET /whatsapp/spend/funding-readiness` presenta la evidencia guardada por número;
+`POST /channels/whatsapp/connection/check-funding` consulta la cuenta en Meta para un
+administrador autorizado. `attached` acredita que Meta devolvió un identificador de
+financiación; no prueba solvencia ni una entrega futura. `unknown` y `not_checked`
+no prueban ausencia de tarjeta. Un rechazo de cobro observado (`restricted`) tiene
+precedencia sobre una lectura de configuración.
+
+La evaluación técnica existente conserva un criterio conservador: una ausencia
+confirmada (`absent`) se informa como falta de preparación desde el 1 de octubre,
+sin descontar el cupo gratuito en esa evaluación. La interfaz también puede mantener
+pendientes cuando no logra confirmar el pago. Además, una zona horaria ausente o una
+pausa activa puede impedir envíos. Por tanto, no se debe prometer que las primeras
+1.000 entregas saldrán desde Parallly solo por la gratuidad comercial de Meta; revisar
+el estado del número, resolver sus pendientes y comprobar una entrega real.
+
+| Tema | Autoridad vigente |
+|------|-------------------|
+| Tarifas, cuota gratis y fecha de vigencia | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` |
+| Medición, reserva y conciliación del gasto | `apps/api/src/modules/billing/whatsapp-spend/` |
+| Autorización de cada envío cobrable | `whatsapp-send-admission.service.ts` |
+| Estado de cobro de un número y su pausa | `whatsapp-funding-readiness.ts`, `account-send-pause.ts` |
+| Comprobación en Meta y preparación técnica | `whatsapp-connection.service.ts` (`checkFunding`), `account-send-readiness.ts`, `WhatsAppConnectedState.tsx`, `WhatsAppPaymentMethodNotice.tsx` |
+| Superficie del tenant | `/admin/channels/whatsapp` → `WhatsappSpendPanel`, rutas `/whatsapp/spend/*` |
+| Reglas de Meta y tarjetas de tarifas | `docs/domain/whatsapp-meta-pricing-2026-10.md` |
+
+Qué está construido y qué no, sin redondear:
+
+| Capacidad | Estado verificable |
+|-----------|--------------------|
+| Precio por mercado y categoría, cuota gratis por número y mes | Construido; funciones puras sobre tarjetas preservadas |
+| Reserva, liquidación y conciliación del gasto por envío | Construido; ledger transaccional por tenant |
+| Autorización en los tres puntos de salida de WhatsApp | Construido |
+| Lectura de gasto, cuota, pausas y reanudación por el tenant | Construido; Admin y Supervisor leen, sólo Admin reanuda |
+| Pausa de un número cuando Meta no puede facturarlo | Construido; por conexión, sin reintentos, entrante intacto |
+| **Frenar envíos al alcanzar un tope** | **Configurable por Tenant Admin** en Canales → WhatsApp. Empieza en `observe`; al activar la protección, `enforce` toma efecto inmediatamente y el cambio queda auditado |
+| Configurar un tope de gasto desde el producto | Se siembran 2.000 entregas por número y 60 por contacto cada mes, visibles en la tarjeta. La API autenticada permite leer y ajustar topes por alcance; el panel activa o desactiva su aplicación |
+
+Un tope acota lo que **Parallly** envía por esa conexión. No acota lo que otra herramienta
+conectada a la misma cuenta de WhatsApp Business le cobre a Meta, no es un límite que Meta
+aplique y no cambia la tarifa. Y un medio de pago "cargado" no garantiza que el cobro se
+apruebe: sólo dice que no es eso lo que falta.
+
+## Cobros del tenant a sus clientes
+
+**Integraciones → Pagos** admite cuentas propias Wompi y Mercado Pago. El tenant
+elige un proveedor activo; Parallly genera un checkout alojado con el monto
+canónico del objeto comercial y el dinero llega directamente al comercio. Esta
+superficie es independiente del Wompi que cobra la suscripción de Parallly.
+
+La creación de enlaces exige la feature runtime `customerPayments`, configuración
+del agente y proveedor listo. Un downgrade bloquea enlaces nuevos, pero no detiene
+webhooks, conciliación ni consulta de links existentes. El agente sólo recibe una
+`payableReference`; no elige monto, moneda ni proveedor y sólo informa pago tras
+estado canónico `paid`. Wompi se limita inicialmente a Links de Pago COP alojados;
+reembolsos no se ofrecen al agente.
+
+La existencia de un adaptador, una tabla o una pantalla no certifica por sí sola un
+flujo de conexión. En particular, no se debe prometer conexión, envío, recepción en
+Inbox ni respuesta automática por Email hasta que exista y se valide el contrato de
+configuración de extremo a extremo.
+
+## Roles tenant
+
+| Capacidad | Admin | Supervisor | Agent |
+|-----------|:-----:|:----------:|:-----:|
+| Inbox, contactos, pipeline y citas | Sí | Sí | Sí |
+| Operaciones de dominio permitidas | Sí | Sí | Según página/acción |
+| Ver base de conocimiento | Sí | Sí | Sí, lectura |
+| Editar base de conocimiento y FAQs | Sí | Sí | No |
+| Automatización, campañas y analítica tenant | Sí | Sí | No |
+| Ver Salud de agentes, sus señales y el Centro de calidad | Sí | Sí | No |
+| Configurar etapas, scoring, macros, media y pre-chat | Sí | Sí | No |
+| Agentes IA, conexiones de canales, empresa e integraciones | Sí | No | No |
+| Usuarios, facturación, políticas, recall y API keys | Sí | No | No |
+| Preferencias personales, seguridad, notificaciones y apariencia | Sí | Sí | Sí |
+
+La fila de campañas describe acceso a la superficie de borradores, audiencia y
+métricas. Las campañas nuevas aceptan únicamente WhatsApp; Email y SMS fallan
+cerrado en el servidor aunque exista una fila heredada. El lanzamiento WhatsApp y
+la programación desde el editor no están certificados de punta a punta en la
+versión actual; una campaña programada tampoco tiene acción operativa de
+cancelación. No debe presentarse como envío de producción hasta cerrar esos
+contratos.
+
+`super_admin` usa la consola de plataforma. Para operar dentro de un tenant debe
+entrar mediante impersonación; el acceso no se hereda de forma implícita.
+
+`tenant_viewer` existe como compatibilidad para cuentas heredadas y solo conserva el
+hub de Configuración y preferencias personales. No aparece como opción normal al
+invitar o editar miembros.
+
+> La capacidad interna `canSeeOwnPerformance` existe para el rol Agent, pero la
+> página `/admin/agent-analytics` está protegida para Admin/Supervisor. Hasta que
+> producto y código unifiquen ese contrato, no se debe prometer al agente acceso a
+> esa página.
+
+**Salud de agentes** hace visible el diagnóstico para Admin/Supervisor sin obligarlos
+a entrar primero al editor: Inicio mantiene una tarjeta de estado; Insights muestra
+el detalle en `/admin/agent/quality`; y su badge cuenta únicamente señales Críticas y
+Altas abiertas. El aviso global aparece solo ante una señal crítica abierta o un
+estado **En riesgo**, y permite revisar, preguntar a Assist o posponer 24 horas.
+
+El centro separa preparación, pruebas repetibles y producción atribuida al agente y
+a su versión. Sus snapshots y señales persisten para detectar recurrencia y cambios;
+posponer o reconocer una señal no la resuelve. Estos estados no certifican
+perfección, no garantizan resultados y no modifican automáticamente el agente ni el
+conocimiento. El editor sigue siendo exclusivo de Admin. Los avisos son internos del
+dashboard: no implican correo ni notificación push.
+
+Cuando Admin o Supervisor abre Parallly Assist desde una señal, el servidor deriva un
+contexto acotado y autorizado de calidad. No comparte transcripciones, texto de
+clientes, IDs de conversación, prompts, texto libre del juez ni secretos. Assist
+explica una prioridad y ofrece rutas permitidas; no ejecuta la corrección.
+
+## Navegación web
+
+El menú tenant prioriza el trabajo diario y agrupa los destinos en:
+
+1. **Esenciales**: Inicio y Conversaciones.
+2. **Clientes**: contactos y organizaciones.
+3. **Comercial**: embudo y ofertas.
+4. **Trabajo diario**: registros operativos —reservas, citas, pedidos, casos,
+   solicitudes y demás objetos del subtipo— antes de sus catálogos.
+5. **Catálogo y recursos**: propiedades, inventario, menú, cursos y demás datos
+   que configuran el trabajo anterior.
+6. **IA y crecimiento**: Agente IA, Procedimientos, Base de conocimiento,
+   Automatización y Campañas, según rol.
+7. **Insights**: analítica, Salud de agentes, rendimiento, atribución e informes.
+8. **Administración y Configuración**: canales, usuarios, cumplimiento,
+   facturación y ajustes estables.
+
+`Ctrl/Cmd+K` abre la búsqueda global. Favoritos, recientes, breadcrumbs y atajos se
+filtran por el mismo contrato de acceso; no deben revelar rutas incompatibles con el
+rol o el tipo de negocio.
+
+## Planes
+
+Parallly reconoce cinco familias de plan: **Emprendedor, Starter, Pro, Enterprise y
+Custom**. Precios, cuotas y features se administran en runtime, por lo que los
+valores mostrados en **Configuración → Facturación** son los aplicables a la cuenta.
+Las tablas de seeds o documentos fechados son referencias de fábrica, no una fuente
+contractual de límites vigentes.
+
+## Matriz de industrias y tipos de negocio
+
+**Autoridad para los tipos de negocio:** [`docs/domain/business-types-catalog.md`](../domain/business-types-catalog.md).
+Ese catálogo se **genera desde el código** (`node apps/api/scripts/business-types-catalog.cjs --write`)
+y el CI comprueba que coincida; lista cada tipo de negocio con su id, nombre,
+disponibilidad, modo de producto, menú, familias y herramientas del agente. Esta sección
+solo resume: si una cifra o una lista de aquí difiere del catálogo, manda el catálogo.
+
+Vocabulario: **industria** (en el código y en documentos antiguos, «vertical») es el
+sector; **tipo de negocio** (en el código, «subtipo» o «perfil») es la especialidad
+dentro de la industria. Son los dos selectores del alta, rotulados «Industria» y «Tipo
+de negocio».
+
+El contrato técnico contiene **20 industrias y 80 tipos de negocio canónicos** (72
+seleccionables y 8 en lista de espera), más 5 configuraciones que solo existen para
+cuentas anteriores (`legacy_only` o alias): 85 resolubles en total. No son dos nombres
+para lo mismo: una industria agrupa capacidades compartidas; cada tipo de negocio
+combina esa industria con un subtipo y decide qué herramientas, términos, rutas,
+readiness y límites corresponden. Hoy **18 industrias tienen al menos un tipo
+seleccionable**. `event_planning/weddings` y `construccion/contratista_general`
+permanecen en lista de espera y no se ofrecen en el alta. Además, cinco de las 18
+industrias seleccionables (inmobiliaria, finanzas, retail, tecnología y seguros)
+contienen algún tipo puntual en espera: `inmobiliaria/promotora`,
+`finanzas/pagos_recaudos`, `retail/marketplace`, `technology/soporte_ti_msp`,
+`seguros/aseguradora` y `seguros/salud`. Los 5 tipos que solo existen para cuentas
+anteriores son `inmobiliaria/construccion`, `finanzas/fintech`,
+`technology/consultoria_ti`, `veterinaria/peluqueria_canina` (alias de
+`pet_services/peluqueria`) y `fotografia/wedding_planner`. El API entrega el catálogo
+completo con su disponibilidad para conservar a cuentas existentes; onboarding y
+creación administrativa filtran esa disponibilidad y el servidor vuelve a validarla al
+guardar.
+
+El estado de producto de los tipos de negocio implementados sigue siendo
+**`implemented_not_certified`**: existe comportamiento respaldado por código, sin
+certificación E2E completa ni autorización para prometer paridad total con referentes
+del sector. La pantalla exacta depende del tipo de negocio, capacidades publicadas, rol
+y plan.
+
+Resumen por industria (nombre tal como lo muestra el selector del alta). El detalle por
+tipo de negocio está en el catálogo.
+
+| ID de industria | Nombre | Base funcional / operación principal |
+|-----------------|--------|--------------------------------------|
+| `salud` | Salud | CRM, FAQs, agenda; tratamientos cuando la capacidad está habilitada |
+| `moda_belleza` | Belleza y estética | CRM, agenda o pedidos para tipos de catálogo |
+| `inmobiliaria` | Inmobiliaria | CRM, agenda e inmuebles |
+| `restaurantes` | Restaurantes / Gastronomía | Menú, pedidos y reservas |
+| `automotriz` | Automotriz | Inventario vehicular; agenda, pedidos, órdenes de taller o alquiler según tipo de negocio |
+| `turismo` | Turismo | Tours o estadías/propiedades según tipo de negocio |
+| `education` | Educación | Cursos, cohortes e inscripciones |
+| `finanzas` | Finanzas / Banca | Preset horizontal de CRM, FAQs y agenda; sin decisiones financieras automatizadas |
+| `servicios_profesionales` | Servicios profesionales | CRM, FAQs, agenda y consulta de casos cuando esté publicada |
+| `retail` | Retail / Comercio | Catálogo, inventario y pedidos |
+| `technology` | Tecnología | CRM y agenda; pedidos para hardware cuando corresponda |
+| `veterinaria` | Veterinaria | Agenda y fichas de mascotas |
+| `gimnasios` | Gimnasios y Fitness | Membresías, clases y reservas |
+| `seguros` | Seguros | Planes, cotizaciones, pólizas y reclamos con controles de rol |
+| `servicios_hogar` | Servicios del hogar | Solicitudes y despacho operativo |
+| `pet_services` | Servicios para mascotas | Agenda o hospedaje según tipo de negocio |
+| `fotografia` | Fotografía / Eventos | Sesiones fotográficas y seguimiento de entrega |
+| `otro` | Otro | Fallback genérico de CRM, catálogo y pedidos |
+
+Las otras dos entradas del registro son `event_planning` y `construccion`. Sus tipos
+actuales son de lista de espera y publican únicamente el alcance horizontal seguro; no
+se cuentan entre las 18 opciones que una cuenta nueva puede elegir.
+
+Para `turismo/hotel` y `turismo/alquiler_vacacional`, **Reservas** abre el registro
+directo `/admin/stays`; **Propiedades** es su catálogo. Si una unidad está vinculada
+a un Channel Manager, esa vinculación gobierna su disponibilidad y el writer local
+falla cerrado para evitar dos calendarios. Una unidad sin vínculo conserva el flujo
+nativo. La mera pertenencia al subtipo no obliga a contratar un proveedor externo.
+
+## Auditoría vertical operativa
+
+La consola `super_admin` expone **Auditoría vertical**. Sus conteos se derivan de los
+manifiestos, policies de tools, readiness, navegación, contratos de dominio y evals
+vigentes; no guarda porcentajes manuales. Separa explícitamente:
+
+- trabajo interno de código todavía abierto;
+- hallazgos históricos ya obsoletos por evidencia de código;
+- gates de proveedor/piloto;
+- decisiones de producto;
+- revisión experta o regulatoria.
+
+Un gate externo no se presenta como una función incompleta: la acción permanece
+fail-closed con motivo y ruta de reparación hasta recibir evidencia real.
+
+### Qué significa `implemented_not_certified`
+
+- Sí puede documentarse el flujo que existe y su ruta actual.
+- No debe afirmarse que la industria está completa, certificada, regulatoriamente
+  validada o que reemplaza todas las herramientas especializadas del sector.
+- Finanzas, tecnología y servicios profesionales operan como presets horizontales
+  mientras no se implemente y certifique un ciclo de dominio más profundo.
+- Las anclas iniciales de certificación —restaurantes, turismo y servicios del
+  hogar— siguen sin estar certificadas hasta contar con evidencia E2E protegida.
+
+## Relación web–móvil
+
+La API publica `manifestVersion` y `effectiveCapabilities`. La app móvil resuelve a
+partir de esos datos un único workspace operativo seguro: agenda, estadías, tours,
+restaurante, pedidos, clases, educación, seguros, solicitudes, sesiones, alquiler de
+vehículos, hospedaje de mascotas o ninguno. Una lista explícita de capacidades vacía
+produce **sin workspace**, no un fallback permisivo.
+
+Las operaciones de creación y cambios de estado se vuelven a filtrar por rol y estado.
+La ausencia de un botón en móvil no implica que el módulo no exista en web; puede ser
+una decisión de seguridad o de alcance de la app compañera.
+
+## Mantenimiento
+
+Al cambiar navegación, roles, planes, industrias o tipos de negocio se deben revisar conjuntamente:
+
+1. Este documento y `docs/domain/user-manual.md`.
+2. `docs/domain/mobile-user-manual.md` si cambia la superficie móvil.
+3. `docs/architecture/api-reference.md` y `docs/architecture/modules-reference.md` si cambia API o inventario.
+4. La base runtime del asistente según `docs/architecture/platform-assistant-knowledge.md`.
+5. `docs/domain/business-types-catalog.md` si cambian industrias, tipos de negocio, menú o
+   herramientas: no se edita a mano; se regenera con
+   `node apps/api/scripts/business-types-catalog.cjs --write` y el CI falla si queda
+   desactualizado.

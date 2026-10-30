@@ -154,9 +154,9 @@ const DECLARED: Readonly<Record<string, Partial<Record<ChannelCapability, string
         payment_link: 'dispatch-items.ts emits payment links before media',
         flow: 'whatsapp.adapter.ts strictBody interactive/flow; produced by conversations.service.ts',
         token_lifecycle: 'whatsapp-token-health.service.ts + channel-credential-health',
-        reconnect: 'Embedded Signup in apps/whatsapp; coexistence documented in docs/coexistence-manual.md',
+        reconnect: 'Embedded Signup in apps/whatsapp; coexistence documented in docs/domain/coexistence-manual.md',
         rate_limits: 'outbound-queue.service.ts per-plan priority; TenantThrottleService',
-        multi_account: 'channel_accounts.access_token per account; docs/multi-channel-per-type-implementation-2026-07.md',
+        multi_account: 'channel_accounts.access_token per account; docs/architecture/multi-channel-per-type-implementation-2026-07.md',
     }),
     instagram: Object.freeze({
         outbound_media: 'instagram.adapter.ts refuses documents (unsupported_media_type:document)',

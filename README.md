@@ -32,7 +32,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Arquitectura de adaptadores extensible para agregar nuevos canales
 
 **Que negocios soporta**
-- 20 industrias ("verticales"; 18 se pueden elegir al registrarse) y 80 tipos de negocio canonicos (72 seleccionables y 8 en lista de espera; 5 configuraciones mas siguen operando solo para cuentas existentes). La lista completa y su disponibilidad esta en [docs/business-types-catalog.md](docs/business-types-catalog.md).
+- 20 industrias ("verticales"; 18 se pueden elegir al registrarse) y 80 tipos de negocio canonicos (72 seleccionables y 8 en lista de espera; 5 configuraciones mas siguen operando solo para cuentas existentes). La lista completa y su disponibilidad esta en [docs/domain/business-types-catalog.md](docs/domain/business-types-catalog.md).
 - El agente, las etapas del embudo y las pantallas del menu se adaptan a la industria y al tipo de negocio que se eligen al registrarse.
 
 **Agente de IA**
@@ -182,9 +182,9 @@ packages/
   shared/       -- TypeScript types compartidos
 infra/
   docker/       -- docker-compose (dev + prod), 5 Dockerfiles
-  nginx/        -- Reverse proxy config
-  scripts/      -- setup-vps.sh, setup-fresh.sh, reset-db.sh
-docs/           -- Architecture specs, analytics manual, API reference
+  backup/       -- backup.sh / restore.sh (cron en el VPS)
+  scripts/      -- setup-vps.sh, setup-fresh.sh, reset-db.sh, setup-production-crons.sh, harden-vps.sh
+docs/           -- Base de conocimiento (indice: docs/README.md)
 ```
 
 ---
@@ -307,15 +307,14 @@ VPS: Hostinger Ubuntu, Docker (14 servicios en `infra/docker/docker-compose.prod
 
 | Documento | Descripcion |
 |-----------|-------------|
-| [docs/server-installation.md](docs/server-installation.md) | **Guia completa de instalacion en servidor nuevo** (paso a paso) |
-| [CLAUDE.md](CLAUDE.md) | Contexto tecnico completo para desarrollo |
-| [docs/analytics-manual.md](docs/analytics-manual.md) | Manual de analytics, alertas, BI API, anomalias, cohortes |
-| [docs/observability-manual.md](docs/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |
-| [docs/SECURITY.md](docs/SECURITY.md) | Autenticacion, JWT, RBAC, cifrado |
-| [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Endpoints REST, WebSocket, BullMQ |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios (congelado en ago-2026; ver el aviso al inicio del archivo) |
+| [docs/operations/server-installation.md](docs/operations/server-installation.md) | **Guia completa de instalacion en servidor nuevo** (paso a paso) |
+| [AGENTS.md](AGENTS.md) | Contexto tecnico unico para desarrollo y agentes de codigo (`CLAUDE.md` lo importa) |
+| [docs/domain/analytics-manual.md](docs/domain/analytics-manual.md) | Manual de analytics, alertas, BI API, anomalias, cohortes |
+| [docs/operations/observability-manual.md](docs/operations/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |
+| [docs/security/security-specification.md](docs/security/security-specification.md) | Seguridad: autenticacion, JWT, RBAC, cifrado, webhooks |
+| [docs/architecture/api-reference.md](docs/architecture/api-reference.md) | Endpoints REST, WebSocket, BullMQ |
 | [docs/README.md](docs/README.md) | Indice completo de la documentacion, agrupado por tema |
-| [docs/product-capabilities-reference.md](docs/product-capabilities-reference.md) | Capacidades, roles, planes y superficies vigentes |
+| [docs/architecture/product-capabilities-reference.md](docs/architecture/product-capabilities-reference.md) | Capacidades, roles, planes y superficies vigentes |
 
 ---
 

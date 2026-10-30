@@ -30,7 +30,7 @@ import { LoadMetrics } from '../../common/__fixtures__/load-metrics';
  *
  * It also records latency and terminal-state distribution. An SLO with no
  * measurement behind it is a threshold somebody invented; the numbers printed
- * here are what `docs/runbooks/dispatch-load-and-slo.md` quotes, with the
+ * here are what `docs/operations/runbooks/dispatch-load-and-slo.md` quotes, with the
  * concurrency and hardware they were taken on.
  *
  * The primitives are driven directly rather than through AgentDispatchOutboxStore

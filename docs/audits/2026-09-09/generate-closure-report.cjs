@@ -140,7 +140,7 @@ const retrievalGaps = [
         .map(language => `idioma sin caso: ${language}`),
     ...RETRIEVAL_CHALLENGES.filter(challenge => !RETRIEVAL_CASES.some(row => row.challenge === challenge))
         .map(challenge => `desafío sin caso: ${challenge}`),
-    ...(fs.existsSync(path.join(root, 'docs/runbooks/rag-quality-and-slo.md')) ? [] : ['runbook sin publicar']),
+    ...(fs.existsSync(path.join(root, 'docs/operations/runbooks/rag-quality-and-slo.md')) ? [] : ['runbook sin publicar']),
 ];
 
 /**
@@ -278,7 +278,7 @@ const ROWS = [
         gates: retrievalGaps.length ? [] : [2],
         evidence: `${RETRIEVAL_CASES.length} casos etiquetados que cubren los ${RETRIEVAL_LANGUAGES.length} idiomas y `
             + `los ${RETRIEVAL_CHALLENGES.length} desafíos declarados, con umbrales barridos y números publicados en `
-            + '`docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el '
+            + '`docs/operations/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el '
             + 'modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse '
             + 'con la mitad medida.',
         commits: ['f2a6a2e8', '7a9e7c18', '71387107'],

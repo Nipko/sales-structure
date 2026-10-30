@@ -17,7 +17,7 @@ src/
     forgot-password/page.tsx — Password reset (OTP + new password)
     setup-password/page.tsx  — Google OAuth password setup
     verify-email/page.tsx    — 6-digit OTP verification  
-    onboarding/page.tsx      — Wizard trial-first (4 pasos: empresa → audiencia → objetivos → plan; `STEP_KEYS` en el archivo), vertical-aware (18 industrias seleccionables de 20 + tipos de negocio; ver `docs/business-types-catalog.md`). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
+    onboarding/page.tsx      — Wizard trial-first (4 pasos: empresa → audiencia → objetivos → plan; `STEP_KEYS` en el archivo), vertical-aware (18 industrias seleccionables de 20 + tipos de negocio; ver `docs/domain/business-types-catalog.md`). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
     accept-invite/page.tsx   — Aceptar invitación de usuario
     auth/                    — Callbacks OAuth (Google, etc.)
     book/                    — Reserva pública (booking sin auth)
@@ -113,7 +113,7 @@ src/
     InitialSetupCard.tsx    — Essential setup tasks, plan/role/vertical-aware and fail-closed
     quality/                — Global Agent Health card, banner and safe quality status UI
     SetupBanner.tsx / AgentReadinessBanner.tsx — Prompts de personalización/readiness del agente
-    CopilotWidget.tsx / HelpAssistant.tsx — Copiloto y asistente de ayuda
+    HelpAssistant.tsx       — Asistente de ayuda (Parallly Assist)
     tour/ProductTour.tsx    — Tour guiado del producto
     pwa/                    — InstallPrompt, OfflineIndicator, PushNotificationToggle, ServiceWorkerRegistrar
   contexts/

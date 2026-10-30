@@ -85,7 +85,7 @@ test.describe("a signed-in dashboard", () => {
     const state = await hermeticDashboard(page, shell);
     const operator = await signIn(page, "super_admin");
     // Platform mode: no implicit tenant. This is the rule
-    // `docs/superadmin-governance.md` exists for — acting on a tenant is an
+    // `docs/security/superadmin-governance.md` exists for — acting on a tenant is an
     // impersonation with a reason, never a side effect of being an operator.
     expect(operator.tenantId).toBeNull();
     await page.goto("/admin");

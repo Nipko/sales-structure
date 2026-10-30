@@ -3,7 +3,7 @@
 **Corte:** 8 de agosto de 2026
 **Estado Parallly:** código del worktree; no implica certificación E2E
 **Fuentes:** páginas oficiales de producto/ayuda verificadas en el corte
-**Auditoría relacionada:** [`vertical-system-audit-2026-08.md`](./vertical-system-audit-2026-08.md)
+**Auditoría relacionada:** [`vertical-system-audit-2026-08.md`](archive/2026-08-verticales/vertical-system-audit-2026-08.md)
 
 ## 1. Cómo leer la matriz
 

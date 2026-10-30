@@ -2,19 +2,22 @@
 
 Provider-capability-driven subscription billing for Parallly.
 
-## Live provider boundary (August 2026)
+## Live provider boundary (updated October 2026)
 
-- **Wompi is the only live platform subscription rail**. Colombia/COP uses
+- **Wompi is the platform subscription rail for Colombia/COP**. It uses
   reusable payment sources and Parallly's internal renewal engine.
 - **Mercado Pago is not a subscription provider**. Its remaining live use is
   tenant-owned credentials and payment links for tenant → end-customer sales in
   `tenant-payments`; there are no global `MP_*` subscription credentials.
-- Stripe remains an adapter/capability for a future international rollout; it
-  is not a fallback for unsupported countries unless Billing Ops explicitly
-  enables and routes it.
+- **Stripe is the subscription rail for recognized non-Colombian billing
+  countries** (USD, hosted Checkout and native Stripe subscriptions, since
+  September 2026). It stays disabled until Billing Ops enables it with valid
+  server credentials and webhook configuration; it is never a fallback for a
+  disabled Wompi, and an existing subscription keeps its provider. See
+  [`docs/domain/stripe-international-subscriptions-2026-09.md`](../../../../../docs/domain/stripe-international-subscriptions-2026-09.md).
 - Mock is test-only.
 
-Operational details and go-live checks: [`docs/billing-runbook.md`](../../../../../docs/billing-runbook.md).
+Operational details and go-live checks: [`docs/operations/billing-runbook.md`](../../../../../docs/operations/billing-runbook.md).
 
 ## Request flow
 
@@ -48,7 +51,7 @@ can activate a paid subscription or promote a charged upgrade.
 | Dunning/proration | `recurring/dunning.service.ts`, `recurring/proration.service.ts` |
 | Webhooks/reconciliation | `webhook.controller.ts`, `processors/reconciliation.processor.ts` |
 | Super admin | `billing-admin.controller.ts` |
-| Tenant → customer links (Mercado Pago only) | `../tenant-payments/tenant-payments.controller.ts`, `../tenant-payments/tenant-payments.service.ts` |
+| Tenant → customer links (tenant-owned Wompi or Mercado Pago) | `../tenant-payments/tenant-payments.controller.ts`, `../tenant-payments/tenant-payments.service.ts` |
 
 ## Invariants
 

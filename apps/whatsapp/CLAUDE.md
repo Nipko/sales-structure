@@ -115,3 +115,20 @@ cd apps/whatsapp && npm run test:bootstrap   # errores de DI de NestJS (tsc no l
 - `ENCRYPTION_KEY` (hex, AES-256-GCM para credenciales).
 - `DATABASE_URL` (Prisma), `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD`.
 - Auth JWT: `JWT_SECRET` / `INTERNAL_JWT_SECRET` (el guard prueba ambos; también acepta `x-internal-key`).
+
+## Endpoints HTTP (puerto 3002)
+
+| Método | Ruta | Descripción | Auth |
+|--------|------|-------------|------|
+| `POST` | `/onboarding/start` | Iniciar onboarding | `super_admin`, `tenant_admin` |
+| `GET` | `/onboarding/:id` | Detalle completo | JWT |
+| `GET` | `/onboarding/:id/status` | Estado (polling) | JWT |
+| `POST` | `/onboarding/:id/retry` | Reintentar fallido | `super_admin`, `tenant_admin` |
+| `POST` | `/onboarding/:id/resync` | Re-sync de assets | `super_admin`, `tenant_admin` |
+| `DELETE` | `/onboarding/:id` | Cancelar en progreso | `super_admin`, `tenant_admin` |
+| `GET` | `/onboarding` | Listar todos (admin) | `super_admin` |
+| `GET` | `/webhooks/whatsapp` | Verificación de Meta | Público |
+| `POST` | `/webhooks/whatsapp` | Recibir webhooks | HMAC-SHA256 |
+| `GET` | `/health/live` · `/health/ready` | Liveness / readiness | Público |
+
+Imagen: `infra/docker/Dockerfile.whatsapp` (`ghcr.io/nipko/parallext-whatsapp`). Este archivo reemplaza al antiguo `apps/whatsapp/README.md` (fusionado en K3, 2026-10-30).

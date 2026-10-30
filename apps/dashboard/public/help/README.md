@@ -110,6 +110,6 @@ that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig
 content is staged in i18n for when the SMS UI ships.) GIFs of the connect flow are
 high-value here — prioritize `channelsWhatsapp` and `channelsInstagram`.
 
-## New pages to add help to (later phases — see docs/help-panel-audit-2026-06.md)
+## New pages to add help to
 When adding `HelpPanel` to a new page, also add `mediaKey="{newKey}"` and a
 matching `help.{newKey}` entry in all 4 `messages/*.json`.

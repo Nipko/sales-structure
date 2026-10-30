@@ -10,7 +10,7 @@
 #
 # Offsite config is read from the production .env (regenerated on every deploy
 # from GitHub Secrets), so it survives the VPS `git reset --hard`. See
-# docs/backup-offsite-setup.md for the one-time bucket + secrets setup.
+# docs/operations/backup-offsite-setup.md for the one-time bucket + secrets setup.
 # ============================================
 
 set -euo pipefail

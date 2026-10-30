@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 /**
- * Owner decision D19 (docs/onboarding-decisions-2026-09.md): the platform pays
+ * Owner decision D19 (docs/decisions/previas/onboarding-decisions-2026-09.md): the platform pays
  * the first N agent replies on a tenant's PUBLIC DEMO LINK, with a cap.
  *
  * The demo page is the visible win of day 0: a prospect, or the owner from a

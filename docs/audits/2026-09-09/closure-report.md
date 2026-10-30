@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `d7f2d6d8b63db0ad1cbee9e8c124cd1a5a312a52`.
+Revisión: `369016959a6dab53d08a8d3fd5b5e2d7bfe5bef8`.
 
 **El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión
@@ -41,7 +41,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | C2 | **aceptada** | contador | — | Ciclos de agenda y de mascotas con recibos atómicos comprobados. El cierre de esta fila es el mismo que el de A1. | — |
 | C3 | **bloqueada** por gate 2 | contador | — | Contratos MCP y dependencias base implementados. El ejecutor está cableado a servicio, cola y endpoint, y se ensaya sin proveedor; la cobertura por tarea la decide una corrida real: 0 perfiles certificados de 80. | — |
 | D1 | **bloqueada** por gate 3 | **declaración** | — | Muestreo, revisión humana con CAS y anotaciones RAG implementados. No se certifica veracidad global y el propio informe lo dice; una revisión de muestra necesita personas. | — |
-| D2 | **bloqueada** por gate 2 | contador | — | 17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida. | `f2a6a2e8` `7a9e7c18` `71387107` |
+| D2 | **bloqueada** por gate 2 | contador | — | 17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/operations/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida. | `f2a6a2e8` `7a9e7c18` `71387107` |
 | D3 | **bloqueada** por gate 3 | **declaración** | — | Atribución observable y diagnóstico técnico probados. No equivalen a veracidad ni a entailment, y el informe lo dice. | — |
 | E1 | **aceptada** | contador | — | 80 perfiles, 444 tareas, 158 que comprometen al negocio, y cero tareas sin caso positivo propio o sin verificador fuera de las 5 declaradas: `file_claim` en las cinco subtipos de seguros existe para probar que el escalón de identidad la rechaza, así que no hay efecto que verificar y un "positivo" sería el agente haciendo lo que no debe. Certificar estas tareas es H1. | — |
 | E2 | **aceptada** | contador | — | 30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers. | `33dd2487` |

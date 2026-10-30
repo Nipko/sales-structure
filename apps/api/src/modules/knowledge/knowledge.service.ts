@@ -1845,18 +1845,6 @@ export class KnowledgeService {
             [resourceId]);
     }
 
-    async searchChunks(schemaName: string, query: string, limit = 5) {
-        return this.prisma.executeInTenantSchema<any[]>(
-            schemaName,
-            `SELECT kc.*, kr.title as resource_title, kr.type as resource_type
-             FROM knowledge_chunks kc
-             JOIN knowledge_resources kr ON kr.id = kc.resource_id
-             WHERE kr.status = 'approved' AND kc.content ILIKE $1
-             ORDER BY kc.created_at DESC LIMIT $2`,
-            [`%${query}%`, limit],
-        );
-    }
-
     // ─── KB Feedback & Gap Analysis ─────────────────────────────────────────
 
     private async ensureKbFeedbackTable(schemaName: string): Promise<void> {

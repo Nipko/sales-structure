@@ -17,7 +17,7 @@
  *
  * Deny by default: a path no rule matches belongs to nobody. Every new
  * super_admin page therefore needs a line here or it is closed, which is the
- * governance rule `docs/superadmin-governance.md` states and the one place it
+ * governance rule `docs/security/superadmin-governance.md` states and the one place it
  * can be enforced.
  */
 

@@ -11,7 +11,7 @@ Fecha de corte: 10 de septiembre de 2026. HEAD observado: `78ac4a36`, con trabaj
 - Se ejecutaron los tres validadores existentes: contrato de marketing, cuatro fixtures de regresión y evidencia competitiva. Todos pasaron. Los cuatro JSON base tienen **1.177 valores hoja cada uno, sin claves faltantes ni sobrantes** respecto de español. Esto comprueba estructura; no certifica precisión comercial, calidad de traducción ni accesibilidad.
 - No se realizó un recorrido visual completo de 34 rutas × 4 idiomas × tamaños, ni una auditoría WCAG instrumental. Los puntos de accesibilidad son hallazgos de fuente o verificaciones pendientes, no una certificación de conformidad.
 
-Fuentes: [generación de verticales](../../../apps/landing/src/app/(marketing)/soluciones/[slug]/page.tsx#L6), [catálogo vertical](../../../apps/landing/src/data/verticals.ts#L36), [scripts](../../../apps/landing/package.json), [referencia del producto](../../product-capabilities-reference.md#L1).
+Fuentes: [generación de verticales](../../../apps/landing/src/app/(marketing)/soluciones/[slug]/page.tsx#L6), [catálogo vertical](../../../apps/landing/src/data/verticals.ts#L36), [scripts](../../../apps/landing/package.json), [referencia del producto](../../architecture/product-capabilities-reference.md#L1).
 
 ## 2. Inventario completo de rutas y contenido
 
@@ -53,7 +53,7 @@ La referencia vigente dice Email interno sin alta autoservicio y **SMS retirado 
 
 **Texto:** «Conecta los canales disponibles en tu plan: [lista operativa]. Cada conexión utiliza un agente asignado». No incluir Email/SMS en captación nueva.
 
-Evidencia: [resumen de canales](../../../apps/landing/src/components/sections/PricingSection.tsx#L31), [formatter](../../../apps/landing/src/lib/api.ts#L63), [matriz](../../../apps/landing/src/data/pricing.ts#L43), [alcance vigente](../../product-capabilities-reference.md#L39), [seed](../../../apps/api/prisma/seed-billing-plans.js#L189).
+Evidencia: [resumen de canales](../../../apps/landing/src/components/sections/PricingSection.tsx#L31), [formatter](../../../apps/landing/src/lib/api.ts#L63), [matriz](../../../apps/landing/src/data/pricing.ts#L43), [alcance vigente](../../architecture/product-capabilities-reference.md#L39), [seed](../../../apps/api/prisma/seed-billing-plans.js#L189).
 
 ### L2 — P0: no se distinguen suscripción, consumo Meta y cobros del negocio
 
@@ -67,7 +67,7 @@ El paquete oficial verifica cobro de servicio desde **1-oct-2026**, 1.000 entreg
 
 La matriz no muestra `customerPayments`, aunque el catálogo público sí exporta esa feature. Agregarla con proveedor conectado, capacidades del agente y alcance de conciliación, sin confundirla con tarjetas para pagar Parallly. No se encontró una promesa publicada de crédito WhatsApp en la landing: **no añadirla** desde el campo seed sin un saldo/debito/contrato verificable.
 
-Evidencia: [FAQ precios](../../../apps/landing/messages/es.json#L726), [prueba](../../../apps/landing/src/components/sections/PricingSection.tsx#L141), [exportación customerPayments](../../../apps/api/src/modules/billing/billing-plan-catalog.service.ts#L27), [pagos del negocio](../../product-capabilities-reference.md#L48), [investigación oficial](./meta-official-pricing-evidence.md#L19), [arquitectura de pagos](./whatsapp-account-billing-architecture.md).
+Evidencia: [FAQ precios](../../../apps/landing/messages/es.json#L726), [prueba](../../../apps/landing/src/components/sections/PricingSection.tsx#L141), [exportación customerPayments](../../../apps/api/src/modules/billing/billing-plan-catalog.service.ts#L27), [pagos del negocio](../../architecture/product-capabilities-reference.md#L48), [investigación oficial](./meta-official-pricing-evidence.md#L19), [arquitectura de pagos](./whatsapp-account-billing-architecture.md).
 
 ### L3 — P0: Custom expone valores técnicos como oferta ilimitada
 
@@ -95,7 +95,7 @@ También se afirma confirmación WhatsApp tras una reserva en Instagram y unific
 
 **Texto:** «Un agente de IA para atender y dar seguimiento con la información de tu negocio»; «Ejemplos ilustrativos de flujos configurables»; «Organiza contactos y oportunidades, con reglas de seguimiento que puedes configurar». Para campañas, comunicar preparación/segmentación y el envío sólo dentro de su alcance validado. «Plantillas que requieren aprobación de Meta» evita sugerir que toda plantilla del usuario ya está aprobada. Identidad: «Reúne el historial cuando hay una coincidencia verificada y revisa las sugerencias de unión». Tier: describir capacidad/modelos disponibles, sin equipararlo a un resultado certificado.
 
-Evidencia: [mejor vendedor](../../../apps/landing/messages/es.json#L1012), [casos entre canales](../../../apps/landing/messages/es.json#L1060), [CRM y campañas](../../../apps/landing/messages/es.json#L1098), [restricción de campañas](../../product-capabilities-reference.md#L80), [calidad por tier](../../../apps/landing/src/data/pricing.ts#L97).
+Evidencia: [mejor vendedor](../../../apps/landing/messages/es.json#L1012), [casos entre canales](../../../apps/landing/messages/es.json#L1060), [CRM y campañas](../../../apps/landing/messages/es.json#L1098), [restricción de campañas](../../architecture/product-capabilities-reference.md#L80), [calidad por tier](../../../apps/landing/src/data/pricing.ts#L97).
 
 ### L6 — P1: jerga visible y selección perdida entre landing y onboarding
 

@@ -254,7 +254,7 @@ describe('the return point is restored WHOLE, or not called restored', () => {
         expect(run.stdout).toContain('this run did not restore: tenant_acme');
         expect(run.exit).toBe(1);
         // And it names the remedy, because the most likely cause is one
-        // `docs/backup-restore-runbook.md` already documents: a tenant that was
+        // `docs/operations/backup-restore-runbook.md` already documents: a tenant that was
         // `is_active = false` when the backup ran has no per-schema dump at all,
         // so its data exists only inside `full_backup.dump`.
         expect(run.stdout).toContain('its data lives ONLY inside full_backup.dump');

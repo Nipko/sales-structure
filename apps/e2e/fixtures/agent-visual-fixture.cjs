@@ -2,7 +2,7 @@
  * Local visual-review fixture. Every account and response is fictional.
  * Never forwards to a real API. Undeclared endpoints fail with 501.
  * Run from the repository: node apps/e2e/fixtures/agent-visual-fixture.cjs
- * See docs/agent-platform-visual-review-2026-09-07.md for scope and setup.
+ * See docs/archive/2026-09-agente/agent-platform-visual-review-2026-09-07.md for scope and setup.
  */
 
 const http=require('node:http'), fs=require('node:fs'), ts=require('typescript');

@@ -176,7 +176,7 @@ describe('one dump format, and every restore failure fatal', () => {
 });
 
 describe('the runbook and the script say the same thing', () => {
-    const RUNBOOK = readFileSync(resolve(ROOT, 'docs', 'runbooks', 'october-cutover.md'), 'utf8')
+    const RUNBOOK = readFileSync(resolve(ROOT, 'docs', 'operations', 'runbooks', 'october-cutover.md'), 'utf8')
         .replace(/\r\n/g, '\n');
 
     it('names no dump format that nothing in this repository produces', () => {

@@ -447,7 +447,7 @@ EOF
     # else, and the glob below it matches nothing, which without this check is
     # once again a green "all schemas restored".
     #
-    # It also catches the case `docs/backup-restore-runbook.md` already writes
+    # It also catches the case `docs/operations/backup-restore-runbook.md` already writes
     # down and nothing enforced: a tenant that was `is_active = false` when the
     # backup ran gets NO per-schema dump, so restoring a tarball the per-schema
     # way into an empty database leaves that tenant's data behind — present in

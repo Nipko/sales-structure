@@ -4,8 +4,8 @@ App nativa operativa para usuarios tenant — inbox en tiempo real, CRM, tareas,
 indicadores permitidos y workspace adaptado a la vertical.
 Consume la API existente (`auth` + `agent-console`) y Socket.io `/inbox`. Codebase **separado** del web (no se despliega con `git push`).
 
-Manual funcional: [`../../docs/mobile-user-manual.md`](../../docs/mobile-user-manual.md).
-El plan histórico de implementación permanece en `docs/mobile-app-plan.md`.
+Manual funcional: [`../../docs/domain/mobile-user-manual.md`](../../docs/domain/mobile-user-manual.md).
+El proceso de release está en [`docs/operations/runbooks/mobile-release.md`](../../docs/operations/runbooks/mobile-release.md).
 
 ## Contexto / contrato compartido
 Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../packages/shared`) → el contrato de tipos de la API queda **enforced por TypeScript** (si el backend cambia un tipo, el mobile no compila). Metro está configurado para monorepo en `metro.config.js` (`watchFolders` + `nodeModulesPaths`). La superficie completa de API a espejar está en `apps/dashboard/src/lib/api.ts`.
@@ -24,7 +24,7 @@ Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../pack
 - ✅ **Push nativo** (Expo): registro del token + `/push/expo-subscribe`; el backend envía vía Expo Push API en mensaje/handoff/SLA/cita; **tap → conversación exacta** (deep-link, también en cold start). *Requiere `eas init` (projectId) y un **development build** — NO funciona en Expo Go (SDK 53+ quitó remote push de Expo Go).*
 - ✅ **Seguridad**: re-bloqueo biométrico al volver tras más de 15 minutos en segundo
   plano, con overlay de desbloqueo
-- 📦 **Estado Android al 14-sep-2026:** `1.1.1 (12)` está publicada en pruebas internas y enviada a revisión de producción. Corrige SecureStore, pasa diez etapas nativas y conserva optimización alta y 91% de ofuscación. El usuario reportó funcionamiento correcto; ADB confirma la instalación desde Play. La publicación pública espera la aprobación de Google; v10 quedó fuera del envío. Evidencia y estado: [`../../docs/mobile-release-2026-09-14.md`](../../docs/mobile-release-2026-09-14.md).
+- 📦 **Estado Android al 14-sep-2026:** `1.1.1 (12)` está publicada en pruebas internas y enviada a revisión de producción. Corrige SecureStore, pasa diez etapas nativas y conserva optimización alta y 91% de ofuscación. El usuario reportó funcionamiento correcto; ADB confirma la instalación desde Play. La publicación pública espera la aprobación de Google; v10 quedó fuera del envío. Evidencia y estado: [`../../docs/archive/2026-09-movil/mobile-release-2026-09-14.md`](../../docs/archive/2026-09-movil/mobile-release-2026-09-14.md).
 - 🚧 iOS no se declara publicado. Opcionales aplazados: tema claro, switch multi-tenant y centro de notificaciones persistente.
 
 ## Push nativo — cómo activarlo

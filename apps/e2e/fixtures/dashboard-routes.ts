@@ -29,6 +29,10 @@ export const disabledAgentTools = (totalAgents = 0): AgentToolConfigurationSumma
  * `GET /readiness/:tenantId` (R2) in the shape the setup card and `/admin/readiness`
  * read: the engine's result for one tenant. `no_listo` carries one blocking gap
  * (the regular hours) so the card has a blocker to list and link; `listo` has none.
+ * Since R3 the answer also says which requirements open the panel's form drawer
+ * (`formRequirementIds`) and where catalog data lives (`screenTargets`); the
+ * hours have a form, so the card links that blocker to the panel with its
+ * drawer open (`/admin/readiness?open=CORE.HOURS.REGULAR`).
  */
 export const readinessCurrent = (verdict: "listo" | "no_listo") => {
   const failing = verdict === "no_listo";
@@ -44,8 +48,44 @@ export const readinessCurrent = (verdict: "listo" | "no_listo") => {
       blockingGaps: failing ? ["CORE.HOURS.REGULAR"] : [], necessaryGaps: [], recommendedGaps: [],
       platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
     },
+    formRequirementIds: ["CORE.HOURS.REGULAR"],
+    screenTargets: {},
   };
 };
+
+/**
+ * What `/admin/readiness` and `/admin/readiness/defaults` ask for beyond the
+ * verdict (R3): the history, the drawer of the hours gap (descriptor, current
+ * value, stored row and versions) and the defaults list. Without these, the
+ * drawer's calls would fall into the `readiness/<tenant>` prefix and get the
+ * verdict as their body — the accident the longest-prefix rule warns about.
+ */
+export const readinessPanelRoutes = (tenantId = TENANT): ApiRoutes => ({
+  [`readiness/${tenantId}/history`]: ok([]),
+  [`readiness/${tenantId}/requirements/CORE.HOURS.REGULAR`]: ok({
+    specVersion: "1.0.0-rc.1",
+    definition: {
+      id: "CORE.HOURS.REGULAR", title: "Horario", layer: "core", kind: "fact", level: "bloqueante", rule: "R1",
+      predicate: "7 días declarados", whenMissing: { code: "PREG", behavior: "Pregunta al negocio.", never: [] },
+      uiToday: "/admin/settings/business-hours", uiTarget: "/admin/settings/business-hours", platform: false, answers: [],
+    },
+    evaluation: { id: "CORE.HOURS.REGULAR", result: "no_cumple", valueState: "ausente" },
+    evaluatedAt: "2026-09-09T12:00:00.000Z",
+    form: {
+      schema: "business-spec/form@1", requirementId: "CORE.HOURS.REGULAR", title: "Horario", type: "weekly_hours",
+      mode: "form", screens: [], root: "object", emptyAllowed: false, validation: [], example: null,
+      help: "Falta el horario de atención", defaults: null,
+      fields: [
+        { key: "always_open", label: "Abierto 24/7", kind: "bool", required: false },
+        { key: "days", label: "Días y tramos", kind: "day_spans", required: true, when: { field: "always_open", notIn: ["true"] } },
+      ],
+    },
+    current: { state: "ausente", record: null, conflicts: [] },
+    fact: null,
+  }),
+  [`readiness/${tenantId}/business-facts/CORE.HOURS.REGULAR/versions`]: ok([]),
+  [`readiness/${tenantId}/business-facts/defaults`]: ok({ specVersion: "1.0.0-rc.1", items: [] }),
+});
 
 export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // The session heartbeat every authenticated page sends.

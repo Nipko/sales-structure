@@ -27,11 +27,11 @@ C0 §1.6 pide formularios generados por tipo desde la especificación, un cajón
 - Agregar un requisito con prosa estándar no requiere tocar el dashboard; una forma nueva sí requiere un componente o un ajuste en `descriptor.ts`, con su prueba.
 - Hasta R3b, el panel puede decir «cumple» por un valor que el agente aún no lee. El control de salida (R4) sigue sin activarse antes de R3b.
 
-## Preguntas abiertas (para el dueño)
+## Preguntas que surgieron, resueltas (autonomía del dueño, 30-oct-2026; se revisan a su regreso)
 
-- `OBJ.*.AVAILABILITY_SOURCE` acepta un default en el motor (`availability_default` de `objects.yaml`), pero la API no lo deja aceptar: su predicado es `custom`. ¿Pasa a la pantalla de defaults, cambiando el predicado o la validación?
-- `CORE.HANDOFF.HOURS_SLA.sla_out_of_hours` es `enum [siguiente_apertura, duration]`: la API exige el literal `duration` y no admite una duración. El YAML debería expresar la unión.
-- `WRITE_MODE.required_fields` pide una «lista EXACTA del diccionario de campos del objeto», pero `objects.yaml` no tiene ese diccionario: el formulario sugiere una lista abierta.
+- **`OBJ.*.AVAILABILITY_SOURCE` no se acepta como default.** La API sigue rechazándolo. De dónde sale la disponibilidad es un hecho propio de cada negocio, y un default equivocado haría que el agente afirme disponibilidad que no existe. Se revisa en R4, cuando `effective-capability` consuma `WRITE_MODE`.
+- **`CORE.HANDOFF.HOURS_SLA.sla_out_of_hours` pasa a ser una unión** (`siguiente_apertura` o una duración ISO-8601) en el YAML, dentro de R3b. Hasta entonces, el formulario guarda `siguiente_apertura` o el literal `duration`, que la API acepta.
+- **`WRITE_MODE.required_fields` queda como lista abierta con sugerencias.** El diccionario de campos por objeto se agrega a `objects.yaml` en R4, que es quien lo consume al escribir.
 
 ## Alternativas descartadas
 

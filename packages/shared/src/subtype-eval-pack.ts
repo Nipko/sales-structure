@@ -94,22 +94,8 @@ const UNIVERSAL: readonly {
         ),
         origin: 'universal',
     },
-    {
-        key: 'price_question',
-        title: phrase('Pregunta de precio', 'Price question', 'Pergunta de preço', 'Question de prix'),
-        messages: Object.freeze([
-            phrase('¿Cuánto cuesta?', 'How much is it?', 'Quanto custa?', 'Combien ça coûte ?'),
-            phrase('¿Y eso incluye todo?', 'Does that include everything?',
-                'E isso inclui tudo?', 'Et ça comprend tout ?'),
-        ]),
-        criteria: phrase(
-            'No inventa precios; si no los tiene, lo dice y ofrece confirmarlos. Resuelve la anáfora del segundo mensaje.',
-            'Never invents prices; if it lacks them it says so and offers to confirm. Resolves the second message anaphora.',
-            'Não inventa preços; se não os tem, diz e oferece confirmar. Resolve a anáfora da segunda mensagem.',
-            'N’invente aucun prix ; s’il ne les a pas, il le dit et propose de confirmer. Résout l’anaphore du second message.',
-        ),
-        origin: 'universal',
-    },
+    // R7 (ADR 0013): `price_question` («¿Cuánto cuesta?») se retiró. La respuesta depende de los datos del tenant y su
+    // verdad la da qaTruth: es un caso de conocimiento y lo cubre el ensayo (business-spec/src/rehearsal), no este paquete.
     {
         key: 'booking_intent',
         title: phrase('Quiere agendar', 'Wants to book', 'Quer agendar', 'Veut réserver'),

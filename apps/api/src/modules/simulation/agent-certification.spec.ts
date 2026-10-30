@@ -198,7 +198,9 @@ describe('computing whether a profile has been shown to do its work', () => {
             }, 0);
         // R3b (D9): 1.064 escenarios menos por canal (los «límite declarado» que salían de las exclusiones de
         // plataforma del perfil; lo que el negocio NO hace es ahora CORE.OFFER.NOT_OFFERED del tenant).
-        expect(expectedPerChannel).toBe(18_704);
+        // R7 (ADR 0013): 960 menos por canal (3 casos de conocimiento × 4 idiomas × 80 perfiles: `price_question`,
+        // `profile_price_without_data`, `profile_after_hours`); su verdad depende de los datos y la da el ensayo con qaTruth.
+        expect(expectedPerChannel).toBe(17_744);
         expect(report.summary.requiredCases).toBe(expectedPerChannel);
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],

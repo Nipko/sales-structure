@@ -6,6 +6,7 @@
  * Muestra lo que decidió el motor en la API: veredicto, huecos por nivel con su mensaje, cobertura por área e
  * historial. Cada hueco con formulario abre el cajón (R3) donde se completa y se guarda; los demás enlazan a la
  * pantalla del objeto (catálogos). `?open=ID` abre el cajón de ese requisito (lo usa la tarjeta de Inicio).
+ * R4: debajo del veredicto, la atención a clientes reales (control de salida y reconocimiento de «limitado»).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -16,6 +17,7 @@ import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { GoLiveCard } from "@/components/readiness/GoLiveCard";
 import { RequirementDrawer } from "@/components/readiness/RequirementDrawer";
 import {
     buildReadinessPanel,
@@ -178,6 +180,9 @@ export default function ReadinessPage() {
                                 </p>
                             </div>
                         </div>
+
+                        <GoLiveCard tenantId={activeTenantId} verdict={model.verdict} limitedIntents={model.limitedIntents}
+                            canWrite={canWrite} reloadKey={model.evaluatedAt} />
 
                         <Section title={t("groups.blocking.title")} description={t("groups.blocking.description")} count={model.blocking.length} tone="red">
                             {model.blocking.length ? <ul className="space-y-3">{model.blocking.map(g => <GapRow key={g.id} gap={g} onOpen={openForm} />)}</ul>

@@ -7,6 +7,7 @@
 
 import type { VerticalDefinitions } from "./vertical-catalog";
 import type { ReadinessCurrentResponse, ReadinessHistoryEntry } from "@/lib/readiness-panel";
+import type { GoLiveStatus } from "@/lib/go-live";
 import type {
     BusinessFactDefault, BusinessFactVersion, BusinessFactWriteResponse, RequirementDetailResponse,
 } from "@/lib/readiness-forms";
@@ -1711,6 +1712,14 @@ export const api = {
         apiPut<BusinessFactWriteResponse>(`/readiness/${tenantId}/business-facts/${encodeURIComponent(requirementId)}`, body),
     getBusinessFactDefaults: (tenantId: string) =>
         apiGet<{ specVersion: string; items: BusinessFactDefault[] }>(`/readiness/${tenantId}/business-facts/defaults`),
+    /** Control de salida (R4): estado, modo (sombra o aplicado), decisión de hoy e informe de sombra. */
+    getGoLive: (tenantId: string, days = 7) =>
+        apiGet<GoLiveStatus>(`/readiness/${tenantId}/go-live?days=${days}`),
+    /** Publicar: 409 si no_listo; en «limitado», `ack` lleva todas las intenciones reconocidas. */
+    publishGoLive: (tenantId: string, ack: string[]) =>
+        apiPost<GoLiveStatus>(`/readiness/${tenantId}/go-live`, { ack }),
+    unpublishGoLive: (tenantId: string) =>
+        apiPost<GoLiveStatus>(`/readiness/${tenantId}/go-live/off`, {}),
     acceptBusinessFactDefaults: (tenantId: string, ids: string[], specVersion: string) =>
         apiPost<{ specVersion: string; accepted: string[]; skipped: { id: string; reason: string }[] }>(`/readiness/${tenantId}/business-facts/defaults/accept`, { ids, specVersion }),
     getAgentAssessment: (tenantId: string, agentId?: string) =>

@@ -114,6 +114,17 @@ export function FieldInput({ field, value, onChange, path, ctx }: {
                             </label>
                         ))}
                     </div>
+                    {/* lista cerrada (R4: WRITE_MODE.required_fields) con un valor guardado antes fuera de ella: se ve y se puede quitar */}
+                    {!field.open && extra.length > 0 && (
+                        <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {extra.map(v => (
+                                <label key={v} className="inline-flex items-center gap-1.5 text-sm text-amber-700 dark:text-amber-300">
+                                    <input type="checkbox" disabled={ctx.disabled} checked onChange={() => toggle(v)} />
+                                    {v} {t("notInList")}
+                                </label>
+                            ))}
+                        </div>
+                    )}
                     {field.open && (
                         <StringList label={t("other")} values={extra} disabled={ctx.disabled}
                             onChange={next => onChange([...selected.filter(v => (field.options ?? []).some(o => o.value === v)), ...next])} />

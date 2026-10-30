@@ -1,10 +1,6 @@
-import { evaluate, fromLegacyRows, type LegacyTenantRows } from '@parallext/business-spec';
-import { loadSpec } from '@parallext/business-spec/src/load';
-import { SnapshotReader, TENANT_TABLE_COLUMNS, resolveCountryPack, type LegacyTenantRowsDto, type SqlJsonRunner } from './snapshot-reader';
-
-// Comprobación de tipos (la corre `tsc -p apps/api/tsconfig.json`): las filas del lector son las que el paquete espera.
-const assignable = (rows: LegacyTenantRowsDto): LegacyTenantRows => rows;
-const assignableBack = (rows: LegacyTenantRows): LegacyTenantRowsDto => rows;
+import { evaluate, fromLegacyRows } from '@parallext/business-spec';
+import { loadSpec } from '@parallext/business-spec/load';
+import { SnapshotReader, TENANT_TABLE_COLUMNS, resolveCountryPack, type SqlJsonRunner } from './snapshot-reader';
 
 const SCHEMA = 'tenant_spark_qa_dental_03_5f7883f07f09490698006a07dfe82dc7';
 
@@ -52,11 +48,10 @@ describe('SnapshotReader (solo lectura)', () => {
         expect(rows).toMatchObject({ schema: 'business-spec/legacy-rows@1', capturedAt: '2026-10-30T12:00:00.000Z', country_pack: null });
         expect(rows.tenant.subtype).toBe('salud/dental');
         expect(rows.tour_inventory).toEqual([]);
-        const result = evaluate(loadSpec(), fromLegacyRows(assignable(rows)));
+        const result = evaluate(loadSpec(), fromLegacyRows(rows));
         expect(result.config.profileId).toBe('P08');
         expect(result.verdict).toBe('no_listo');
         expect(result.blockingGaps).toContain('CORE.IDENTITY.REGION');
-        expect(assignableBack(assignable(rows))).toBe(rows);
     });
 
     it('resuelve el pack de país desde packages/shared (emergencias) y nunca inventa derechos del consumidor', () => {

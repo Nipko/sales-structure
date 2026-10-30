@@ -15,12 +15,16 @@ COPY package.json package-lock.json* turbo.json ./
 # Copy workspace package files
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/business-spec/package.json ./packages/business-spec/
 
 # Install ALL dependencies (monorepo hoists to root)
 RUN npm install
 
 # Copy source code
 COPY packages/shared/ ./packages/shared/
+# Especificación de requisitos del negocio y motor de preparación (C0 §3): la API la evalúa en tiempo de
+# ejecución (módulo readiness). turbo la compila antes que la API porque es una dependencia del workspace.
+COPY packages/business-spec/ ./packages/business-spec/
 COPY apps/api/ ./apps/api/
 
 # Generate Prisma client for linux-musl (Alpine)
@@ -48,6 +52,11 @@ COPY --from=builder /app/apps/api/node_modules ./node_modules
 # Ship its compiled target as well so the runtime link is not left dangling.
 COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
+# @parallext/business-spec: el código compilado, la entrada `load` y los YAML que `loadSpec()` lee de spec/.
+COPY --from=builder /app/packages/business-spec/package.json ./packages/business-spec/package.json
+COPY --from=builder /app/packages/business-spec/load.js ./packages/business-spec/load.js
+COPY --from=builder /app/packages/business-spec/dist ./packages/business-spec/dist
+COPY --from=builder /app/packages/business-spec/spec ./packages/business-spec/spec
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/prisma ./prisma
 COPY --from=builder /app/apps/api/scripts ./scripts

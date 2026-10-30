@@ -35,6 +35,7 @@ import { AgentAnalyticsModule } from './modules/analytics/agent-analytics.module
 import { SettingsModule } from './modules/settings/settings.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { QualityModule } from './modules/quality/quality.module';
+import { ReadinessModule } from './modules/readiness/readiness.module';
 import { TraceModule } from './modules/trace/trace.module';
 import { KbHealthModule } from './modules/kb-health/kb-health.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
@@ -221,6 +222,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         SettingsModule,
         CopilotModule,
         QualityModule,
+        ReadinessModule,
         TraceModule,
         KbHealthModule,
         SimulationModule,

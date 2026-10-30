@@ -1,13 +1,13 @@
 /**
- * SnapshotReader (C0 §1.1, rebanada R1): lee de SOLO LECTURA las tablas de hoy de un tenant y entrega las filas
+ * SnapshotReader (C0 §1.1): lee de SOLO LECTURA las tablas de hoy de un tenant y entrega las filas
  * que @parallext/business-spec convierte en TenantSnapshot con las reglas L1–L7 (schema §7.5).
  *
- * Deliberadamente sin dependencia en tiempo de compilación de @parallext/business-spec: la imagen de la API
- * aún no empaqueta ese workspace (R1 no cambia el runtime). La forma de `LegacyTenantRowsDto` es la de
- * `LegacyTenantRows` del paquete; snapshot-reader.spec.ts lo comprueba con tipos.
+ * Desde R2 la imagen de la API empaqueta @parallext/business-spec, así que las filas usan el tipo del paquete
+ * (`LegacyTenantRows`) en lugar de una copia local.
  *
  * Nunca selecciona contraseñas, secretos, tokens ni datos de pago: solo columnas de negocio.
  */
+import type { CountryPackInfo, LegacyTenantRows } from '@parallext/business-spec';
 import { canonicalSubtypeId, countryPackIdFor, emergencyContactsFor } from '@parallext/shared';
 
 type Row = Record<string, any>;
@@ -15,31 +15,6 @@ type Row = Record<string, any>;
 /** Ejecuta UNA sentencia SELECT que devuelve un único valor JSON. */
 export interface SqlJsonRunner {
     queryJson<T = unknown>(sql: string): Promise<T>;
-}
-
-export interface CountryPackDto {
-    id: string;
-    country: string;
-    emergency: { general?: string | null; medical?: string | null; crisisLine?: string | null; reviewStatus: string } | null;
-    consumerRights: unknown | null;
-}
-
-export interface LegacyTenantRowsDto {
-    schema: 'business-spec/legacy-rows@1';
-    capturedAt: string;
-    tenant: {
-        ref: string; slug: string; name: string; industry: string | null; subtype: string | null; language: string | null;
-        created_at: string; settings: Row; operating_country: string | null; operating_timezone: string | null;
-        operating_currency: string | null; default_locale: string | null; country_pack_id: string | null;
-        country_pack_version: string | null; regional_provenance: Row | null;
-    };
-    companies: Row[]; services: Row[]; service_staff: Row[]; menu_items: Row[]; menu_categories: Row[]; products: Row[];
-    ecommerce_products: Row[]; properties: Row[]; tour_packages: Row[]; tour_inventory: Row[]; real_estate_listings: Row[];
-    faqs: Row[]; policies: Row[]; legal_text_versions: Row[]; knowledge_documents: Row[]; menu_promotions: Row[];
-    commercial_offers: Row[]; availability_slots: Row[]; staff_members: Row[]; agent_personas: Row[];
-    users: { id: string; role: string; is_active: boolean; email_verified: boolean; handoff_notifications: boolean }[];
-    payment_provider_configured: boolean;
-    country_pack: CountryPackDto | null;
 }
 
 /** Columnas leídas por tabla del esquema del tenant (ninguna con secretos). */
@@ -70,7 +45,7 @@ const SCHEMA_NAME = /^tenant_[a-z0-9_]+$/;
 const quoteLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
 
 /** El pack de país tal como lo resuelve la plataforma (packages/shared/src/tenant-regional-profile.ts). */
-export function resolveCountryPack(country: string | null | undefined): CountryPackDto | null {
+export function resolveCountryPack(country: string | null | undefined): CountryPackInfo | null {
     if (!country) return null;
     const em = emergencyContactsFor(country);
     return {
@@ -105,7 +80,7 @@ export class SnapshotReader {
 )`;
     }
 
-    async readRows(schemaName: string): Promise<LegacyTenantRowsDto> {
+    async readRows(schemaName: string): Promise<LegacyTenantRows> {
         if (!SCHEMA_NAME.test(schemaName)) throw new Error(`nombre de esquema inválido: ${schemaName}`);
         const tables = await this.runner.queryJson<string[] | null>(
             `SELECT coalesce(json_agg(table_name), '[]'::json) FROM information_schema.tables WHERE table_schema = ${quoteLiteral(schemaName)}`);
@@ -122,7 +97,7 @@ export class SnapshotReader {
             users: raw.users ?? [],
             payment_provider_configured: raw.payment_provider_configured === true,
             country_pack: resolveCountryPack(t.operating_country),
-        } as LegacyTenantRowsDto;
+        } as LegacyTenantRows;
         for (const table of Object.keys(TENANT_TABLE_COLUMNS)) (rows as unknown as Row)[table] = raw[table] ?? [];
         return rows;
     }

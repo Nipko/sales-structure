@@ -381,6 +381,15 @@ See `docs/billing-runbook.md` for readiness, DIAN and Mercado Pago retirement.
 
 ---
 
+### Billing audit scripts (read-only by default)
+
+Two diagnostics in `apps/api/scripts/` run inside the API container:
+
+- `docker exec parallext-api node scripts/audit-plan-drift.js` lists tenants whose usable plan (`tenants.plan`, limits) differs from the billed one (`billing_subscriptions.plan_id`). `--apply` aligns limits with the billed plan; review the list first, because a deliberate override from `PUT /billing-admin/tenants/:id/plan` looks the same as drift.
+- `docker exec parallext-api node scripts/audit-fiscal-reality.js` (read-only) lists issued DIAN invoices and their payment, flags those for money that probably never arrived (own tenant, sandbox, zero amount, retired provider) and the tenants whose renewal engine is still armed.
+
+One-off migration and test scripts that used to live next to them were removed in K3 (ADR 0005).
+
 ## 6. Vertical config — repair a tenant whose verticalConfig is missing
 
 Tenants created before May 2 don't have `tenant.settings.verticalConfig`. The dashboard handles this gracefully now (`getVerticalConfig` rebuilds + persists from `tenant.industry`), but if you need to force the rebuild:

@@ -713,14 +713,7 @@ general del tenant recibe señales de refresco, no el contenido sensible del hil
 
 ## Migraciones SQL
 
-> Las migraciones vigentes viven en `apps/api/prisma/migrations/` (113 entradas al 2026-10-08: siete archivos `.sql` numerados y el resto carpetas con marca de tiempo, `20260301000000_init` en adelante) y en `apps/api/prisma/tenant-schema.sql` para el esquema por tenant. La tabla de abajo es el arranque histórico de los archivos numerados, no la lista completa; `001_base_schema.sql` ya no existe.
-
-| # | Archivo | Tablas |
-|---|---------|--------|
-| 001 | `001_platform_settings.sql` | platform_settings |
-| 002 | `002_crm_agent_console.sql` | internal_notes, canned_responses, conversation_assignments |
-| 003 | `003_pipeline_automation.sql` | pipeline_stages, deals, automation_rules |
-| 004 | `004_csat_surveys.sql` | csat_surveys |
+> Las migraciones vigentes son las carpetas con marca de tiempo de `apps/api/prisma/migrations/` (`20260301000000_init` en adelante; Prisma solo aplica carpetas) y `apps/api/prisma/tenant-schema.sql` para el esquema por tenant. Los archivos `.sql` sueltos de marzo de 2026 (`001…007_*.sql`, `v4_*.sql`) nunca los ejecutaba nada y se retiraron en K3 (ADR 0005); siguen en el historial de git.
 
 ---
 

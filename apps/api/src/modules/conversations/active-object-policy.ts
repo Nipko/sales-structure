@@ -1,6 +1,7 @@
 import {
     ACTIVE_OBJECT_KINDS,
     VERTICAL_MANIFEST_INDUSTRIES,
+    canonicalSubtypeId,
     type ActiveObjectContextItemV1,
     type ActiveObjectKind,
     type VerticalAssuranceLevel,
@@ -83,7 +84,6 @@ const SENSITIVE_APPOINTMENT_INDUSTRIES = new Set([
     'otro',
 ]);
 const NON_SENSITIVE_PROFESSIONAL_SUBTYPES = new Set(['arquitectos', 'consultores']);
-const NON_SENSITIVE_VETERINARY_SUBTYPES = new Set(['peluqueria_canina']);
 const CANONICAL_INDUSTRIES = new Set<string>(VERTICAL_MANIFEST_INDUSTRIES);
 
 function normalized(value: unknown): string {
@@ -91,17 +91,25 @@ function normalized(value: unknown): string {
 }
 
 export function isSensitiveAppointmentDomain(context?: ActiveObjectPolicyContext): boolean {
-    const industry = normalized(context?.industry);
-    const subtype = normalized(context?.subtype);
-    // Missing, legacy or mistyped industries cannot silently downgrade an
-    // appointment to prompt-visible A1 data. Canonicalization must happen
-    // before this boundary; unknown values fail closed here.
+    // Legacy aliases are resolved HERE, at the boundary, through the one alias
+    // table (`SUBTYPE_ALIASES`): the tenant projection below keeps the stored
+    // pair on purpose, so a grooming business saved as
+    // `veterinaria/peluqueria_canina` is classified as what it is,
+    // `pet_services/peluqueria`. There used to be a veterinaria-only exception
+    // set for that one legacy id: a second copy of the alias table inside a
+    // security boundary, which would drift the day the alias moved. Veterinaria
+    // is now always sensitive; grooming is pet_services.
+    const canonical = canonicalSubtypeId(normalized(context?.industry), normalized(context?.subtype));
+    const industry = canonical?.industry ?? '';
+    const subtype = canonical?.subtype ?? '';
+    // Missing, mistyped or unknown industries cannot silently downgrade an
+    // appointment to prompt-visible A1 data: they fail closed here.
     if (!industry || !CANONICAL_INDUSTRIES.has(industry)) return true;
     return SENSITIVE_APPOINTMENT_INDUSTRIES.has(industry)
         // Missing/unknown subtypes fail closed: legal/tax and clinical pet
         // appointments cannot become prompt-safe because metadata was absent.
         || (industry === 'servicios_profesionales' && !NON_SENSITIVE_PROFESSIONAL_SUBTYPES.has(subtype))
-        || (industry === 'veterinaria' && !NON_SENSITIVE_VETERINARY_SUBTYPES.has(subtype));
+        || industry === 'veterinaria';
 }
 
 function isRecord(value: unknown): value is Record<string, any> {

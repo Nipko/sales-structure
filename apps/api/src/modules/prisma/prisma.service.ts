@@ -35,7 +35,8 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     'tenant_invitations', 'channel_accounts', 'whatsapp_onboardings',
     'whatsapp_credentials', 'tenant_financial_snapshots', 'storage_snapshots',
     'sms_package_orders', 'sms_credit_ledger', 'sms_credit_balances',
-    // Legacy tables from 002/003 seed migrations and v4_* bootstrap scripts.
+    // Legacy tables from the 002/003 seed migrations and v4_* bootstrap scripts
+    // (those loose SQL files were removed in K3; see git history and ADR 0005).
     // wait_jobs references automation_rules (FK), so it must be deleted first.
     'daily_metrics', 'commercial_offers', 'knowledge_resources',
     'carla_personality_profiles', 'carla_prompt_templates',

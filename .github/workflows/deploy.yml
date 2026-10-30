@@ -1191,7 +1191,6 @@ jobs:
             echo "WOMPI_DAILY_CAP_COP_CENTS=${PROD_WOMPI_DAILY_CAP_COP_CENTS}" >> .env
             echo "WOMPI_MERCHANT_TIMEZONE=America/Bogota" >> .env
             echo "WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false" >> .env
-            echo "WOMPI_WEBHOOK_URL=https://api.parallly-chat.cloud/api/v1/billing/webhook/wompi" >> .env
             echo "STRIPE_SECRET_KEY=${PROD_STRIPE_SECRET_KEY}" >> .env
             echo "STRIPE_WEBHOOK_SECRET=${PROD_STRIPE_WEBHOOK_SECRET}" >> .env
             # The production origin is behind Cloudflare Tunnel; do not enable on a public origin.

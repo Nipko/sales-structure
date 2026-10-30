@@ -11,7 +11,8 @@ on:
       - 'apps/whatsapp/**'
       - 'infra/docker/**'
       - 'packages/shared/**'
-      - 'docs/vertical-**'
+      - 'docs/vertical-competitive-evidence.json'
+      - 'docs/vertical-competitive-matrix-2026-08.md'
       - '.github/workflows/vertical-quality.yml'
   push:
     branches: [main]

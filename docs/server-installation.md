@@ -222,7 +222,7 @@ WOMPI_DAILY_CAP_COP_CENTS=CAMBIAR
 WOMPI_MERCHANT_TIMEZONE=America/Bogota
 # Solo staging aislado; producción real debe dejarlo false.
 WOMPI_ALLOW_SANDBOX_IN_PRODUCTION=false
-WOMPI_WEBHOOK_URL=https://api.TU-DOMINIO.com/api/v1/billing/webhook/wompi
+# URL de eventos (se configura en el panel de Wompi; ningún código la lee): https://api.TU-DOMINIO.com/api/v1/billing/webhook/wompi
 
 # Los proveedores tenant→cliente no tienen credenciales globales: cada tenant
 # configura su cuenta Wompi o Mercado Pago en Configuración → Integraciones →

@@ -297,7 +297,6 @@ Validado en `BillingWebhookController.receive()` (`billing/webhook.controller.ts
 | Componente | Archivo | Contexto |
 |------------|---------|----------|
 | KB Articulos (publico) | `kb/[tenantSlug]/[slug]/page.tsx` | Renderizado de articulos con `dangerouslySetInnerHTML` |
-| Copilot Widget | `CopilotWidget.tsx` | Respuestas de LLM mostradas como HTML |
 
 **Orden de operaciones:**
 1. `escapeHtml(text)` — neutraliza tags maliciosos

@@ -23,7 +23,7 @@ Welcome to Parallly! This guide walks you from creating your account to your AI 
 
 Trial terms, prices, and payment options appear during registration and under **Administration → Plan & Billing**. That screen is the current source of truth for your account and country.
 
-When you finish, Parallly pre-configures your workspace based on your industry: a sales funnel with tailored stages, a suggested AI agent with a name and tone, base FAQs for your sector, and the tools specific to your line of business (menu, properties, tours, etc., as applicable).
+When you finish, Parallly pre-configures your workspace based on your industry: a sales funnel with tailored stages, a suggested AI agent with a name and tone, and the tools specific to your line of business (menu, properties, tours, etc., as applicable). FAQs are not pre-filled: you write them.
 
 ## Verifying your email (when it applies)
 

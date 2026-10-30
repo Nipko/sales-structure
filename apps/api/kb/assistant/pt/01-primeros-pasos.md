@@ -23,7 +23,7 @@ Boas-vindas ao Parallly! Neste guia, acompanhamos você desde a criação da con
 
 As condições de teste, preços e opções de pagamento aparecem no cadastro e em **Administração → Plano e faturamento**. Essa tela é a fonte atual para sua conta e país.
 
-Ao terminar, o Parallly deixa seu espaço pré-configurado de acordo com o seu setor: um funil de vendas com etapas adaptadas, um agente de IA sugerido com nome e tom, perguntas frequentes básicas da sua área e as ferramentas próprias do seu ramo (cardápio, imóveis, passeios etc., conforme o caso).
+Ao terminar, o Parallly deixa seu espaço pré-configurado de acordo com o seu setor: um funil de vendas com etapas adaptadas, um agente de IA sugerido com nome e tom e as ferramentas próprias do seu ramo (cardápio, imóveis, passeios etc., conforme o caso). As perguntas frequentes não vêm pré-preenchidas: você as escreve.
 
 ## Verificar seu e-mail (quando se aplica)
 

@@ -23,7 +23,7 @@ keywords: ["primeros pasos", "puesta en marcha", "empezar", "registro", "crear c
 
 Las condiciones de prueba, precios y opciones de pago se muestran durante el registro y en **Administración → Plan y facturación**. Esa pantalla es la fuente vigente para tu cuenta y país.
 
-Al terminar, Parallly deja preconfigurado tu espacio según tu industria: un embudo de ventas con etapas adaptadas, un agente de IA sugerido con nombre y tono, preguntas frecuentes base de tu sector y las herramientas propias de tu rubro (menú, propiedades, tours, etc., según corresponda).
+Al terminar, Parallly deja preconfigurado tu espacio según tu industria: un embudo de ventas con etapas adaptadas, un agente de IA sugerido con nombre y tono y las herramientas propias de tu rubro (menú, propiedades, tours, etc., según corresponda). Las preguntas frecuentes no se precargan: las escribes tú.
 
 ## Verificar tu correo (cuando corresponde)
 

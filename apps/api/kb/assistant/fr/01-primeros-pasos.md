@@ -23,7 +23,7 @@ Bienvenue sur Parallly ! Ce guide vous accompagne depuis la création de votre c
 
 Les conditions d'essai, tarifs et options de paiement sont affichés lors de l'inscription et dans **Administration → Forfait et facturation**. Cet écran est la source à jour pour votre compte et votre pays.
 
-Une fois l'inscription terminée, Parallly préconfigure votre espace selon votre secteur : un entonnoir de vente aux étapes adaptées, un agent IA suggéré avec un nom et un ton, des questions fréquentes de base pour votre domaine et les outils propres à votre activité (menu, biens immobiliers, visites, etc., selon le cas).
+Une fois l'inscription terminée, Parallly préconfigure votre espace selon votre secteur : un entonnoir de vente aux étapes adaptées, un agent IA suggéré avec un nom et un ton et les outils propres à votre activité (menu, biens immobiliers, visites, etc., selon le cas). Les questions fréquentes ne sont pas préremplies : vous les rédigez.
 
 ## Vérifier votre e-mail (le cas échéant)
 

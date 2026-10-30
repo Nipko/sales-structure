@@ -641,6 +641,9 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             const owner = subjectFor(sentence, candidates);
             return !!owner && candidates.some(f => subjectKey(f) === subjectKey(owner) && f.value === count.value);
         }
+        // «¿cuánto tiempo ocupan 3 controles?» → «tres citas ocuparían 60 minutos» (production QA 30-oct, dental, FR and ES): the
+        // customer's own hypothetical count, not a count of their records — as «2 unidades» is the quantity asked, not the stock.
+        if (quantitiesIn(customerText).includes(count.value)) return true;
         const list = recordListFor(count.category);
         if (!list) return false;
         const total = typeof list.total === 'number' ? list.total : list.complete === false ? null : (list.value as string[]).length;

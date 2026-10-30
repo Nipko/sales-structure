@@ -26,4 +26,14 @@ describe('F4300-37 · a duration before the next service is not a count', () => 
         const out = render('Usted tiene 3 citas programadas este mes.', 'es', '¿cuántas citas tengo?');
         expect((out.fallbacks ?? []).map((f: any) => f.reason)).toContain('unrendered_count');
     });
+
+    // Production QA 30-oct (dental): the customer's hypothetical count is not a count of their records.
+    it.each([
+        ['es', '¿Cuál es el tiempo total si agendo 3 controles?', 'Cada cita de control dura 20 minutos, así que tres citas ocuparían 60 minutos en total.'],
+        ['fr', 'Combien de temps au total pour 3 contrôles ?', 'Chaque rendez-vous dure 20 minutes, donc trois rendez-vous prendraient 60 minutes au total.'],
+    ])('[%s] «three appointments» asked by the customer stays', (lang, ask, reply) => {
+        const out = render(reply, lang, ask);
+        expect(out.text).toBe(reply);
+        expect(out.fallbacks ?? []).toEqual([]);
+    });
 });

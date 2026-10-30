@@ -159,7 +159,7 @@ const weeklyHoursFields = (): FormField[] => [
 /** Campos de `{a, b: tipo, c?}` (elementos de una lista). */
 function braceFields(inner: string): FormField[] {
     return splitTop(inner).map(part => {
-        const m = part.match(/^([^:]+?)(\?)?(?::\s*(.*))?$/s);
+        const m = part.match(/^([^:]+?)(\?)?(?::\s*([\s\S]*))?$/);
         const rawKey = (m?.[1] ?? part).trim();
         const optional = Boolean(m?.[2]) || rawKey.endsWith('?');
         const key = rawKey.replace(/\?$/, '');
@@ -199,7 +199,7 @@ export function parseField(key: string, rawDesc: unknown): FormField {
     if (/^contact_point\b/.test(desc)) return field(key, 'object', { ...base, fields: contactPointFields() });
     if (/^text_i18n\b/.test(desc)) return field(key, 'textarea', base);
     if (/^(url|URL)\b/.test(desc)) return field(key, 'url', base);
-    if ((m = desc.match(/^lista de \{(.*)\}/s))) return field(key, 'list', { ...base, fields: braceFields(m[1]) });
+    if ((m = desc.match(/^lista de \{([\s\S]*)\}/))) return field(key, 'list', { ...base, fields: braceFields(m[1]) });
     if (/^lista fija\b/.test(desc)) return field(key, 'readonly', base);
     if (/^lista\b/.test(desc)) return field(key, 'string_list', base);
     if (/^mapa\b/.test(desc)) return field(key, 'json', base);
@@ -397,7 +397,7 @@ export function formFor(req: CompiledRequirement, spec?: CompiledSpec): FormDesc
         if (type === 'weekly_hours' && !find(d.fields, 'timezone')) d.fields.push(field('timezone', 'text'));
     } else if (typeof structure === 'string') {
         const s = structure.trim();
-        const m = s.match(/^lista de \{(.*)\}/s);
+        const m = s.match(/^lista de \{([\s\S]*)\}/);
         if (m) { d.root = 'list'; d.fields = braceFields(m[1]); }
         else if (/^lista\b/.test(s)) { d.root = 'list'; d.fields = []; }
         else d.root = 'json';

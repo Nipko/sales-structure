@@ -40,6 +40,14 @@ describe('F4300-52 · a rewrite with one sentence left in the source language', 
         expect(withoutSentencesIn(text, 'es', code)).toBe(kept);
     });
 
+    // Production QA 29/30-oct (real estate, French, three times): a sentence opened in Spanish and finished in French.
+    it.each([
+        'La propiedad tiene 2 chambres, 1 salle de bain et une superficie de 80 mètres carrés. Si vous souhaitez, je peux vous aider à organiser une visite ou vous fournir plus de détails.',
+        "La propiedad a la que se refiere tiene 2 chambres et 1 salle de bain. Si vous souhaitez plus d'informations ou organiser une visite, n'hésitez pas à me le faire savoir.",
+    ])('«%s» is a French reply with a Spanish sentence', text => {
+        expect(languageMismatch(text, 'fr')).toBe('es');
+    });
+
     it('«¿» never flags a Spanish reply, and a two-word «¡Hola!» is not a sentence', () => {
         expect(languageMismatch('El precio es de 119.900 COP. ¿Le gustaría hacer un pedido?', 'es')).toBeNull();
         expect(languageMismatch('Le prix est de 119 900 COP, merci beaucoup pour votre question. ¡Hola amigo!', 'fr')).toBeNull();

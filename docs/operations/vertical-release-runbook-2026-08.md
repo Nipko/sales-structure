@@ -5,14 +5,14 @@
 
 > **Qué bloquea y qué no (verificado contra `.github/workflows/deploy.yml` y `vertical-quality.yml`, 2026-10-08).** En un deploy ordinario (push a `main`) el preflight corre con `REQUIRE_EXTERNAL_GATES: 'false'`: genera el informe y lo publica como artefacto `production-readiness-*`, pero **no bloquea** el deploy aunque falten evidencias o variables (el comentario de `deploy.yml` lo dice: «Missing advanced evidence is reported in the artifact but does not block an ordinary deployment»). Lo único que sí detiene un deploy ordinario es el baseline mínimo (`DATABASE_URL` y `REDIS_HOST`/`REDIS_URL`). El gate estricto, que falla cerrado, es el workflow manual `vertical-quality.yml` con `tier=release` (`REQUIRE_EXTERNAL_GATES=true`). Además, desde el 2026-10-07 el environment `production` **no tiene aprobación manual** en el deploy ordinario (decisión del dueño): se despliega al fusionar con CI verde.
 
-El preflight (`apps/api/scripts/run-vertical-release-readiness.cjs`) valida una atestación estructural guardada como secreto protegido `VERTICAL_RELEASE_EVIDENCE_JSON`. Su forma canónica está en [`vertical-release-evidence.schema.json`](./vertical-release-evidence.schema.json). El parser no consulta GitHub ni prueba que una URL/digest exista: esa verificación corresponde a los revisores protegidos y el JSON nunca constituye certificación por sí solo.
+El preflight (`apps/api/scripts/run-vertical-release-readiness.cjs`) valida una atestación estructural guardada como secreto protegido `VERTICAL_RELEASE_EVIDENCE_JSON`. Su forma canónica está en [`vertical-release-evidence.schema.json`](vertical-release-evidence.schema.json). El parser no consulta GitHub ni prueba que una URL/digest exista: esa verificación corresponde a los revisores protegidos y el JSON nunca constituye certificación por sí solo.
 
 ## Autoridad y vigencia
 
 - Para el tier `release`, la atestación debe provenir de un environment protegido (`attestationSource: github_environment_protected`) cuyos revisores sean independientes y que restrinja quién puede editar secretos/variables. Esa exigencia es de quien emite la atestación; no es una aprobación previa del deploy ordinario.
 - `commitSha` debe ser exactamente el SHA del deploy.
 - `issuedAt` y `expiresAt` tienen una ventana máxima de siete días.
-- `certifiedVerticals` debe contener exactamente las 18 industrias seleccionables que enumera el validador (`canonicalIndustries` en el script). Las otras dos industrias del registro (`event_planning`, `construccion`) solo tienen tipos de negocio en lista de espera; la lista vigente está en `docs/business-types-catalog.md`.
+- `certifiedVerticals` debe contener exactamente las 18 industrias seleccionables que enumera el validador (`canonicalIndustries` en el script). Las otras dos industrias del registro (`event_planning`, `construccion`) solo tienen tipos de negocio en lista de espera; la lista vigente está en `docs/domain/business-types-catalog.md`.
 - `approvalId` referencia la decisión del environment/release board; `approvedBy` identifica al revisor.
 
 ## Nueve artefactos obligatorios

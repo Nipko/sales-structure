@@ -1,9 +1,9 @@
 # Registro final de decisiones — programa de 18 verticales
 
 **Corte:** 8 de agosto de 2026
-**Regla:** las recomendaciones fueron adoptadas explícitamente; su implementación y gates se detallan en [`vertical-decisions-implementation-2026-08.md`](./vertical-decisions-implementation-2026-08.md)
+**Regla:** las recomendaciones fueron adoptadas explícitamente; su implementación y gates se detallan en `vertical-decisions-implementation-2026-08.md` (retirado en K3; en el historial de git)
 **Estado de certificación:** 0/18 E2E
-**Ejecución asociada:** [`vertical-waves-execution-2026-08.md`](./vertical-waves-execution-2026-08.md)
+**Ejecución asociada:** `vertical-waves-execution-2026-08.md` (retirado en K3; en el historial de git)
 
 ## 1. Cómo usar este registro
 
@@ -192,4 +192,4 @@ Cada recomendación quedó convertida en una política o contrato explícito. `A
 4. `DEC-04` a `DEC-07`: superficies y diferenciación IA.
 5. `DEC-16` a `DEC-19`: gobierno, evidencia y release.
 
-La implementación y los límites de cada adopción están consolidados en [`vertical-decisions-implementation-2026-08.md`](./vertical-decisions-implementation-2026-08.md). Los previews, bloqueos y fallos cerrados prevalecen hasta que la evidencia externa autorice una expansión.
+La implementación y los límites de cada adopción están consolidados en `vertical-decisions-implementation-2026-08.md` (retirado en K3; en el historial de git). Los previews, bloqueos y fallos cerrados prevalecen hasta que la evidencia externa autorice una expansión.

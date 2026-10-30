@@ -1,6 +1,6 @@
 # Billing — runbook operativo Wompi
 
-La integración internacional con Stripe y su activación independiente están descritas en [Suscripciones internacionales con Stripe](stripe-international-subscriptions-2026-09.md). Este runbook describe el riel colombiano Wompi; no se deben trasladar sus fuentes, credenciales ni motor recurrente a Stripe.
+La integración internacional con Stripe y su activación independiente están descritas en [Suscripciones internacionales con Stripe](../domain/stripe-international-subscriptions-2026-09.md). Este runbook describe el riel colombiano Wompi; no se deben trasladar sus fuentes, credenciales ni motor recurrente a Stripe.
 
 > Vigencia: agosto de 2026. Este documento describe el circuito vivo de
 > suscripciones plataforma → tenant. La fuente contractual de precios, trials,

@@ -11,7 +11,7 @@
 > también usa `api/v1` bajo `https://wa.parallly-chat.cloud/api/v1`.
 
 > **Cobertura.** El API tiene **101 archivos `*.module.ts`** y 132 controladores en `apps/api/src` (snapshot del 2026-10-08); este documento detalla
-> los módulos más usados y **no es exhaustivo**: faltan, por ejemplo, `whatsapp/spend` (gasto y admisión de WhatsApp), `platform-communications`, `billing-admin/coupons`, `billing/public`, `quality/.../regressions`, agent-release y `verticals/audit`. Para el inventario completo, `docs/modules-reference.md` y los controladores. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
+> los módulos más usados y **no es exhaustivo**: faltan, por ejemplo, `whatsapp/spend` (gasto y admisión de WhatsApp), `platform-communications`, `billing-admin/coupons`, `billing/public`, `quality/.../regressions`, agent-release y `verticals/audit`. Para el inventario completo, `docs/architecture/modules-reference.md` y los controladores. Muchos módulos verticales (`restaurants`, `gyms`, `pets`, `education`,
 > `insurance`, `tours`, `photography`, `home-services`, `procedures`, `treatment-plans`,
 > `recall`, `policies`, `intake`, `faqs`, `reviews`, `attribution`, `crm-b2b`, `mcp`,
 > `vertical-integrations`, `vertical-analytics`, `simulation`, `slack`, `push`,

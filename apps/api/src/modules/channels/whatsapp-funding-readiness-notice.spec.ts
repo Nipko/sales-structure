@@ -6,7 +6,7 @@ import { join } from 'path';
  * what Meta's 1-October change means for an account with no card. It used to
  * say such an account "can exhaust its monthly service allowance; paid
  * deliveries then require funding" — a free runway Meta never documented. What
- * Meta says (docs/whatsapp-meta-pricing-2026-10.md §2 and §6) is a date: with
+ * Meta says (docs/domain/whatsapp-meta-pricing-2026-10.md §2 and §6) is a date: with
  * no payment method on the WhatsApp Business account by 30-Sep-2026, service
  * messages stop being delivered on 1-Oct-2026. Behaviour is not touched here;
  * this pins the sentence so the promise does not come back in a rewrite.

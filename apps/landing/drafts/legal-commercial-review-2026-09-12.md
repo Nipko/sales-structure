@@ -28,7 +28,7 @@ Meta bills the business's OWN WhatsApp Business account for each delivered servi
 message, that this money never passes through Parallly, and that it is not part of
 any plan.
 
-**Derived from:** `docs/product-capabilities-reference.md` (lines 49–55) and
+**Derived from:** `docs/architecture/product-capabilities-reference.md` (lines 49–55) and
 `docs/audits/2026-09-12/m4-pricing-proposal.md` (lines 13–16).
 
 **Review question for the terms owner:** do the current terms say anywhere, or imply

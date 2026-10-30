@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "d7f2d6d8b63db0ad1cbee9e8c124cd1a5a312a52",
+  "sourceRevision": "744a1545e775ea6805f3b7feeb6174ead82fa070",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -37,7 +37,7 @@
   },
   "sources": {
     "apps/api/src/common/conversation/intent-normalizer.ts": "371b1298f9d87b63286f5063d1df64125329a206af6b1d7fc8f485ee8b732fa9",
-    "apps/api/src/modules/conversations/active-object-policy.ts": "2117f12a64454fab06867c0303a41ac3ca4ba64a1a49c10ca587d24ce012c430",
+    "apps/api/src/modules/conversations/active-object-policy.ts": "9d647cdca8e7b55dfd11a0599817615071435fcbe057f82addeb1311fa2eacbf",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "853761eaec7980869ba07a6d7ecd36853b654dfa2cd3be88720a1732454912a9",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",
     "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "5fb4118555c49d86e6ab76ba5a80c36286681c7916146571b211dd41f6097096",
@@ -91,7 +91,7 @@
     "packages/shared/src/channel-policy.ts": "08217ee740ed4500edf75db816296a0906afeb1096541a4f0c49404f5480fcf1",
     "packages/shared/src/country-language-pack.ts": "c8c09926ade39cbd97ea8040a7c74df0c47802966cd18334f5d1fda8035cac14",
     "packages/shared/src/crm-task-eval-pack.ts": "59f48ad5f3534319e7ba7aeff18a936cd8da8d8a2715d81365fc53a65e557f42",
-    "packages/shared/src/dashboard-page-access.ts": "21f547038aa6a1fddf69bf81c6795d1a9290c146c80ac2d7bfeaf7726d99c49d",
+    "packages/shared/src/dashboard-page-access.ts": "af2ee3183c8bee9e8e9f4c2f0f7c2694f39accbb5bb9efa0c927f28935cc41e7",
     "packages/shared/src/dispatch-pilot-scope.ts": "2e3be92cf35089c9cdbba54f7bdff5ebddf8efd2f66ced2406ce2fed746a1208",
     "packages/shared/src/effective-capability-contract.ts": "75427b0e7588597b0b1bd3f4c58b45b7775468704beaa3d840bf44b9dba607cf",
     "packages/shared/src/email-verification-policy.ts": "65ec4e669d3e43fc3fbba597eb8a60ce3d0ffec8f30a1725ba298d34bd49c178",

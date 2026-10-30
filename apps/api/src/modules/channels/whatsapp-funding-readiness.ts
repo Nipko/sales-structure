@@ -7,7 +7,7 @@
  * 2026 stops having its service messages delivered as of 1 October 2026. It
  * does NOT say that the 1,000 free service deliveries per number and month
  * keep flowing without one, so nothing here may assume a card-less account
- * "still has its allowance" — see docs/whatsapp-meta-pricing-2026-10.md
+ * "still has its allowance" — see docs/domain/whatsapp-meta-pricing-2026-10.md
  * (section 2, "Las reglas, con su fecha", and section 6).
  *
  * The engine already handles that AFTER the fact: error 131042 on a send, or on
@@ -245,7 +245,7 @@ export function readFundingFromGraph(answer: GraphAccountAnswer, at: Date): Fund
         state: 'absent' as const, source: 'graph_account_read' as const, checkedAt,
         actionable: true,
         // La franquicia de 1.000 entregas es una TARIFA, no un plazo de gracia.
-        // `docs/whatsapp-meta-pricing-2026-10.md` prohíbe explícitamente decir
+        // `docs/domain/whatsapp-meta-pricing-2026-10.md` prohíbe explícitamente decir
         // que se puede empezar sin tarjeta hasta agotarla: esa excepción no está
         // documentada y el 1-oct, sin método de pago, las entregas se detienen.
         detail: detailOf('absent', 'la cuenta respondió correctamente y no tiene método de pago. '

@@ -21,7 +21,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Storage:** `platform_communications` and `platform_communication_recipients`; revision checks, frozen recipient lists and actor audit fields.
 - **Cron:** `*/15 * * * * *` — claim up to five recipients atomically per batch; retain uncertain SMTP outcomes without automatic retry.
 - **Dashboard:** `/admin/communications`.
-- **Operation guide:** [Comunicaciones generales](platform-communications.md).
+- **Operation guide:** [Comunicaciones generales](../operations/platform-communications.md).
 
 ### Infrastructure (6 modules)
 
@@ -67,7 +67,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `0 * * * *` — checkChannelTokens: credenciales de canal con refresh fallido
   - `15 3 * * *` — checkStorage: alerta por disco/quota
   - `30 7 * * *` — checkRiskSignals: fallos de pago/webhook, presupuesto LLM y heartbeat de backup
-- **Backups:** `pg_dump` corre DENTRO del contenedor `parallext-postgres`; offsite vía rclone a Cloudflare R2; heartbeat `backup:last_success` en Redis. Ver `docs/backup-restore-runbook.md` y `docs/backup-offsite-setup.md`
+- **Backups:** `pg_dump` corre DENTRO del contenedor `parallext-postgres`; offsite vía rclone a Cloudflare R2; heartbeat `backup:last_success` en Redis. Ver `docs/operations/backup-restore-runbook.md` y `docs/operations/backup-offsite-setup.md`
 
 #### 4. throttle
 - **Purpose:** Rate limiting por plan y feature flags. `@Global()` module. Lee `features` de `billing_plans` en runtime (cacheado; invalidado en cambios de plan)
@@ -123,7 +123,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `POST /auth/change-password` — Change password (authenticated)
   - `POST /auth/admin/reset-password` — Admin reset user password
   - `POST /auth/update-profile` — Update user profile
-  - `POST /auth/impersonate/:tenantId` — Impersonación gobernada del super_admin. `impersonate(superAdminId, tenantId, {reason, ticketId})`: **motivo obligatorio** (400 sin él), token de 1h con `impersonatedBy`/`impersonationSid`, sesión emparejada (`endImpersonation` mata el refresh en Redis) y **actor real en auditoría** (`super_admin.impersonation_started`, `userId` = super_admin, nunca el usuario impersonado). `common/utils/audit-actor.util.ts` resuelve el actor real en las escrituras hechas durante la impersonación. Sin tenant implícito en modo plataforma; `roles.ts` deny-by-default. Ver `docs/superadmin-governance.md`
+  - `POST /auth/impersonate/:tenantId` — Impersonación gobernada del super_admin. `impersonate(superAdminId, tenantId, {reason, ticketId})`: **motivo obligatorio** (400 sin él), token de 1h con `impersonatedBy`/`impersonationSid`, sesión emparejada (`endImpersonation` mata el refresh en Redis) y **actor real en auditoría** (`super_admin.impersonation_started`, `userId` = super_admin, nunca el usuario impersonado). `common/utils/audit-actor.util.ts` resuelve el actor real en las escrituras hechas durante la impersonación. Sin tenant implícito en modo plataforma; `roles.ts` deny-by-default. Ver `docs/security/superadmin-governance.md`
   - `GET /auth/tenant/timezone` — Get tenant timezone
   - `POST /auth/tenant/timezone` — Set tenant timezone
   - `GET /auth/users` — List tenant users
@@ -637,10 +637,10 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 #### 26. billing
 - **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende paquetes SMS nuevos
 - **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`, `sms-checkout.service.ts`
-- **Adapters (`billing/adapters/`):** `wompi.adapter.ts`, `wompi-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`. Mercado Pago ya no existe como adaptador de plataforma (retirado ago 2026; ver `docs/mercadopago-retirement-2026-08.md`)
+- **Adapters (`billing/adapters/`):** `wompi.adapter.ts`, `wompi-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`. Mercado Pago ya no existe como adaptador de plataforma (retirado ago 2026; ver `docs/decisions/previas/mercadopago-retirement-2026-08.md`)
 - **Processors:** `reconciliation.processor.ts`
 - **Controllers:** `billing.controller.ts` (tenant), `billing-admin.controller.ts` (super_admin, billing-ops), `billing-public.controller.ts` (catálogo público), `coupons.controller.ts`, `sms-checkout.controller.ts`, `webhook.controller.ts`
-- **Ciclo anual:** el precio mensual y el anual viven en `billing_plans.priceLocalOverrides[country]` (`amountCents` y `annual.amountCents`, este último independiente de mensual × 12) y los cobra el motor recurrente interno con Wompi; no hay catálogo remoto de planes que sincronizar. Los campos históricos `mpPlanId` no autorizan cobros. Ver `docs/billing-annual-cycle.md`
+- **Ciclo anual:** el precio mensual y el anual viven en `billing_plans.priceLocalOverrides[country]` (`amountCents` y `annual.amountCents`, este último independiente de mensual × 12) y los cobra el motor recurrente interno con Wompi; no hay catálogo remoto de planes que sincronizar. Los campos históricos `mpPlanId` no autorizan cobros. Ver `docs/domain/billing-annual-cycle.md`
 - **Tenant endpoints (`/billing`):**
   - `GET /billing/plans` — Lista de planes (con overrides por país/moneda + anual)
   - `GET /billing/:tenantId/subscription` — Suscripción actual
@@ -708,7 +708,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Cron:** `0 1 1 * *` — generateMonthlySnapshot: 1st of month @1AM
 
 #### 27b. stripe-adapter (in billing/)
-- **Purpose:** Stripe payment provider adapter (international subscriptions; see `docs/stripe-international-subscriptions-2026-09.md`)
+- **Purpose:** Stripe payment provider adapter (international subscriptions; see `docs/domain/stripe-international-subscriptions-2026-09.md`)
 - **Services:** `stripe.adapter.ts` (implements `IPaymentProvider`)
 - **Factory:** `payment-provider.factory.ts` — routes between Wompi, Stripe and the mock provider (`mercadopago` is not a provider any more)
 - **Controller:** None (consumed via PaymentProviderFactory)
@@ -1048,7 +1048,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 #### 43. verticals
 - **Purpose:** Industry vertical definitions, onboarding bootstrap, UI config
 - **Services:** `verticals.service.ts`
-- **Definitions:** `vertical-definitions.ts` — `VERTICAL_REGISTRY` with 20 industries (18 selectable) × 4 languages; business types (80 canonical) come from `packages/shared/src/subtype-experience-profile.ts` and are listed in `docs/business-types-catalog.md`
+- **Definitions:** `vertical-definitions.ts` — `VERTICAL_REGISTRY` with 20 industries (18 selectable) × 4 languages; business types (80 canonical) come from `packages/shared/src/subtype-experience-profile.ts` and are listed in `docs/domain/business-types-catalog.md`
 - **Controller:** `verticals.controller.ts`
 - **Endpoints:**
   - `GET /verticals/:tenantId` — Tenant's vertical config

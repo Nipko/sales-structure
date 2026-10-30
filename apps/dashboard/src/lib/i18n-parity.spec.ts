@@ -165,7 +165,7 @@ describe("i18n key parity across es/en/pt/fr", () => {
  *
  * The 14-sep recording is an owner reading "1 bloqueo crítico", "Guarda el
  * borrador", "Pegá el token" on the screens that were supposed to get her agent
- * answering. `docs/onboarding-experience-design-2026-09.md` Appendix A lists the
+ * answering. `docs/domain/onboarding-experience-design-2026-09.md` Appendix A lists the
  * words that do not belong outside "Avanzado"; this is that list, enforced on
  * the namespaces day 0 actually renders, in all four languages.
  *

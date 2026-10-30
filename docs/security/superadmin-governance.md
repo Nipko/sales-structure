@@ -47,7 +47,7 @@ Páginas/áreas que operan bajo este modelo (todas requieren regla explícita en
 
 - `/admin/tenants` (+ `/[id]`) — gestión de tenants, punto de entrada a la impersonación
 - `/admin/ops` — Ops Center (platform-monitor)
-- `/admin/communications` — correos administrativos a usuarios de tenants, con borradores, audiencia guardada, prueba y confirmación de envío. Ver [Comunicaciones generales](platform-communications.md).
+- `/admin/communications` — correos administrativos a usuarios de tenants, con borradores, audiencia guardada, prueba y confirmación de envío. Ver [Comunicaciones generales](../operations/platform-communications.md).
 - `/admin/storage`, `/admin/incidents` — almacenamiento por tenant, incidentes
 - `/admin/plans`, `/admin/billing-ops` — catálogo de planes + billing cross-tenant (sync MP, refund, reconciliación)
 - `/admin/sms-packages` — tiers de créditos SMS
@@ -61,7 +61,7 @@ plataforma del `super_admin`, fuera de impersonación. El destinatario de una pr
 es el correo del administrador autenticado. El envío general usa la lista guardada
 en la vista previa y exige su versión; filtrar por negocios no cambia la identidad
 del operador ni inicia una sesión tenant. Las campañas guardan creador, último
-editor y actor del envío. Ver el [manual operativo](platform-communications.md)
+editor y actor del envío. Ver el [manual operativo](../operations/platform-communications.md)
 para audiencia, confirmación y tratamiento de resultados inciertos.
 
 ## 7. Regla para páginas nuevas (checklist)
@@ -78,5 +78,5 @@ Al crear una página o endpoint de super_admin:
 ## Referencias
 
 - [`security-specification.md`](security-specification.md) — controles de seguridad y RBAC
-- [`analytics-billing-reference.md`](analytics-billing-reference.md) — endpoints super_admin (billing-ops, financials)
+- [`analytics-billing-reference.md`](../architecture/analytics-billing-reference.md) — endpoints super_admin (billing-ops, financials)
 - `apps/api/src/modules/auth/` — `impersonate` / `endImpersonation`; `common/utils/audit-actor.util.ts`; `roles.ts`

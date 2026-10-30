@@ -45,7 +45,7 @@ const SCHEDULING = /\b(cita|citas|agenda|agend\w*|appointments?|schedul\w*|rende
 
 /**
  * What each native subtype's tools can NOT do, so its identity must not
- * promise it (docs/business-types-catalog.md, «Familias de herramientas»).
+ * promise it (docs/domain/business-types-catalog.md, «Familias de herramientas»).
  */
 const PROMISES_TO_AVOID: Record<string, RegExp> = {
     'salud/farmacia': /recet|prescri|ordonnance|dosis|dosage|posologi|diagn[oó]st/i,

@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "d7f2d6d8b63db0ad1cbee9e8c124cd1a5a312a52",
-  "generatedAt": "2026-10-30T09:56:05.583Z",
+  "revision": "744a1545e775ea6805f3b7feeb6174ead82fa070",
+  "generatedAt": "2026-10-30T10:37:09.883Z",
   "finished": false,
   "counts": {
     "aceptada": 26,
@@ -233,7 +233,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida.",
+      "evidence": "17 casos etiquetados que cubren los 4 idiomas y los 7 desafíos declarados, con umbrales barridos y números publicados en `docs/operations/runbooks/rag-quality-and-slo.md`. Lo que queda no es local: el entailment semántico necesita el modelo real, así que la fila pasa de abierta a bloqueada por el gate de LLM en vez de aceptarse con la mitad medida.",
       "commits": [
         "f2a6a2e8",
         "7a9e7c18",

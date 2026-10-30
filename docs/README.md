@@ -1,156 +1,101 @@
-# Parallext Engine — Documentación
+# Parallext Engine — Base de conocimiento
 
-_Última actualización: 2026-10-08_
+_Índice único de `docs/`. Última reorganización: 2026-10-30 (K3, [ADR 0005](decisions/0005-base-de-conocimiento-y-limpieza-k3.md))._
 
-Índice completo de `docs/`, agrupado por tema. [`../CLAUDE.md`](../CLAUDE.md) mantiene una **selección** del mismo índice para el contexto de los agentes de código (`## Documentation Index`); **este README es la lista completa**: cuando agregues o archives un documento, agrégalo aquí y, si es de los que un agente debe leer, también en `CLAUDE.md`.
+Contexto para agentes de código: [`../AGENTS.md`](../AGENTS.md) (`CLAUDE.md` solo lo importa). Ayuda al usuario final que llega al producto: la KB de Parallly Assist en [`../apps/api/kb/assistant/`](../apps/api/kb/assistant/) ([contrato](architecture/platform-assistant-knowledge.md)).
 
-> **Convención de estado:** los documentos vivos reflejan el código actual. Los históricos o superseded llevan un banner «Documento histórico (fecha) — no refleja el estado actual» o viven en [`archive/`](archive/) con banner **ARCHIVADO**. En las tablas de abajo, **(histórico)** significa «foto de una fecha»: no lo tomes como estado vigente.
+## Reglas de la base (K1–K4)
 
-> **Glosario.** *Vertical* = industria (20 en `VERTICAL_REGISTRY`; 18 se pueden elegir al registrarse). *Tipo de negocio* = perfil industria/subtipo (80 canónicos = 72 seleccionables + 8 en lista de espera; 85 configuraciones resolubles contando 5 `legacy_only`). La lista generada de industrias y tipos de negocio con su disponibilidad es [`business-types-catalog.md`](business-types-catalog.md); las autoridades de código son `apps/api/src/modules/verticals/vertical-definitions.ts` y `packages/shared/src/subtype-experience-profile.ts`.
+1. **Solo entra lo aprobado y vigente.** Planes ejecutados, auditorías fechadas, handoffs, borradores e investigación no entran: se borran (git conserva el historial) o, si algo vigente los cita, van a [`archive/`](archive/README.md).
+2. **Lo que se puede contar se genera** y la CI lo comprueba ([`generated/`](generated/README.md)). No copies contadores ni listas a mano.
+3. **Una fuente por tema.** Las decisiones viven como ADR en [`decisions/`](decisions/README.md).
+4. **Regla de cierre (K4):** un cambio no está terminado si no actualiza el documento que corresponde aquí y retira lo que reemplaza.
+5. **Revisión:** cada documento declara su última modificación de contenido. Si pasan **90 días** sin revisarlo, figura como «revisar» y se valida contra el código antes de confiar en él.
 
-> **Contadores.** Los números estructurales (módulos, páginas, colas, crons, modelos) cambian con cada release y se copiaban a mano en varios documentos con valores distintos. Se calculan con comandos: la tabla «Counters» de [`../CLAUDE.md`](../CLAUDE.md) trae el valor del 2026-10-08 y cómo recalcularlo. No copies esas cifras a documentos nuevos.
+Dueño de todos los documentos: el dueño del producto, salvo los **generados**, cuyo dueño es su generador.
+
+> **Glosario.** *Vertical* = industria (20 en `VERTICAL_REGISTRY`; 18 se pueden elegir al registrarse). *Tipo de negocio* = perfil industria/subtipo (80 canónicos = 72 seleccionables + 8 en lista de espera; 85 configuraciones resolubles contando 5 `legacy_only`). La lista generada es [`domain/business-types-catalog.md`](domain/business-types-catalog.md).
 
 ---
 
-## Base de conocimiento aprobada (K1)
+## Decisiones — [`decisions/`](decisions/README.md)
 
-Solo entra lo aprobado; lo que se puede contar se **genera** y la CI lo verifica. Cada documento dice su fuente de verdad en código.
+| Documento | Contenido | Estado | Últ. cambio | Fuente de verdad en código |
+|---|---|---|---|---|
+| [0001](decisions/0001-especificacion-unica.md) | Especificación de requisitos del negocio como fuente única | aprobada | 2026-10-30 | `packages/business-spec/` |
+| [0002](decisions/0002-decisiones-d1-d15-y-c0.md) | Decisiones D1–D15 y respuestas C0 §7 | aprobada | 2026-10-30 | `packages/business-spec/spec/` |
+| [0003](decisions/0003-subtipos-e-interpretaciones-r1.md) | Subtipos sin perfil e interpretaciones fijadas en R1 | aprobada | 2026-10-30 | `packages/business-spec/spec/` |
+| [0005](decisions/0005-base-de-conocimiento-y-limpieza-k3.md) | Estructura de la base de conocimiento aprobado y limpieza K3 | aprobada | 2026-10-30 | — |
+| [previas/](decisions/previas/) | Registros de decisión anteriores al formato ADR: retiro de Mercado Pago, Email fuera del self-service, ledger de 34 decisiones de producto, registro de decisiones de verticales, decisiones de onboarding. Vigentes salvo que un ADR los reemplace; pendientes de convertir a ADR | vigente | 2026-08-08 … 2026-09-18 | `demo-allowance.service.ts` cita D19 |
 
-| Documento | Dueño | Estado | Última revisión | Fuente de verdad en código |
-|-----------|-------|--------|-----------------|----------------------------|
-| [domain/business-requirements-format.md](domain/business-requirements-format.md) | dueño del producto | aprobado (B2 v0.2 + R1) | 2026-10-30 | `packages/business-spec/spec/requirement.schema.json` |
-| [domain/business-requirements.md](domain/business-requirements.md) | generado | **generado** (`business-spec docs --write`; `--check` en `verify-artifacts`) | — | `packages/business-spec/spec/*.yaml` |
-| [decisions/](decisions/README.md) | dueño del producto | ADR aprobados: 0001 (especificación única), 0002 (D1–D15 y C0 §7) | 2026-10-30 | — |
+## Dominio — [`domain/`](domain/)
 
-## Arquitectura y referencia
+| Documento | Contenido | Estado | Últ. cambio | Fuente de verdad en código |
+|---|---|---|---|---|
+| [business-requirements-format.md](domain/business-requirements-format.md) | Formato de la especificación de requisitos (B2 v0.2 + R1) | aprobado | 2026-10-30 | `packages/business-spec/spec/requirement.schema.json` |
+| [business-requirements.md](domain/business-requirements.md) | Requisitos por tipo de negocio | **generado** | — | `packages/business-spec/spec/*.yaml` |
+| [business-types-catalog.md](domain/business-types-catalog.md) | 20 industrias y 80 tipos de negocio: seleccionables, en espera, legacy | **generado** | — | `vertical-definitions.ts`, `subtype-experience-profile.ts` |
+| [billing-annual-cycle.md](domain/billing-annual-cycle.md) | Ciclo mensual/anual del motor Wompi, cambios de plan, billing-ops | vigente | 2026-09-19 | `modules/billing/recurring/` |
+| [stripe-international-subscriptions-2026-09.md](domain/stripe-international-subscriptions-2026-09.md) | Suscripciones fuera de Colombia con Stripe | vigente | 2026-09-30 | `modules/billing/payment-routing.service.ts` |
+| [tenant-customer-payments-wompi.md](domain/tenant-customer-payments-wompi.md) | Cobro del negocio a su cliente con su propia cuenta Wompi / Mercado Pago | vigente | 2026-08-17 | `modules/tenant-payments/` |
+| [whatsapp-meta-pricing-2026-10.md](domain/whatsapp-meta-pricing-2026-10.md) | Meta cobra el mensaje de servicio desde el 1-oct-2026 | vigente | 2026-09-13 | `whatsapp-funding-readiness.ts`, `billing/whatsapp-rates/` |
+| [coexistence-manual.md](domain/coexistence-manual.md) | Coexistencia WhatsApp Business App ↔ Cloud API | vigente | 2026-10-08 | `apps/whatsapp/`, `channel-certification-matrix.ts` |
+| [onboarding-experience-design-2026-09.md](domain/onboarding-experience-design-2026-09.md) | Diseño de la configuración guiada (incluye la lista de jerga prohibida) | vigente | 2026-09-18 | `apps/dashboard/src/lib/i18n-parity.spec.ts` |
+| [onboarding-implementation-closeout-2026-09-18.md](domain/onboarding-implementation-closeout-2026-09-18.md) | Cierre de implementación del onboarding de septiembre | vigente | 2026-09-18 | — |
+| [vertical-strategy.md](domain/vertical-strategy.md) | Visión de adaptación por vertical (la lista vigente es el catálogo generado) | vigente | 2026-10-08 | — |
+| [analytics-manual.md](domain/analytics-manual.md) | Analytics, alertas, BI API, anomalías, cohortes | vigente | 2026-08-24 | `modules/analytics/` |
+| [user-manual.md](domain/user-manual.md) | Manual web para tenants | **pendiente de decisión**: la ayuda que llega al producto es la KB de Assist; decidir si este manual se mantiene o se retira | 2026-10-08 | `apps/api/kb/assistant/` |
+| [mobile-user-manual.md](domain/mobile-user-manual.md) | Manual funcional de la app móvil | vigente | 2026-09-14 | `apps/mobile/` |
+| [appointments-manual.md](appointments-manual.md) | Citas (sigue en la raíz de `docs/` porque lo copia `Dockerfile.landing`) | vigente | 2026-10-09 | `modules/appointments/` |
 
-| Documento | Descripción |
-|-----------|-------------|
-| [../CLAUDE.md](../CLAUDE.md) | Referencia rápida: arquitectura, convenciones, contadores, selección del índice de docs |
-| [architecture-detail.md](architecture-detail.md) | Arquitectura detallada: flujo de mensajes, prompt layers (3), knowledge (5 tiers), LLM Router (routing por tarea, tiers, circuit breaker, cost breaker), auth/sesiones, OAuth, calendario, BullMQ, multi-canal por tipo |
-| [modules-reference.md](modules-reference.md) | Inventario técnico de módulos API, páginas dashboard, colas y crons (snapshot; las cifras vigentes están en «Counters» de `CLAUDE.md`) |
-| [API_REFERENCE.md](API_REFERENCE.md) | Endpoints REST (todos bajo `/api/v1`) de los módulos principales, eventos WebSocket y colas; no es exhaustivo |
-| [agent-quality-center.md](agent-quality-center.md) | Contrato del Centro de calidad: tres pilares, estados, atribución, evidencia y bucle de mejora seguro |
-| [product-capabilities-reference.md](product-capabilities-reference.md) | Mapa canónico de superficies, roles, planes y navegación |
-| [business-types-catalog.md](business-types-catalog.md) | Catálogo generado de las 20 industrias y los 80 tipos de negocio (seleccionables, en espera, legacy) |
-| [platform-assistant-knowledge.md](platform-assistant-knowledge.md) | Fuente runtime, alcance y proceso de publicación de Parallly Assist |
-| [analytics-billing-reference.md](analytics-billing-reference.md) | Snapshot técnico de analytics/billing; precios, cuotas y features deben verificarse en `billing_plans` runtime |
-| [product-decision-ledger-2026-08-24.md](product-decision-ledger-2026-08-24.md) | Registro fechado de 34 decisiones de producto de la intervención vertical |
-| [../apps/api/CLAUDE.md](../apps/api/CLAUDE.md) · [../apps/dashboard/CLAUDE.md](../apps/dashboard/CLAUDE.md) · [../apps/whatsapp/CLAUDE.md](../apps/whatsapp/CLAUDE.md) | Contexto por app |
+## Arquitectura — [`architecture/`](architecture/)
 
-## Agente de IA, calidad y Assist
+| Documento | Contenido | Estado | Últ. cambio | Fuente de verdad en código |
+|---|---|---|---|---|
+| [architecture-detail.md](architecture/architecture-detail.md) | Flujo de mensajes, capas de prompt, conocimiento, router LLM, auth, OAuth, calendario, BullMQ | vigente | 2026-08-11 | `modules/conversations/`, `modules/ai/` |
+| [modules-reference.md](architecture/modules-reference.md) | Inventario de módulos, páginas, colas y crons | snapshot (cifras: «Counters» de `AGENTS.md`) | 2026-10-08 | `apps/api/src/modules/` |
+| [api-reference.md](architecture/api-reference.md) | Endpoints REST principales, WebSocket y colas; no exhaustivo. La API pública está en Swagger `/docs/public` | vigente | 2026-10-30 | controllers; `main.ts` (Swagger) |
+| [product-capabilities-reference.md](architecture/product-capabilities-reference.md) | Superficies, roles, planes y navegación | vigente | 2026-10-08 | `packages/shared/src/dashboard-page-access.ts` |
+| [agent-quality-center.md](architecture/agent-quality-center.md) | Centro de calidad: pilares, estados, atribución y bucle de mejora | vigente | 2026-10-08 | `modules/quality/` |
+| [platform-assistant-knowledge.md](architecture/platform-assistant-knowledge.md) | Fuente runtime, alcance y publicación de Parallly Assist | vigente | 2026-09-17 | `apps/api/kb/assistant/` |
+| [analytics-billing-reference.md](architecture/analytics-billing-reference.md) | Referencia técnica de analytics y billing (precios: `billing_plans`) | snapshot | 2026-10-08 | `modules/analytics/`, `modules/billing/` |
+| [multi-channel-per-type-implementation-2026-07.md](architecture/multi-channel-per-type-implementation-2026-07.md) | N conexiones del mismo tipo, agente por conexión | vigente | 2026-08-11 | `channel-certification-matrix.ts` |
 
-| Documento | Descripción |
-|-----------|-------------|
-| [agent-platform-visual-review-2026-09-07.md](archive/2026-09-agente/agent-platform-visual-review-2026-09-07.md) | Revisión visual local del agente (7-sep-2026; **(histórico)**) |
+## Seguridad — [`security/`](security/)
 
-## Facturación & Billing
+| Documento | Contenido | Estado | Últ. cambio | Fuente de verdad en código |
+|---|---|---|---|---|
+| [security-specification.md](security/security-specification.md) | Especificación de seguridad (incluye el antiguo `SECURITY.md` como Anexo A) y hallazgos pendientes | vigente | 2026-10-30 | `modules/auth/`, `common/guards/` |
+| [superadmin-governance.md](security/superadmin-governance.md) | Modo plataforma, deny-by-default, impersonación con motivo y actor real | vigente | 2026-09-30 | `apps/dashboard/src/lib/roles.ts`, `dashboard-page-access.ts` |
 
-| Documento | Descripción |
-|-----------|-------------|
-| [billing-annual-cycle.md](billing-annual-cycle.md) | Ciclo mensual/anual del motor Wompi, cambios de plan y billing-ops cross-tenant |
-| [billing-runbook.md](billing-runbook.md) · [wompi-integration-validation-2026-08.md](archive/2026-08-pagos/wompi-integration-validation-2026-08.md) | Runbook Wompi/DIAN y dictamen integral; Mercado Pago queda sólo para cobros tenant → cliente |
-| [tenant-customer-payments-wompi.md](tenant-customer-payments-wompi.md) ·  | Cobro tenant-owned (Wompi/Mercado Pago del tenant): diseño, certificación y auditoría para el dueño |
-| [stripe-international-subscriptions-2026-09.md](stripe-international-subscriptions-2026-09.md) | Suscripciones internacionales con Stripe |
-| [mercadopago-retirement-2026-08.md](mercadopago-retirement-2026-08.md) | Retiro de Mercado Pago como PSP de plataforma |
-| [plan-profitability-2026-07.md](archive/2026-08-pagos/plan-profitability-2026-07.md) | Análisis de rentabilidad y precios COP por país |
-| [facturacion-electronica-colombia-2026-06.md](archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md) | Facturación electrónica DIAN (Colombia) vía Factus |
-| [whatsapp-meta-pricing-2026-10.md](whatsapp-meta-pricing-2026-10.md) | Meta cobra el mensaje de servicio de WhatsApp desde el 1-oct-2026 |
+## Operación — [`operations/`](operations/)
 
-## Canales, comunicaciones y SMS
+| Documento | Contenido | Estado | Últ. cambio | Fuente de verdad en código |
+|---|---|---|---|---|
+| [operations-runbook.md](operations/operations-runbook.md) | Ciclo de vida del tenant, canales, Ops Center, scripts de auditoría de billing | vigente | 2026-10-30 | `health/platform-monitor.service.ts` |
+| [observability-manual.md](operations/observability-manual.md) | Logs, Bull Board, Grafana/Loki, Uptime Kuma, salud de proveedores LLM | vigente | 2026-09-12 | `infra/docker/docker-compose.prod.yml` |
+| [backup-restore-runbook.md](operations/backup-restore-runbook.md) | Backup, restore, simulacros y postmortem del exec-bit | **revisar** (>90 días) | 2026-07-23 | `infra/backup/` |
+| [backup-offsite-setup.md](operations/backup-offsite-setup.md) | Copia offsite (R2/S3) con rclone | **revisar** (>90 días) | 2026-07-21 | `infra/backup/backup.sh` |
+| [deploy-hardening-runbook.md](operations/deploy-hardening-runbook.md) | SSH solo con llave, throttling por IP real, backup previo a migrar, expand-contract (§6) | **revisar** (>90 días) | 2026-07-24 | `.github/workflows/deploy.yml` |
+| [server-installation.md](operations/server-installation.md) | Instalación de un servidor nuevo y GitHub Secrets | vigente | 2026-10-30 | `infra/scripts/setup-vps.sh` |
+| [billing-runbook.md](operations/billing-runbook.md) | Wompi, DIAN y enlaces de cobro del tenant | vigente | 2026-09-30 | `modules/billing/` |
+| [offboarding-manual.md](operations/offboarding-manual.md) | Baja de tenants | vigente | 2026-08-15 | `modules/offboarding/` |
+| [platform-communications.md](operations/platform-communications.md) | Comunicaciones de la plataforma a los tenants | vigente | 2026-09-30 | `modules/platform-communications/` |
+| [vertical-provisioning-v2-runbook.md](operations/vertical-provisioning-v2-runbook.md) | Provisioning vertical v2 | vigente | 2026-08-10 | `apps/api/scripts/reconcile-vertical-provisioning.js` |
+| [vertical-release-runbook-2026-08.md](operations/vertical-release-runbook-2026-08.md) · [schema](operations/vertical-release-evidence.schema.json) | Evidencia para release vertical (tier `release` de `vertical-quality.yml`) | vigente | 2026-10-08 | `apps/api/scripts/run-vertical-release-readiness.cjs` |
+| [mobile-eas-build.md](operations/mobile-eas-build.md) · [mobile-sentry-sourcemaps.md](operations/mobile-sentry-sourcemaps.md) | Build EAS y sourcemaps de Sentry de la app móvil | vigente / **revisar** (sourcemaps, >90 días) | 2026-09-14 / 2026-06-05 | `apps/mobile/eas.json` |
+| [runbooks/](operations/runbooks/) | Release móvil, preflight de términos aceptados, carga y SLO del despacho, reconciliación del despacho, suite completa de la API, cambio de plataforma de octubre, calidad de recuperación (RAG) | vigente | 2026-09-09 … 2026-10-30 | `cutover-script.spec.ts` y `generate-closure-report.cjs` leen dos de ellos |
 
-| Documento | Descripción |
-|-----------|-------------|
-| [multi-channel-per-type-implementation-2026-07.md](multi-channel-per-type-implementation-2026-07.md) | Multi-cuenta por tipo de canal (N conexiones del mismo tipo, agente por conexión) |
-| [coexistence-manual.md](coexistence-manual.md) | Coexistencia WhatsApp (Embedded Signup + migración de historial) |
-| [email-channel-reopening-adr-2026-08-24.md](email-channel-reopening-adr-2026-08-24.md) | ADR: reapertura de Email como canal conversacional self-service |
-| [platform-communications.md](platform-communications.md) ·  | Comunicaciones generales de la plataforma a los tenants y el aviso de Meta del 1-oct-2026 (4 idiomas) |
-| [sms-monetization-packages-2026-07.md](archive/2026-07-sms/sms-monetization-packages-2026-07.md) ·  | SMS: créditos reseller y notificaciones. **(histórico)** El producto SMS está **retirado** (`sms_product_retired`, `sms-kill-switch.service.ts`) |
+## Generados — [`generated/`](generated/README.md)
 
-## Operaciones & Infraestructura
+Artefactos generados, su generador y su comprobación en CI. Hoy viven junto a sus generadores (ver esa página).
 
-| Documento | Descripción |
-|-----------|-------------|
-| [operations-runbook.md](operations-runbook.md) | Runbook de operaciones + Ops Center (platform-monitor) |
-| [observability-manual.md](observability-manual.md) | Observabilidad, salud de proveedores LLM |
-| [backup-restore-runbook.md](backup-restore-runbook.md) · [backup-offsite-setup.md](backup-offsite-setup.md) | Backup/restore (verificación, drills, postmortems) + offsite (R2/S3) |
-| [deploy-hardening-runbook.md](deploy-hardening-runbook.md) | Hardening del deploy (SSH key-only, throttling por IP real, backup pre-migración) |
-| [runbooks/](runbooks/) | Runbooks puntuales: preflight de términos aceptados, carga y SLOs del despacho, reconciliación del despacho, suite completa de la API, cambio de plataforma de octubre, calidad de recuperación (RAG) |
-| [server-installation.md](server-installation.md) | Instalación de servidor + GitHub Secrets |
+## Fuera de la base aprobada
 
-## Seguridad
-
-| Documento | Descripción |
-|-----------|-------------|
-| [security-specification.md](security-specification.md) | Especificación de seguridad (threat model, controles) |
-| [superadmin-governance.md](superadmin-governance.md) | Gobernanza super_admin & impersonación (modo plataforma, deny-by-default, sesión emparejada, actor real) |
-
-## Manuales
-
-| Documento | Descripción |
-|-----------|-------------|
-| [user-manual.md](user-manual.md) | Manual de usuario (tenant) |
-| [mobile-user-manual.md](mobile-user-manual.md) | Manual funcional de la app móvil y límites frente a la web |
-| [appointments-manual.md](appointments-manual.md) · [analytics-manual.md](analytics-manual.md) · [offboarding-manual.md](offboarding-manual.md) | Citas, analytics, offboarding (manuales técnicos/internos) |
-| [vertical-strategy.md](vertical-strategy.md) | Visión de adaptación por vertical (la lista vigente de tipos de negocio está en `business-types-catalog.md`) |
-
-> La base que responde Parallly Assist vive en
-> [`../apps/api/kb/assistant/`](../apps/api/kb/assistant/); el manual humano no la
-> actualiza automáticamente.
-
-## App móvil (`apps/mobile`, React Native/Expo)
-
-| Documento | Descripción |
-|-----------|-------------|
-| [mobile-user-manual.md](mobile-user-manual.md) | Uso vigente: acceso, Inbox, CRM, workspace vertical, push y troubleshooting |
-| [mobile-eas-build.md](mobile-eas-build.md) · [mobile-sentry-sourcemaps.md](mobile-sentry-sourcemaps.md) | Build EAS y Sentry sourcemaps; el estado de tienda es una foto fechada |
-| [mobile-release-2026-09-14.md](archive/2026-09-movil/mobile-release-2026-09-14.md) ·  | Release Android 1.1.1 (14-sep-2026): compatibilidad, R8 y pasos finales de Play Console (**(histórico)**) |
-
-## Programa de verticales (ago–sep 2026)
-
-Para saber **qué tipos de negocio existen hoy** usa [`business-types-catalog.md`](business-types-catalog.md). Los documentos de esta sección son el historial del programa: las cifras que traen (17/18 verticales, 75/76 subtipos, 1.520 escenarios) eran ciertas a su fecha y **no** son las actuales.
-
-| Documento | Descripción |
-|-----------|-------------|
-| [vertical-approved-implementation-plan-2026-08-24.md](archive/2026-08-verticales/vertical-approved-implementation-plan-2026-08-24.md) | **Plan definitivo** posterior a las decisiones del dueño (24-ago-2026) |
-| [vertical-decision-register-2026-08.md](vertical-decision-register-2026-08.md) ·  | Registro final de decisiones y su implementación (**(histórico)**) |
-| [vertical-system-audit-2026-08.md](archive/2026-08-verticales/vertical-system-audit-2026-08.md) | Auditoría point-in-time de las 18 verticales (6-ago-2026) |
-| [vertical-competitive-matrix-2026-08.md](vertical-competitive-matrix-2026-08.md) ·  | Auditorías competitivas y de prompts/navegación por subtipo (ago-2026; **(histórico)**) |
-| `vertical-*-scorecard-2026-08.csv`, `agent-tool-subtype-*-scorecard-2026-08.csv` | Hojas de cálculo del 20-ago-2026 con la taxonomía anterior (76 filas; incluyen legacy y omiten tipos nuevos): **(histórico)** |
-| [vertical-provisioning-v2-runbook.md](vertical-provisioning-v2-runbook.md) | Runbook de provisioning vertical v2 |
-| [vertical-release-runbook-2026-08.md](vertical-release-runbook-2026-08.md) | Runbook de evidencia para release vertical (el gate estricto vive en `vertical-quality.yml` tier `release`) |
-
-## Onboarding
-
-| Documento | Descripción |
-|-----------|-------------|
-| [onboarding-decisions-2026-09.md](onboarding-decisions-2026-09.md) · [onboarding-experience-design-2026-09.md](onboarding-experience-design-2026-09.md) · [onboarding-diagnosis-2026-09.md](archive/2026-09-onboarding/onboarding-diagnosis-2026-09.md) | Generación vigente (sep-2026): decisiones, diseño de la experiencia guiada y diagnóstico tras el video real |
-| [onboarding-experience-plan-v2-2026-09.md](archive/2026-09-onboarding/onboarding-experience-plan-v2-2026-09.md) · [onboarding-review-and-completion-plan-2026-09-18.md](archive/2026-09-onboarding/onboarding-review-and-completion-plan-2026-09-18.md) · [onboarding-implementation-closeout-2026-09-18.md](onboarding-implementation-closeout-2026-09-18.md) | Propuesta v2, revisión y cierre de implementación (17–18 sep-2026), los más recientes |
-| [onboarding-ux-benchmark-and-video-audit.md](archive/2026-09-onboarding/onboarding-ux-benchmark-and-video-audit.md) · `onboarding-diagnosis-2026-09-workdir/` | Borradores de investigación con nota de verificación (cifras sin fuente primaria) |
-
-## Estrategia & Research
-
-| Documento | Descripción |
-|-----------|-------------|
-| [research/](research/) | Investigación de septiembre 2026 (precios de Meta, rentabilidad por plan, posicionamiento y landing) |
-
-## Auditorías y handoffs de septiembre 2026 (**histórico**)
-
-| Carpeta | Descripción |
-|---------|-------------|
-| [audits/](audits/) | Evidencia y cierres del programa de certificación de sep-2026 (`2026-09-05` … `2026-09-14`). Son fotos fechadas: cada documento lleva su banner «Documento histórico». Los marcados «generado» (`closure-report`, `closure-state`, `certification-manifest`, `tool-profile-audit`, `outbound-producer-inventory`, `competence-matrix`) se regeneran con su script y no se editan a mano: `npm run verify:artifacts` |
-| [handoffs/](handoffs/) | Instrucciones que se pasaron entre agentes (8–12 sep-2026). **No son directivas vigentes**: lo que dicen sobre «no hagas push/merge/deploy» ya no aplica; desde el 7-oct-2026 el merge con CI verde despliega solo |
-
-## Archivado (histórico / superseded)
-
-Documentos point-in-time o reemplazados, en [`archive/`](archive/). Se conservan como referencia; **no reflejan el estado actual**.
-
-| Documento | Motivo |
-|-----------|--------|
-| [archive/billing-plan.md](archive/billing-plan.md) ·  | Snapshot abr-2026 (matriz viva = `apps/api/prisma/seed-billing-plans.js`) y setup de Mercado Pago (retirado) |
-
-## Otros
-
-| Documento | Descripción |
-|-----------|-------------|
-| [vertical-competitive-evidence.json](vertical-competitive-evidence.json) · [vertical-release-evidence.schema.json](vertical-release-evidence.schema.json) | Datos de trabajo y esquema de evidencia de release vertical |
+| Carpeta | Qué es | Por qué sigue en el repositorio |
+|---|---|---|
+| [archive/](archive/README.md) | Históricos citados por un documento vivo o por código | Evidencia; no reflejan el estado actual |
+| [audits/](audits/) (`2026-09-09` … `2026-09-12`) | Evidencia y cierres de la certificación de septiembre | La CI los lee (`verify-artifacts`, `check-canary-figures`, landing). Se reubicarán junto con los generados |
+| [handoffs/2026-09-10/](handoffs/2026-09-10/) | Instrucciones entre agentes de septiembre. **No son directivas vigentes** | `check-canary-figures.cjs` y `closure-artefact-generators.spec.ts` citan dos; los demás los citan esos mismos documentos |
+| [research/2026-09-10/](research/2026-09-10/) | Tarifas oficiales de Meta (insumo de producto) e investigación de landing | `generate-whatsapp-rates.cjs` lee las tarjetas de tarifas; pendiente moverlas a `apps/api/data/` |
+| [vertical-competitive-matrix-2026-08.md](vertical-competitive-matrix-2026-08.md) · [vertical-competitive-evidence.json](vertical-competitive-evidence.json) | Evidencia competitiva de la landing | `Dockerfile.landing` y `validate-competitive-evidence.cjs` |

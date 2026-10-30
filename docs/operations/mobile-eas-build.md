@@ -1,7 +1,7 @@
 # Build de la app móvil con EAS (distribución)
 
 > **Actualización 14-sep-2026:** la auditoría y el candidato 1.1.0 se registran en
-> [mobile-release-2026-09-14.md](archive/2026-09-movil/mobile-release-2026-09-14.md). El último build
+> [mobile-release-2026-09-14.md](../archive/2026-09-movil/mobile-release-2026-09-14.md). El último build
 > terminado al iniciar la revisión es `1.0.0 (9)`, EAS
 > `66ec0b67-5e25-450e-a65f-70b4f4766eff`. Los resultados v7 que siguen son evidencia
 > histórica; no reutilizar su AAB, versionCode, hash ni prueba física para una release

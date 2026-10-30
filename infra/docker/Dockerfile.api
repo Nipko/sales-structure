@@ -53,7 +53,7 @@ COPY --from=builder /app/apps/api/prisma ./prisma
 COPY --from=builder /app/apps/api/scripts ./scripts
 # Assistant knowledge base (Parallly Assist) — functional help articles read at
 # runtime by CopilotService from /app/kb/assistant/{locale}/*.md. Must ship in
-# the image: the old docs/user-manual.md approach was never copied here, so the
+# the image: the old docs/domain/user-manual.md approach was never copied here, so the
 # assistant ran with an empty knowledge base in production.
 COPY --from=builder /app/apps/api/kb ./kb
 COPY --from=builder /app/apps/api/package.json ./

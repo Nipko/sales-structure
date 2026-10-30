@@ -5,13 +5,13 @@ en un solo documento lo que antes estaba repartido en el checklist de GATE 0, el
 checklist de publicación en Play Store y los pasos finales de Play Console (retirados en
 K3, 2026-10-30; el historial queda en git). El registro de la última release publicada
 (1.1.1, sep-2026) está en
-[`archive/2026-09-movil/mobile-release-2026-09-14.md`](../archive/2026-09-movil/mobile-release-2026-09-14.md).
+[`archive/2026-09-movil/mobile-release-2026-09-14.md`](../../archive/2026-09-movil/mobile-release-2026-09-14.md).
 
 - **Fuente de verdad del estado de tienda:** Google Play Console y EAS. Este documento no
   certifica ningún binario: cada candidato nuevo repite la validación.
 - **Build y firma:** [`mobile-eas-build.md`](../mobile-eas-build.md).
 - **Sourcemaps / errores:** [`mobile-sentry-sourcemaps.md`](../mobile-sentry-sourcemaps.md).
-- **Comportamiento funcional:** [`mobile-user-manual.md`](../mobile-user-manual.md).
+- **Comportamiento funcional:** [`mobile-user-manual.md`](../../domain/mobile-user-manual.md).
 
 La app móvil **no** sale por el pipeline web: `deploy.yml` ignora `apps/mobile`. Su suite
 de pruebas sí corre en CI (`vertical-quality.yml` y `deploy.yml`).

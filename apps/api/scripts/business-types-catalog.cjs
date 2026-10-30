@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * docs/business-types-catalog.md - the catalogue of industries and business
+ * docs/domain/business-types-catalog.md - the catalogue of industries and business
  * types, DERIVED from the registries the runtime itself reads.
  *
  * Why a script and not a document: by October 2026 the repository had seven
@@ -40,7 +40,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
-const OUT = path.join(ROOT, 'docs', 'business-types-catalog.md');
+const OUT = path.join(ROOT, 'docs', 'domain', 'business-types-catalog.md');
 
 require(path.join(ROOT, 'node_modules/ts-node')).register({
   project: path.join(ROOT, 'apps/api/tsconfig.json'),
@@ -392,7 +392,7 @@ if (process.argv.includes('--write')) {
 } else if (process.argv.includes('--check')) {
   const current = fs.existsSync(OUT) ? canonical(fs.readFileSync(OUT, 'utf8')) : null;
   if (current !== content) {
-    process.stderr.write('business_types_catalog_stale: docs/business-types-catalog.md no coincide con los registros. Regenera con: node apps/api/scripts/business-types-catalog.cjs --write\n');
+    process.stderr.write('business_types_catalog_stale: docs/domain/business-types-catalog.md no coincide con los registros. Regenera con: node apps/api/scripts/business-types-catalog.cjs --write\n');
     process.exit(1);
   }
   process.stdout.write(`business-types-catalog: al día (${industries.length} industrias, ${rows.length} configuraciones)\n`);

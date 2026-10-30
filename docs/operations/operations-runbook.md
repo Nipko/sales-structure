@@ -377,7 +377,7 @@ while an initial/renewal charge is unresolved; the API rejects that race.
 Editing a plan in `/admin/plans` (`PUT /billing-admin/plans/:slug`) writes an
 audit row; the seed does not overwrite existing runtime rows. Manual
 reconciliation, refunds, courtesy plans and provider assignments are audited.
-See `docs/billing-runbook.md` for readiness, DIAN and Mercado Pago retirement.
+See `docs/operations/billing-runbook.md` for readiness, DIAN and Mercado Pago retirement.
 
 ---
 
@@ -511,12 +511,13 @@ LIMIT 50;
 
 ## 10. Related docs
 
-- GitHub releases and merged PRs — chronological list of changes (the frozen `docs/CHANGELOG.md` was removed in K3)
-- `user-manual.md` — end-user documentation (sections 21-26 cover Tier 1 features)
-- `architecture-detail.md` — internal architecture
-- `modules-reference.md` — 40 modules and their files
-- `analytics-billing-reference.md` — analytics / billing / financials
-- `appointments-manual.md` — appointments specifics
-- `billing-runbook.md` — Wompi, DIAN and tenant-owned Wompi/Mercado Pago links
-- `offboarding-manual.md` — offboarding flow detail
-- `vertical-strategy.md` — which verticals + roadmap
+Full index: [`docs/README.md`](../README.md). Changes: GitHub releases and merged PRs.
+
+- [`../domain/user-manual.md`](../domain/user-manual.md) — end-user documentation
+- [`../architecture/architecture-detail.md`](../architecture/architecture-detail.md) — internal architecture
+- [`../architecture/modules-reference.md`](../architecture/modules-reference.md) — modules and their files (snapshot)
+- [`../architecture/analytics-billing-reference.md`](../architecture/analytics-billing-reference.md) — analytics / billing / financials
+- [`../appointments-manual.md`](../appointments-manual.md) — appointments specifics
+- [`billing-runbook.md`](billing-runbook.md) — Wompi, DIAN and tenant-owned Wompi/Mercado Pago links
+- [`offboarding-manual.md`](offboarding-manual.md) — offboarding flow detail
+- [`../domain/vertical-strategy.md`](../domain/vertical-strategy.md) — verticals vision

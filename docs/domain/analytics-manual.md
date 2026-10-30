@@ -372,4 +372,4 @@ ratelimit:{tenantId}:{window}
 - **Analitica de agentes** — pagina `/admin/agent-analytics` (tenant): reportes por agente (Overview/Agents/Channels/CSAT). Tab "Agentes" del dashboard redirige aqui.
 - **Analitica CRM** — pagina `/admin/crm-analytics` (tenant): funnel, velocity, win/loss, leaderboard, sources. Tab "CRM" del dashboard redirige aqui. Backend: `crm/services/crm-analytics/`.
 - **Analitica por vertical** — pagina `/admin/vertical-analytics` (plataforma, super_admin): metricas agregadas por industria/vertical. Modulo `vertical-analytics/`.
-- **Referencia consolidada de endpoints** (12 dashboard + BI) + schemas + billing: `docs/analytics-billing-reference.md`.
+- **Referencia consolidada de endpoints** (12 dashboard + BI) + schemas + billing: `docs/architecture/analytics-billing-reference.md`.

@@ -67,11 +67,11 @@ fi
 if command -v rclone &> /dev/null; then
   echo "  OK — rclone found (offsite sync available)"
   echo "         Credentials come from .env (OFFSITE_* GitHub Secrets) — no 'rclone config' needed."
-  echo "         Setup guide: docs/backup-offsite-setup.md"
+  echo "         Setup guide: docs/operations/backup-offsite-setup.md"
 else
   echo "  INFO — rclone not installed (offsite sync disabled until installed)"
   echo "         Install: curl https://rclone.org/install.sh | sudo bash"
-  echo "         Then set the OFFSITE_* GitHub Secrets and redeploy (see docs/backup-offsite-setup.md)."
+  echo "         Then set the OFFSITE_* GitHub Secrets and redeploy (see docs/operations/backup-offsite-setup.md)."
 fi
 
 echo ""

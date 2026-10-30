@@ -4,8 +4,8 @@ App nativa operativa para usuarios tenant — inbox en tiempo real, CRM, tareas,
 indicadores permitidos y workspace adaptado a la vertical.
 Consume la API existente (`auth` + `agent-console`) y Socket.io `/inbox`. Codebase **separado** del web (no se despliega con `git push`).
 
-Manual funcional: [`../../docs/mobile-user-manual.md`](../../docs/mobile-user-manual.md).
-El proceso de release está en [`docs/runbooks/mobile-release.md`](../../docs/runbooks/mobile-release.md).
+Manual funcional: [`../../docs/domain/mobile-user-manual.md`](../../docs/domain/mobile-user-manual.md).
+El proceso de release está en [`docs/operations/runbooks/mobile-release.md`](../../docs/operations/runbooks/mobile-release.md).
 
 ## Contexto / contrato compartido
 Vive en el **monorepo** y consume **`@parallext/shared`** (vía `file:../../packages/shared`) → el contrato de tipos de la API queda **enforced por TypeScript** (si el backend cambia un tipo, el mobile no compila). Metro está configurado para monorepo en `metro.config.js` (`watchFolders` + `nodeModulesPaths`). La superficie completa de API a espejar está en `apps/dashboard/src/lib/api.ts`.

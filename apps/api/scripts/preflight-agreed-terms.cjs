@@ -133,7 +133,7 @@ async function main() {
             return;
         }
         if (summary.orphans > 0) {
-            console.error(`::error::agreed-terms preflight found ${summary.orphans} live row(s) that this release would stop being able to charge. Each one needs a human decision; see docs/runbooks/agreed-terms-preflight.md`);
+            console.error(`::error::agreed-terms preflight found ${summary.orphans} live row(s) that this release would stop being able to charge. Each one needs a human decision; see docs/operations/runbooks/agreed-terms-preflight.md`);
             process.exitCode = 1;
             return;
         }

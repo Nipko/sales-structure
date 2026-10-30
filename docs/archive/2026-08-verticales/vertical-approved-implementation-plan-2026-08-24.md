@@ -6,7 +6,7 @@ Estado: ejecución autorizada. **Fases 1–4 implementadas en código el 24 de a
 
 ## 1. Autoridad, objetivo y alcance
 
-Este documento convierte las 34 resoluciones del [registro de decisiones de producto](../../product-decision-ledger-2026-08-24.md) en un programa ejecutable. Sustituye como cola vigente las preguntas abiertas del [plan maestro original](../../vertical-full-implementation-plan-2026-08.md), pero conserva de aquel documento la auditoría 1:1 de los 76 perfiles históricos y sus criterios de calidad.
+Este documento convierte las 34 resoluciones del [registro de decisiones de producto](../../decisions/previas/product-decision-ledger-2026-08-24.md) en un programa ejecutable. Sustituye como cola vigente las preguntas abiertas del [plan maestro original](../../vertical-full-implementation-plan-2026-08.md), pero conserva de aquel documento la auditoría 1:1 de los 76 perfiles históricos y sus criterios de calidad.
 
 Orden de autoridad para ejecutar:
 
@@ -14,7 +14,7 @@ Orden de autoridad para ejecutar:
 2. el registro P01–P34 para alcance aprobado y exclusiones;
 3. el [cierre técnico](../../vertical-intervention-status-2026-08-23.md) para conocer qué ya existe y qué sigue externo;
 4. los registros compartidos y el runtime para la verdad code-backed;
-5. el [runbook de release](../../vertical-release-runbook-2026-08.md) para evidencia de promoción.
+5. el [runbook de release](../../operations/vertical-release-runbook-2026-08.md) para evidencia de promoción.
 
 Objetivo final: que cada subtipo comercial tenga una experiencia defendible y cohesionada en taxonomía, menús, prompts, variables, templates, lenguaje, tools, fuente de verdad, permisos, objetos operativos, observabilidad y soporte regional; y que la plataforma no prometa una capacidad antes de demostrarla con el sistema real.
 

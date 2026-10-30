@@ -1237,7 +1237,7 @@ jobs:
             echo "EMBEDDING_DIMENSIONS=1536" >> .env
             echo "GIT_SHA=${GIT_SHA}" >> .env
             # Image pin read by docker-compose.prod.yml. Rollback: set this to a
-            # previous SHA and re-up (see docs/deploy-hardening-runbook.md).
+            # previous SHA and re-up (see docs/operations/deploy-hardening-runbook.md).
             echo "IMAGE_TAG=${GIT_SHA}" >> .env
             chmod 600 .env
             echo "  [OK] .env generated and secured"

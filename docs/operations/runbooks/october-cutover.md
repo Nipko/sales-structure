@@ -6,7 +6,7 @@
 >
 > **Nada de este documento se ha ejecutado contra el VPS todavía.** Lo que
 > cambió es que ya no es un documento a seguir a mano: el procedimiento es
-> [`infra/scripts/october-cutover.sh`](../../infra/scripts/october-cutover.sh),
+> [`infra/scripts/october-cutover.sh`](../../../infra/scripts/october-cutover.sh),
 > con su orden **impuesto** y su estado en disco. Lo que queda es la ventana, el
 > responsable y la autorización.
 
@@ -215,7 +215,7 @@ salta a sí misma** cuando su variable no está puesta, y la versión anterior d
 este workflow corría `npx jest --ci` sin ninguna base: el motor de gasto, el
 outbox durable, las migraciones y la semántica de pooling estaban todos omitidos,
 y la corrida era verde.
-[`assert-no-skipped-tests.cjs`](../../infra/scripts/assert-no-skipped-tests.cjs)
+[`assert-no-skipped-tests.cjs`](../../../infra/scripts/assert-no-skipped-tests.cjs)
 lee el informe JSON de Jest y rechaza una corrida con una sola prueba omitida, y
 **cada** informe que el workflow escribe es juzgado —no sólo el último—.
 
@@ -437,7 +437,7 @@ candidato sin fusionar a `main`—.
 Seis de los siete se cierran **retirando el componente**, porque el producto dejó
 de necesitarlo: el destino es este VPS. El séptimo no: «construir el candidato
 antes de fusionar» sigue haciendo falta y ahora existe como
-[`.github/workflows/candidate.yml`](../../.github/workflows/candidate.yml).
+[`.github/workflows/candidate.yml`](../../../.github/workflows/candidate.yml).
 
 Tres ideas del workflow retirado sí sobreviven, porque siempre fueron sobre el
 host operativo y sólo parecían asuntos de staging:

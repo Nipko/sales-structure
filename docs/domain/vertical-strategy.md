@@ -3,7 +3,7 @@ _Estrategia original: jul 2026 (v2) · revisión de octubre 2026: este documento
 
 > **Este documento NO es la fuente de verdad de industrias, tipos de negocio ni herramientas.**
 >
-> - **Autoridad vigente:** [`docs/business-types-catalog.md`](business-types-catalog.md), generado desde el código (`node apps/api/scripts/business-types-catalog.cjs --write`) y comprobado por el CI. Lista las industrias y cada tipo de negocio con su id, nombre, disponibilidad (seleccionable, lista de espera o solo cuentas existentes), modo de producto, menú, familias y herramientas del agente.
+> - **Autoridad vigente:** [`docs/domain/business-types-catalog.md`](business-types-catalog.md), generado desde el código (`node apps/api/scripts/business-types-catalog.cjs --write`) y comprobado por el CI. Lista las industrias y cada tipo de negocio con su id, nombre, disponibilidad (seleccionable, lista de espera o solo cuentas existentes), modo de producto, menú, familias y herramientas del agente.
 > - Este archivo conserva la **estrategia y el razonamiento de producto** de julio de 2026. Las secciones marcadas *(histórico)* describen cómo se pensó la verticalización, no necesariamente cómo está hoy. Si algo de aquí contradice al catálogo o al código, manda el código.
 > - Origen de los datos que sí siguen vigentes: `apps/api/src/modules/verticals/vertical-definitions.ts` (`VERTICAL_REGISTRY`), `packages/shared/src/subtype-experience-profile.ts`, `packages/shared/src/vertical-capability-manifest.ts`, `packages/shared/src/vertical-product-policy.ts` y `apps/api/src/modules/conversations/agent-tool-registry.ts`.
 
@@ -114,7 +114,7 @@ Las tres secciones de Tier son el análisis de mercado y la hipótesis de produc
 
 ## Herramientas IA por industria (vigente: ver el catálogo)
 
-Las herramientas del agente se definen en `apps/api/src/modules/conversations/tools/` y se agrupan en **familias** en `apps/api/src/modules/conversations/agent-tool-registry.ts` (`TOOL_FAMILIES`). Cada familia se enciende por agente con `persona.config.tools.<familia>.enabled`, y el manifiesto de cada tipo de negocio decide qué familias se publican. Para ver, tipo de negocio por tipo de negocio, qué familias y qué herramientas tiene, **lee el catálogo generado**: [`docs/business-types-catalog.md`](business-types-catalog.md) (tabla de familias y una ficha por tipo).
+Las herramientas del agente se definen en `apps/api/src/modules/conversations/tools/` y se agrupan en **familias** en `apps/api/src/modules/conversations/agent-tool-registry.ts` (`TOOL_FAMILIES`). Cada familia se enciende por agente con `persona.config.tools.<familia>.enabled`, y el manifiesto de cada tipo de negocio decide qué familias se publican. Para ver, tipo de negocio por tipo de negocio, qué familias y qué herramientas tiene, **lee el catálogo generado**: [`docs/domain/business-types-catalog.md`](business-types-catalog.md) (tabla de familias y una ficha por tipo).
 
 Notas de diseño que siguen vigentes:
 - Un agente combina las herramientas de la familia de su tipo de negocio con las **transversales**: citas (`appointments`), base de conocimiento (`faqs`, `policies`, `knowledge`), CRM, ofertas y pedidos.
@@ -137,7 +137,7 @@ Además de las tools, la verticalización se apoya en módulos NestJS dedicados:
 | **Channel Manager** | `modules/channel-manager/` | Integración PMS para alquiler vacacional. **Hostaway** con OAuth y sincronización de listings/reservas. El `provider` admite `hostaway`, `guesty`, `ical` y `direct`; solo Hostaway tiene sincronización en vivo |
 | **Vacation Rental** | `modules/vacation-rental/` | Propiedades propias, calendario iCal (importación y exportación) y registro de estadías |
 
-> **Nota sobre alquiler vacacional**: existen DOS módulos complementarios —`vacation-rental` (propiedades propias, KB por propiedad e iCal) y `channel-manager` (sincroniza con un PMS externo tipo Hostaway)—. Si una unidad está vinculada a un Channel Manager, esa vinculación gobierna su disponibilidad; una unidad sin vínculo conserva el flujo nativo (ver `docs/product-capabilities-reference.md`).
+> **Nota sobre alquiler vacacional**: existen DOS módulos complementarios —`vacation-rental` (propiedades propias, KB por propiedad e iCal) y `channel-manager` (sincroniza con un PMS externo tipo Hostaway)—. Si una unidad está vinculada a un Channel Manager, esa vinculación gobierna su disponibilidad; una unidad sin vínculo conserva el flujo nativo (ver `docs/architecture/product-capabilities-reference.md`).
 
 ---
 
@@ -246,8 +246,8 @@ El agente de un alojamiento usa la familia `properties` (`check_property_availab
 ## Estado de implementación
 
 La lista de verificación de julio de 2026 que vivía aquí (con cifras como «17 verticales» o «17 tool-files») quedó obsoleta y se retiró. Para el estado vigente:
-- Industrias, tipos de negocio, disponibilidad, menú y herramientas: [`docs/business-types-catalog.md`](business-types-catalog.md).
-- Qué está certificado y qué no: `packages/shared/src/vertical-product-policy.ts` (todas las industrias están hoy en `implemented_not_certified`) y `docs/product-capabilities-reference.md`.
+- Industrias, tipos de negocio, disponibilidad, menú y herramientas: [`docs/domain/business-types-catalog.md`](business-types-catalog.md).
+- Qué está certificado y qué no: `packages/shared/src/vertical-product-policy.ts` (todas las industrias están hoy en `implemented_not_certified`) y `docs/architecture/product-capabilities-reference.md`.
 - Pendiente de esta línea de trabajo: adaptadores de channel manager para Guesty y Lodgify.
 
 ### Bloqueado por terceros

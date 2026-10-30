@@ -92,7 +92,7 @@ Parallly es una plataforma SaaS que permite a negocios automatizar y centralizar
 > **Fuente vigente para el usuario final:** los artículos runtime de Parallly Assist
 > (`apps/api/kb/assistant/{es,en,pt,fr}/01-primeros-pasos.md` y `02-canales-whatsapp.md`).
 > Este manual es apoyo editorial; si difieren, manda la KB, que es lo que el usuario lee
-> dentro del panel. Ver `docs/platform-assistant-knowledge.md`.
+> dentro del panel. Ver `docs/architecture/platform-assistant-knowledge.md`.
 
 ## 2.1 Crear una cuenta
 
@@ -1060,7 +1060,7 @@ copian a mano en ningún otro lado.
 **Tarifas**: este manual no las transcribe. Meta revisa sus tarjetas por trimestre y cobra
 según el país de **quien recibe**, así que cualquier número escrito aquí queda viejo en la
 próxima revisión. La fuente vigente es la tabla generada citada arriba y
-`docs/whatsapp-meta-pricing-2026-10.md`.
+`docs/domain/whatsapp-meta-pricing-2026-10.md`.
 
 **Qué ve el tenant.** En **Canales → WhatsApp**, la tarjeta **Cobro de WhatsApp (Meta)**
 muestra el avance de la cuota gratis, el gasto del período separado por moneda, los
@@ -2900,7 +2900,7 @@ confirma cambios que no hizo ni envía comunicaciones externas.
 > La fuente runtime de Parallly Assist es
 > `apps/api/kb/assistant/{es,en,pt,fr}`. Este manual no se carga automáticamente en
 > el asistente. El contrato de actualización está en
-> [platform-assistant-knowledge.md](platform-assistant-knowledge.md).
+> [platform-assistant-knowledge.md](../architecture/platform-assistant-knowledge.md).
 
 ## 23.3 Cómo usar ambas ayudas
 

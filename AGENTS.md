@@ -10,9 +10,9 @@ Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and
 
 Monorepo with 5 apps, deployed on a Hostinger VPS via Docker + Cloudflare Tunnel; mobile binaries ship separately through EAS / Google Play. Structural counters drift: recompute them (see "Counters") instead of copying numbers into docs.
 
-**Glossary (use it consistently).** *Vertical* = industry (20 in `VERTICAL_REGISTRY`, 18 selectable at sign-up). *Business type* (tipo de negocio) = industry/subtype profile (80 canonical = 72 selectable + 8 waitlist; 85 resolvable configurations including 5 `legacy_only`). The generated list is `docs/business-types-catalog.md`; the code authorities are `apps/api/src/modules/verticals/vertical-definitions.ts` and `packages/shared/src/subtype-experience-profile.ts`. Business requirements per type live in the single specification `packages/business-spec/` (ADR 0001), rendered to `docs/domain/business-requirements.md`.
+**Glossary (use it consistently).** *Vertical* = industry (20 in `VERTICAL_REGISTRY`, 18 selectable at sign-up). *Business type* (tipo de negocio) = industry/subtype profile (80 canonical = 72 selectable + 8 waitlist; 85 resolvable configurations including 5 `legacy_only`). The generated list is `docs/domain/business-types-catalog.md`; the code authorities are `apps/api/src/modules/verticals/vertical-definitions.ts` and `packages/shared/src/subtype-experience-profile.ts`. Business requirements per type live in the single specification `packages/business-spec/` (ADR 0001), rendered to `docs/domain/business-requirements.md`.
 
-Current product scope: `docs/product-capabilities-reference.md`, `docs/platform-assistant-knowledge.md` and the Assist knowledge base `apps/api/kb/assistant/` (the help that actually reaches users).
+Current product scope: `docs/architecture/product-capabilities-reference.md`, `docs/architecture/platform-assistant-knowledge.md` and the Assist knowledge base `apps/api/kb/assistant/` (the help that actually reaches users).
 
 ## Architecture (high-level)
 
@@ -28,7 +28,7 @@ Customer (WA/IG/Messenger/Telegram/Web Chat) → Channel ingress (WhatsApp servi
   Rate limit: TenantThrottleService per-plan checks Redis before every job
 ```
 
-Prompt layers, the 5-tier knowledge model, language detection, auth/sessions, OAuth, calendar, BullMQ and the LLM router are described in `docs/architecture-detail.md`. The backend owns flow decisions (booking engine, directives); the LLM is the voice.
+Prompt layers, the 5-tier knowledge model, language detection, auth/sessions, OAuth, calendar, BullMQ and the LLM router are described in `docs/architecture/architecture-detail.md`. The backend owns flow decisions (booking engine, directives); the LLM is the voice.
 
 ## Monorepo structure
 
@@ -57,11 +57,11 @@ There is no reverse proxy config in the repo: production ingress is the Cloudfla
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client. `users.name` is a generated column
 - **Auth**: JWT with refresh token rotation (Redis-backed). 5 roles: super_admin, tenant_admin, tenant_supervisor, tenant_agent, tenant_viewer (`packages/shared/src/index.ts`). Session timeout 60min with warning modal
-- **Super_admin governance**: super_admin has NO implicit tenant (platform mode); `roles.ts` is deny-by-default — every new super_admin page/endpoint needs an explicit rule or access is denied. Acting on a tenant requires **impersonation** with a mandatory reason (`impersonate(superAdminId, tenantId, {reason, ticketId})`), 1h tokens, a paired session (`impersonationSid`), and audit writes attributed to the REAL super_admin. See `docs/superadmin-governance.md`
+- **Super_admin governance**: super_admin has NO implicit tenant (platform mode); `roles.ts` is deny-by-default — every new super_admin page/endpoint needs an explicit rule or access is denied. Acting on a tenant requires **impersonation** with a mandatory reason (`impersonate(superAdminId, tenantId, {reason, ticketId})`), 1h tokens, a paired session (`impersonationSid`), and audit writes attributed to the REAL super_admin. See `docs/security/superadmin-governance.md`
 - **Guards**: `@UseGuards(AuthGuard('jwt'), RolesGuard, TenantGuard)` on protected endpoints. `TenantGuard` UUID-validates tenantId params
 - **WebSocket tenant isolation**: every gateway MUST validate tenantId before `join()` and reject connections without one
 - **Database pooling**: PgBouncer (transaction mode) between apps and PostgreSQL. Use `DIRECT_DATABASE_URL` for Prisma migrations. Multi-statement SQL must be split into individual queries
-- **Migraciones = expand-contract (OBLIGATORIO)**: el deploy migra ANTES de recrear contenedores, así que el código viejo corre contra el schema nuevo durante minutos. Solo cambios **aditivos** en un deploy (ADD COLUMN nullable, CREATE TABLE/INDEX, ampliar tipos). Un RENAME/DROP va en **dos deploys** (agregar + escribir en ambos lados → eliminar). Ver `docs/deploy-hardening-runbook.md` §6. Dropping a table or column that may hold data needs the owner's approval, one by one, with a backup
+- **Migraciones = expand-contract (OBLIGATORIO)**: el deploy migra ANTES de recrear contenedores, así que el código viejo corre contra el schema nuevo durante minutos. Solo cambios **aditivos** en un deploy (ADD COLUMN nullable, CREATE TABLE/INDEX, ampliar tipos). Un RENAME/DROP va en **dos deploys** (agregar + escribir en ambos lados → eliminar). Ver `docs/operations/deploy-hardening-runbook.md` §6. Dropping a table or column that may hold data needs the owner's approval, one by one, with a backup
 - **Mensajes entrantes = cola**: todo webhook **encola y recién entonces confirma** (`InboundQueueService`, cola `inbound-messages`). Nunca llamar `processIncomingMessage` directo desde un controller: un reinicio mataría el turno sin nada que reintentar. El turno es idempotente vía índice único `messages.external_id` + marcador `turn:done:*` + `dedupeId` del saliente. **`InboundQueueService.enqueue` valida y descarta** lo estructuralmente inválido (`tenantId`/`contactId`/`channelType`/`channelAccountId` vacíos) — es la frontera común a los 7 productores, así que la validación va ahí y no en el webhook de turno. Descarta con `return`, nunca `throw`: lanzar propaga un 5xx y el proveedor redelivera el mismo cuerpo roto en bucle. **Nunca coercionar `contactId` a `''`**: el índice único `(channel_type, external_id)` fusionaría a todos los remitentes desconocidos en UN contacto. Y esa validación **no puede exigir `direction === 'inbound'`**: la cola también transporta los salientes de solo-guardado de coexistencia (`waba_echo`, `historical`)
 - **Error tracking**: Sentry (@sentry/nestjs + profiling). `instrument.ts` must load before all modules
 - **CRM is built-in**: No external CRM (no Chatwoot). Handoff → internal agent console via WebSocket
@@ -75,8 +75,8 @@ There is no reverse proxy config in the repo: production ingress is the Cloudfla
 - **Conversation mutex**: Redis SETNX lock per conversation ID (`lock:conv:{conversationId}`, 30s TTL)
 - **Booking state**: Redis (`booking:{conversationId}`, 1h TTL) primary, PostgreSQL backup. In directive mode, only last 4 messages sent to LLM. Directive strings exist in the 4 languages; no LLM translation
 - **Multi-agent / multi-calendar**: counts come from the runtime plan/overrides. Calendar resolution: service → staff → general fallback
-- **Subscription plans**: names, prices, billing cycles, quotas and feature flags come from the runtime `billing_plans` catalog plus authorized tenant overrides. Do not copy fixed prices or limits into prompts/docs. The seed is only a provisioning baseline; see `docs/billing-annual-cycle.md`
-- **Payments**: Wompi is the platform subscription rail for Colombia/COP (internal renewal engine); Stripe (hosted Checkout) serves recognized non-Colombian billing countries and stays disabled until explicitly enabled. Mercado Pago was retired as platform PSP (Aug 2026); it survives only for tenant → customer payment links in `tenant-payments`. See `docs/stripe-international-subscriptions-2026-09.md` and `docs/billing-runbook.md`
+- **Subscription plans**: names, prices, billing cycles, quotas and feature flags come from the runtime `billing_plans` catalog plus authorized tenant overrides. Do not copy fixed prices or limits into prompts/docs. The seed is only a provisioning baseline; see `docs/domain/billing-annual-cycle.md`
+- **Payments**: Wompi is the platform subscription rail for Colombia/COP (internal renewal engine); Stripe (hosted Checkout) serves recognized non-Colombian billing countries and stays disabled until explicitly enabled. Mercado Pago was retired as platform PSP (Aug 2026); it survives only for tenant → customer payment links in `tenant-payments`. See `docs/domain/stripe-international-subscriptions-2026-09.md` and `docs/operations/billing-runbook.md`
 - **Vertical sidebar items**: visibility is decided by `apps/dashboard/src/lib/vertical-dashboard-resolver.ts` from the capabilities of the industry/subtype (e.g. `nightly_booking` → `stays` + `properties`), and `AppSidebar.tsx` gates each item with `verticalItem: "<key>"`, never with `industry === ...`
 - **Test in production**: The owner tests in production, never locally. Deploy via merge to `main` → GitHub Actions
 - **No mocks for DB**: Integration tests hit a real database
@@ -162,7 +162,7 @@ Paths relative to `apps/api/src/modules/` unless they start with `apps/`, `dashb
 | **Prompt assembler** | `conversations/prompt-assembler.service.ts` (3-layer + safety guardrails) |
 | **Identity manual merge** | `identity/identity.controller.ts` (POST manual-merge) |
 | **Pipeline stages** | `crm/crm.controller.ts` (CRUD pipeline-stages endpoints) |
-| **Vertical definitions** | `verticals/vertical-definitions.ts` plus the shared manifest/policy (20 industries in `VERTICAL_REGISTRY`, 18 selectable; 80 canonical business types, 4 languages; see `docs/business-types-catalog.md`) |
+| **Vertical definitions** | `verticals/vertical-definitions.ts` plus the shared manifest/policy (20 industries in `VERTICAL_REGISTRY`, 18 selectable; 80 canonical business types, 4 languages; see `docs/domain/business-types-catalog.md`) |
 | **Vertical service** | `verticals/verticals.service.ts` (bootstrapVertical, getVerticalConfig) |
 | **Vertical terms hook** | `dashboard/src/hooks/useVerticalTerms.ts` |
 
@@ -179,7 +179,7 @@ node apps/api/scripts/check-canary-figures.cjs --check   # Every docs/*.md agree
 docker exec parallext-pgbouncer pg_isready -h localhost -p 5432  # PgBouncer health (production compose port)
 ```
 
-Jest: run with `--runInBand` and explicit spec paths; the full API suite is described in `docs/runbooks/full-api-suite.md`.
+Jest: run with `--runInBand` and explicit spec paths; the full API suite is described in `docs/operations/runbooks/full-api-suite.md`.
 
 ## Build & run
 
@@ -217,8 +217,8 @@ See `.env.example`. Critical:
 - BI API: https://api.parallly-chat.cloud/api/v1/bi-api/ (X-API-Key auth)
 - GitHub: https://github.com/Nipko/sales-structure
 - VPS: Hostinger Ubuntu, Docker (services in `infra/docker/docker-compose.prod.yml`: api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel + observability: grafana, loki, promtail, uptime-kuma, dozzle), Cloudflare Tunnel. Watchtower was removed (Jul 2026): it restarted containers with new code BEFORE migrations
-- Deploy: merge to `main` → GitHub Actions (`deploy.yml`: `validate` — typecheck, migrations on a fresh DB, boot smoke, vertical contract matrix and generated-artefact checks — → `build-and-push` (also waits for the Playwright smoke `e2e-smoke`) → `deploy`). **Since 2026-10-07 there is no manual approval in `production`.** Deploy steps: build 5 images → SSH (key-only) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/backup-restore-runbook.md`)
-- Backups: daily 2AM (DB public+tenant schemas + media + fiscal invoices + Redis), 7/4/2 rotation, offsite via rclone (Cloudflare R2). Heartbeat `backup:last_success` watched by the Ops Center (alerts if stale >26h). See `docs/backup-restore-runbook.md`
+- Deploy: merge to `main` → GitHub Actions (`deploy.yml`: `validate` — typecheck, migrations on a fresh DB, boot smoke, vertical contract matrix and generated-artefact checks — → `build-and-push` (also waits for the Playwright smoke `e2e-smoke`) → `deploy`). **Since 2026-10-07 there is no manual approval in `production`.** Deploy steps: build 5 images → SSH (key-only) → `git reset --hard origin/main` → regenerate .env → migrate → rolling restart (worker→API→frontend). `git reset --hard` restores tracked file modes — infra scripts MUST stay `100755` in git or cron loses the +x (see `docs/operations/backup-restore-runbook.md`)
+- Backups: daily 2AM (DB public+tenant schemas + media + fiscal invoices + Redis), 7/4/2 rotation, offsite via rclone (Cloudflare R2). Heartbeat `backup:last_success` watched by the Ops Center (alerts if stale >26h). See `docs/operations/backup-restore-runbook.md`
 - Ops Center: super_admin `/admin/ops` + `health/platform-monitor.service.ts` — disk/RAM/Redis/PgBouncer/queues/Sentry/LLM/SLA/backup-heartbeat/channel-tokens/payment-webhooks; raises incidents and alerts by Telegram/email
 - Other workflows in `.github/workflows/`: `candidate.yml` (manual, or on a PR labelled `build-candidate-<first 12 chars of head SHA>`: builds images for a commit not on main, never deploys), `release.yml` (release-please: keeps a release PR open on branch `release-please--branches--main`; merging it tags and writes the root `CHANGELOG.md`), `playwright.yml` (browser E2E on PRs touching dashboard/landing/e2e, plus nightly) and `vertical-quality.yml` (vertical evidence tiers `contract|integration|weekly|release`; only the manual `release` tier fails closed on missing external evidence)
 
@@ -238,14 +238,14 @@ Read only what the task touches. The complete, maintained index is [`docs/README
 
 | Topic | File |
 |-------|------|
-| Architecture detail (prompt layers, knowledge tiers, router, auth, calendar, BullMQ) | `docs/architecture-detail.md` |
-| Modules, pages, queues, crons (snapshot inventory) | `docs/modules-reference.md` |
-| Business types (generated) | `docs/business-types-catalog.md` |
+| Architecture detail (prompt layers, knowledge tiers, router, auth, calendar, BullMQ) | `docs/architecture/architecture-detail.md` |
+| Modules, pages, queues, crons (snapshot inventory) | `docs/architecture/modules-reference.md` |
+| Business types (generated) | `docs/domain/business-types-catalog.md` |
 | Business requirements spec (generated) and format | `docs/domain/business-requirements.md`, `docs/domain/business-requirements-format.md` |
 | Approved decisions | `docs/decisions/` |
-| Security | `docs/security-specification.md`, `docs/superadmin-governance.md` |
-| Billing and payments | `docs/billing-runbook.md`, `docs/billing-annual-cycle.md`, `docs/stripe-international-subscriptions-2026-09.md`, `docs/tenant-customer-payments-wompi.md` |
-| WhatsApp pricing (Meta charges service messages since 2026-10-01) | `docs/whatsapp-meta-pricing-2026-10.md` |
-| Operations | `docs/operations-runbook.md`, `docs/observability-manual.md`, `docs/backup-restore-runbook.md`, `docs/deploy-hardening-runbook.md`, `docs/runbooks/` |
-| Onboarding decisions and design | `docs/onboarding-decisions-2026-09.md`, `docs/onboarding-experience-design-2026-09.md` |
-| Quality center / Assist | `docs/agent-quality-center.md`, `docs/platform-assistant-knowledge.md` |
+| Security | `docs/security/security-specification.md`, `docs/security/superadmin-governance.md` |
+| Billing and payments | `docs/operations/billing-runbook.md`, `docs/domain/billing-annual-cycle.md`, `docs/domain/stripe-international-subscriptions-2026-09.md`, `docs/domain/tenant-customer-payments-wompi.md` |
+| WhatsApp pricing (Meta charges service messages since 2026-10-01) | `docs/domain/whatsapp-meta-pricing-2026-10.md` |
+| Operations | `docs/operations/operations-runbook.md`, `docs/operations/observability-manual.md`, `docs/operations/backup-restore-runbook.md`, `docs/operations/deploy-hardening-runbook.md`, `docs/operations/runbooks/` |
+| Onboarding decisions and design | `docs/decisions/previas/onboarding-decisions-2026-09.md`, `docs/domain/onboarding-experience-design-2026-09.md` |
+| Quality center / Assist | `docs/architecture/agent-quality-center.md`, `docs/architecture/platform-assistant-knowledge.md` |

@@ -282,7 +282,7 @@ REGLA DE PLAN: estos valores son la ÚNICA fuente válida sobre límites y dispo
 
     // ─── Assistant Knowledge Base (apps/api/kb/assistant/{locale}/*.md) ─────
     // The KB ships INSIDE the Docker image (Dockerfile.api copies apps/api/kb),
-    // unlike the old docs/user-manual.md approach where docs/ was never in the
+    // unlike the old docs/domain/user-manual.md approach where docs/ was never in the
     // image and the assistant ran blind in production. Articles are functional
     // user-level ONLY — the KB itself is the primary guardrail: what isn't in
     // it, the assistant honestly says it doesn't know.

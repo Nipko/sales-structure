@@ -2,7 +2,7 @@
 
 Fecha: 18 de septiembre de 2026. Estado: dirección y ajustes v2 aceptados por el usuario; pendiente de contraste con usuarios y concreción técnica por etapa. La aceptación no declara capacidades implementadas ni autoriza iniciar código antes del cambio de modelo que el usuario está evaluando. Hasta este punto solo se modifica documentación.
 
-Esta propuesta actualiza la dirección de producto del [diseño v1.1](../../onboarding-experience-design-2026-09.md). El [diagnóstico técnico del 18 de septiembre](onboarding-review-and-completion-plan-2026-09-18.md) conserva la evidencia de lo construido y pendiente. La [hoja de decisiones](../../onboarding-decisions-2026-09.md) conserva las decisiones originales y su historia; las enmiendas propuestas están en §9 de este documento.
+Esta propuesta actualiza la dirección de producto del [diseño v1.1](../../domain/onboarding-experience-design-2026-09.md). El [diagnóstico técnico del 18 de septiembre](onboarding-review-and-completion-plan-2026-09-18.md) conserva la evidencia de lo construido y pendiente. La [hoja de decisiones](../../decisions/previas/onboarding-decisions-2026-09.md) conserva las decisiones originales y su historia; las enmiendas propuestas están en §9 de este documento.
 
 ## 1. Dictamen: conservar la intención, cambiar el criterio de éxito
 

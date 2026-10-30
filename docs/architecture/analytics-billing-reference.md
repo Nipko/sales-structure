@@ -3,7 +3,7 @@
 _Actualizado: jul 2026 (v2026-07)._
 
 > Todas las rutas cuelgan del prefijo global `/api/v1`. En este doc se listan sin el prefijo (p. ej. `/dashboard-analytics/…` = `/api/v1/dashboard-analytics/…`).
-> Docs relacionados: `docs/billing-annual-cycle.md` (ciclo mensual/anual + precios COP), `docs/superadmin-governance.md` (gobernanza de impersonación), `docs/backup-restore-runbook.md` (backup offsite), `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md` (DIAN/Factus), `docs/archive/2026-07-sms/sms-monetization-packages-2026-07.md` (créditos SMS), `docs/multi-channel-per-type-implementation-2026-07.md` (multi-cuenta por tipo).
+> Docs relacionados: `docs/domain/billing-annual-cycle.md` (ciclo mensual/anual + precios COP), `docs/security/superadmin-governance.md` (gobernanza de impersonación), `docs/operations/backup-restore-runbook.md` (backup offsite), `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md` (DIAN/Factus), `docs/archive/2026-07-sms/sms-monetization-packages-2026-07.md` (créditos SMS), `docs/architecture/multi-channel-per-type-implementation-2026-07.md` (multi-cuenta por tipo).
 
 ---
 
@@ -155,7 +155,7 @@ widget_triggers            — Web chat widget trigger rules (conditions, action
 - **Tenant customer payments**: Wompi Payment Links y Mercado Pago viven únicamente en `tenant-payments`; cada tenant aporta credenciales propias cifradas, elige un proveedor activo y recibe el dinero directamente. Esas credenciales no pagan Parallly. La feature runtime `customerPayments` bloquea enlaces nuevos, no la conciliación de links ya emitidos
 - **Plans**: 5 familias en `billing_plans` (`seed-billing-plans.js`, create-only; el panel/runtime son autoridad). Wompi no tiene catálogo remoto de planes ni endpoint de sync
 - **Precios**: se leen de `billing_plans` y sus overrides locales; no se fijan en esta referencia
-- **Ciclo mensual/anual**: precio total y elegibilidad se leen del catálogo vigente; ciclo, importe, moneda, ancla y timezone se congelan en la suscripción/intento. Ver `docs/billing-annual-cycle.md`
+- **Ciclo mensual/anual**: precio total y elegibilidad se leen del catálogo vigente; ciclo, importe, moneda, ancla y timezone se congelan en la suscripción/intento. Ver `docs/domain/billing-annual-cycle.md`
 - **Subscription lifecycle**: pending_auth → trialing → active → past_due → cancelled/expired. `pending_auth` nunca concede entitlement; `pendingPlan` + `pendingPlanChangeAt` difieren downgrades al fin de período
 - **Trial**: condiciones y duración se leen de `billing_plans`; el cron emite `trial.ending_soon` según la configuración vigente
 - **Webhooks**: `POST /billing/webhook/wompi`. Checksum por evento sobre raw body (fail-closed), consulta canónica, match exacto de attempt/provider/reference/monto/moneda e idempotencia DB `billing_events` UNIQUE(provider, providerEventId). Payload inválido permanente se ignora 2xx; fallo transitorio devuelve 5xx para reintento
@@ -198,7 +198,7 @@ widget_triggers            — Web chat widget trigger rules (conditions, action
 - **Tenants Hub** (`/admin/tenants`): 6 tabs — Overview (all tenants + KPIs + vertical badge + health dot), Onboarding, Offboarding, Billing, Usage, Platform. 6 platform KPIs: tenants, users, active, messagesToday, pendingHandoffs, vertical distribution
 - **Tenant Detail** (`/admin/tenants/[tenantId]`): 6 tabs — Info, Users, Channels, Billing, Engagement, AI Config
 - **Modo plataforma (sin tenant implícito)**: el super_admin NO tiene tenant propio. `roles.ts` es **deny-by-default**: si ninguna regla de página matchea, se deniega el acceso a super_admin fuera de impersonación → cada página nueva nace gateada y hay que agregarle regla explícita. Operar dentro de un tenant requiere impersonación
-- **Impersonación gobernada** (ver `docs/superadmin-governance.md`):
+- **Impersonación gobernada** (ver `docs/security/superadmin-governance.md`):
   - `POST /auth/impersonate/:tenantId` — **motivo obligatorio** (400 sin `reason`), `ticketId` opcional. Emite tokens de 1h con `isImpersonation: true`, `impersonatedBy` (id del super_admin) y `impersonationSid` en el JWT; sesión emparejada (refresh en Redis)
   - `POST /auth/impersonate/exit` — cierra la sesión y mata el refresh emparejado (acota la ventana de exposición)
   - **Actor real en auditoría**: las escrituras hechas durante impersonación registran al super_admin (`super_admin.impersonation_started`, `userId` = super_admin, nunca el usuario impersonado). `common/utils/audit-actor.util.ts` resuelve el actor real
@@ -292,7 +292,7 @@ Traslada las consultas psql-por-SSH del runbook al panel. Auditadas con actor re
 
 ## Multi-canal por tipo de canal (jul 2026)
 
-- **N conexiones del mismo tipo** (2 números WhatsApp, 2 IG…) gateadas por `features.maxChannelAccounts` (default 1 por tipo) + override por tenant. Ver `docs/multi-channel-per-type-implementation-2026-07.md`
+- **N conexiones del mismo tipo** (2 números WhatsApp, 2 IG…) gateadas por `features.maxChannelAccounts` (default 1 por tipo) + override por tenant. Ver `docs/architecture/multi-channel-per-type-implementation-2026-07.md`
 - **Tokens por-cuenta**: `channel_accounts.access_token`/`refresh_token` cifrados por conexión, sin migración global. `ChannelTokenService.getChannelToken(tenantId, channelType, accountId?)` resuelve el token por cuenta (cache 5min Redis)
 - **Un agente por conexión**: `agent_personas.channel_bindings` liga cada persona a una conexión concreta; anti-conflación de conversaciones por `accountId`
 - **UI**: editor adaptativo por canal + overview con contador/límite (`x/y conexiones`) + disconnect por-cuenta
@@ -335,14 +335,14 @@ Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health
 - **Checks**: salud/budget de proveedores LLM, fallos de webhook de billing (`billing:webhook:fail:*`), y **heartbeat de backup** (`backup:last_success` en Redis; alerta si > `backupStaleHours`, default 26h)
 - **Endpoints**: `/health/llm-providers`, `/health/storage[ /overview | /tenants | /history ]`, `/health/incidents[ /summary | /:id/ack | /:id/resolve ]`, `GET|PUT /health/alert-config`, `POST /health/checks/run`, `POST /health/media-cleanup`
 - **Tablas**: `platform_incidents` (persistentes, ack/resolve), `storage_snapshots` (snapshot diario disco/DB/media por-tenant + fila `platform`)
-- **Backup**: `pg_dump` DENTRO del contenedor `parallext-postgres`; offsite vía rclone a Cloudflare R2; scripts de infra con exec-bit `100755`. Ver `docs/backup-restore-runbook.md`
+- **Backup**: `pg_dump` DENTRO del contenedor `parallext-postgres`; offsite vía rclone a Cloudflare R2; scripts de infra con exec-bit `100755`. Ver `docs/operations/backup-restore-runbook.md`
 
 ---
 
 ## Vertical Adaptation System
 
 - **Module**: `apps/api/src/modules/verticals/`
-- **20 industries × 4 languages** (`VERTICAL_REGISTRY`; 18 selectable at sign-up, `event_planning` and `construccion` only have waitlist types). The list is in `docs/business-types-catalog.md` instead of being copied here.
+- **20 industries × 4 languages** (`VERTICAL_REGISTRY`; 18 selectable at sign-up, `event_planning` and `construccion` only have waitlist types). The list is in `docs/domain/business-types-catalog.md` instead of being copied here.
 - **Business types (sub-types)**: 80 canonical profiles (72 selectable + 8 waitlist; 85 resolvable configurations counting 5 `legacy_only`), from 1 to 8 per industry (e.g., salud → dental, medica_general, dermatologia, psicologia, farmacia)
 - **Bootstrap on onboarding**: `bootstrapVertical(tenantId, industry, subType, lang)` seeds:
   1. 5-7 pipeline stages per industry
@@ -353,7 +353,7 @@ Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health
 - **Dashboard adaptation**: AuthContext fetches `verticalConfig` from `GET /verticals/:tenantId` on login. AppSidebar dynamic labels (CRM → "Pacientes" for salud) + hidden items per industry. `useVerticalTerms()` hook for locale-aware terminology
 - **Config storage**: `tenant.settings.verticalConfig` JSONB
 - **Cache**: Redis `vertical:{tenantId}` 10min TTL
-- **Strategy doc**: `docs/vertical-strategy.md`
+- **Strategy doc**: `docs/domain/vertical-strategy.md`
 
 ---
 

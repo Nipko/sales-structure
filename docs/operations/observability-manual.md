@@ -551,7 +551,7 @@ El Ops Center (`checkBackupHeartbeat`, cron diario 7:30 AM) lee `backup:last_suc
 
 > Fix 2026-07-23: los scripts de infra se versionan con bit de ejecucion **100755** (antes se perdia el exec-bit y el cron no corria). No hand-editar scripts trackeados en el VPS: el deploy hace `git reset --hard`.
 
-Detalle operativo completo (restauracion, verificacion, RTO/RPO) en `docs/backup-restore-runbook.md`.
+Detalle operativo completo (restauracion, verificacion, RTO/RPO) en `docs/operations/backup-restore-runbook.md`.
 
 ---
 
@@ -573,4 +573,4 @@ Prefijo global `/api/v1`. Liveness es publico; el resto requiere `super_admin`.
 | `POST /health/checks/run` | super_admin | Ejecuta todos los checks del monitor on-demand |
 | `POST /health/media-cleanup?dryRun=` | super_admin | Limpieza de media huerfana (dry-run por defecto) |
 
-Ver tambien: gobernanza de acceso `super_admin` (impersonacion con motivo, sesion emparejada, actor real en auditoria) en `docs/superadmin-governance.md`; ciclo de facturacion mensual/anual en `docs/billing-annual-cycle.md`.
+Ver tambien: gobernanza de acceso `super_admin` (impersonacion con motivo, sesion emparejada, actor real en auditoria) en `docs/security/superadmin-governance.md`; ciclo de facturacion mensual/anual en `docs/domain/billing-annual-cycle.md`.

@@ -14,10 +14,10 @@ Provider-capability-driven subscription billing for Parallly.
   September 2026). It stays disabled until Billing Ops enables it with valid
   server credentials and webhook configuration; it is never a fallback for a
   disabled Wompi, and an existing subscription keeps its provider. See
-  [`docs/stripe-international-subscriptions-2026-09.md`](../../../../../docs/stripe-international-subscriptions-2026-09.md).
+  [`docs/domain/stripe-international-subscriptions-2026-09.md`](../../../../../docs/domain/stripe-international-subscriptions-2026-09.md).
 - Mock is test-only.
 
-Operational details and go-live checks: [`docs/billing-runbook.md`](../../../../../docs/billing-runbook.md).
+Operational details and go-live checks: [`docs/operations/billing-runbook.md`](../../../../../docs/operations/billing-runbook.md).
 
 ## Request flow
 

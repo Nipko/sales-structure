@@ -18,7 +18,7 @@ indicados abajo.
 | Hub de Configuración | `apps/dashboard/src/app/admin/settings/_settings-config.ts` |
 | Capacidades por industria y tipo de negocio | `packages/shared/src/vertical-capability-manifest.ts` |
 | Estado de certificación por industria | `packages/shared/src/vertical-product-policy.ts` |
-| Industrias y tipos de negocio (ids, nombres, disponibilidad, menú, herramientas) | [`docs/business-types-catalog.md`](business-types-catalog.md), generado desde el código |
+| Industrias y tipos de negocio (ids, nombres, disponibilidad, menú, herramientas) | [`docs/domain/business-types-catalog.md`](../domain/business-types-catalog.md), generado desde el código |
 | Contrato efectivo por turno | `effective-capability.service.ts` + `turn-capability-composer.service.ts` |
 | Backlog comprobable por industria | endpoint `/verticals/audit/native-backlog` y ruta de plataforma `/admin/vertical-audit` |
 | Workspace móvil | `apps/mobile/src/lib/verticalWorkspace.ts` |
@@ -34,7 +34,7 @@ indicados abajo.
 | Web tenant | Configuración completa del negocio, canales, agentes IA, CRM, operación, analítica y facturación según rol/plan |
 | App móvil | Compañera operativa: inbox, CRM, pipeline, tareas, disponibilidad y workspace seguro del tipo de negocio; no replica toda la administración web |
 | Consola de plataforma | Operación cross-tenant para `super_admin`; separada de los workspaces tenant salvo impersonación explícita |
-| Comunicaciones de plataforma | `/admin/communications`: borradores de correo administrativo, selección de usuarios activos, vista previa de audiencia, prueba al operador y resultados de aceptación SMTP. Requiere migración/despliegue; no acredita entrega ni lectura. Ver [manual operativo](platform-communications.md). |
+| Comunicaciones de plataforma | `/admin/communications`: borradores de correo administrativo, selección de usuarios activos, vista previa de audiencia, prueba al operador y resultados de aceptación SMTP. Requiere migración/despliegue; no acredita entrega ni lectura. Ver [manual operativo](../operations/platform-communications.md). |
 | Portal público | Reserva, base de conocimiento y otras experiencias públicas habilitadas por el tenant |
 
 ## Canales y superficies conversacionales
@@ -99,7 +99,7 @@ el estado del número, resolver sus pendientes y comprobar una entrega real.
 | Estado de cobro de un número y su pausa | `whatsapp-funding-readiness.ts`, `account-send-pause.ts` |
 | Comprobación en Meta y preparación técnica | `whatsapp-connection.service.ts` (`checkFunding`), `account-send-readiness.ts`, `WhatsAppConnectedState.tsx`, `WhatsAppPaymentMethodNotice.tsx` |
 | Superficie del tenant | `/admin/channels/whatsapp` → `WhatsappSpendPanel`, rutas `/whatsapp/spend/*` |
-| Reglas de Meta y tarjetas de tarifas | `docs/whatsapp-meta-pricing-2026-10.md` |
+| Reglas de Meta y tarjetas de tarifas | `docs/domain/whatsapp-meta-pricing-2026-10.md` |
 
 Qué está construido y qué no, sin redondear:
 
@@ -221,7 +221,7 @@ contractual de límites vigentes.
 
 ## Matriz de industrias y tipos de negocio
 
-**Autoridad para los tipos de negocio:** [`docs/business-types-catalog.md`](business-types-catalog.md).
+**Autoridad para los tipos de negocio:** [`docs/domain/business-types-catalog.md`](../domain/business-types-catalog.md).
 Ese catálogo se **genera desde el código** (`node apps/api/scripts/business-types-catalog.cjs --write`)
 y el CI comprueba que coincida; lista cada tipo de negocio con su id, nombre,
 disponibilidad, modo de producto, menú, familias y herramientas del agente. Esta sección
@@ -332,11 +332,11 @@ una decisión de seguridad o de alcance de la app compañera.
 
 Al cambiar navegación, roles, planes, industrias o tipos de negocio se deben revisar conjuntamente:
 
-1. Este documento y `docs/user-manual.md`.
-2. `docs/mobile-user-manual.md` si cambia la superficie móvil.
-3. `docs/API_REFERENCE.md` y `docs/modules-reference.md` si cambia API o inventario.
-4. La base runtime del asistente según `docs/platform-assistant-knowledge.md`.
-5. `docs/business-types-catalog.md` si cambian industrias, tipos de negocio, menú o
+1. Este documento y `docs/domain/user-manual.md`.
+2. `docs/domain/mobile-user-manual.md` si cambia la superficie móvil.
+3. `docs/architecture/api-reference.md` y `docs/architecture/modules-reference.md` si cambia API o inventario.
+4. La base runtime del asistente según `docs/architecture/platform-assistant-knowledge.md`.
+5. `docs/domain/business-types-catalog.md` si cambian industrias, tipos de negocio, menú o
    herramientas: no se edita a mano; se regenera con
    `node apps/api/scripts/business-types-catalog.cjs --write` y el CI falla si queda
    desactualizado.

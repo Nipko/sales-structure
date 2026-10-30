@@ -5,7 +5,7 @@
 #   cd /opt/parallext-engine && bash infra/scripts/setup-vps.sh
 #
 # Prerequisites: Docker + Docker Compose installed
-# Full guide: docs/server-installation.md
+# Full guide: docs/operations/server-installation.md
 # ============================================
 
 set -e
@@ -203,11 +203,11 @@ echo "    Grafana:     https://grafana.parallly-chat.cloud (admin / admin, then 
 echo "    Dozzle:      https://logs.parallly-chat.cloud"
 echo ""
 echo "  Next steps:"
-echo "    1. Configure Cloudflare Tunnel hostnames (see docs/server-installation.md step 4)"
+echo "    1. Configure Cloudflare Tunnel hostnames (see docs/operations/server-installation.md step 4)"
 echo "    2. Configure Uptime Kuma monitors + Telegram alerts"
 echo "    3. Configure Grafana: add Loki datasource (http://parallext-loki:3100)"
 echo "    4. Reset Grafana password: docker exec parallext-grafana /usr/share/grafana/bin/grafana cli admin reset-admin-password YOUR_PASS --homepath /usr/share/grafana --config /etc/grafana/grafana.ini"
 echo ""
 echo "  Credentials saved in /opt/parallext-engine/.env"
-echo "  Full guide: docs/server-installation.md"
+echo "  Full guide: docs/operations/server-installation.md"
 echo ""

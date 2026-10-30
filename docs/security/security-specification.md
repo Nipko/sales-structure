@@ -3,7 +3,7 @@
 **Version:** 1.2
 **Fecha:** 2026-10-30 (K3: fusiona `docs/SECURITY.md`; corrige nginx, Mercado Pago y SMS)
 **Alcance:** Plataforma completa (API :3000, Dashboard :3001, WhatsApp Service :3002, Landing :80, app Mobile React Native/Expo `@parallext/mobile`, Infraestructura ~15 contenedores)
-**Base:** Postura endurecida de forma iterativa; controles verificados contra el codigo a 2026-07-23. Referencias operativas: Anexo A de este documento, `docs/superadmin-governance.md`, `docs/backup-restore-runbook.md`.
+**Base:** Postura endurecida de forma iterativa; controles verificados contra el codigo a 2026-07-23. Referencias operativas: Anexo A de este documento, `docs/security/superadmin-governance.md`, `docs/operations/backup-restore-runbook.md`.
 
 > **v1.1 (jul 2026)** — Actualiza: extraccion de IP anti-spoof tras Cloudflare (§3.1), gobernanza de impersonacion con motivo obligatorio + actor real en auditoria (§1.7), modelo de acceso super_admin sin tenant implicito (§9.2), Twilio per-account + validacion de firma del webhook SMS (§5.3, §16), bloqueo del provider `mock` en produccion (§5.4). Agrega: Multi-canal por tipo (§17), SMS reseller monetizado (§18), Fiscal DIAN (§19), Backup / DR (§20), Ops Center + hardening de deploy (§21).
 

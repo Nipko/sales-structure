@@ -17,7 +17,7 @@ src/
     forgot-password/page.tsx — Password reset (OTP + new password)
     setup-password/page.tsx  — Google OAuth password setup
     verify-email/page.tsx    — 6-digit OTP verification  
-    onboarding/page.tsx      — Wizard trial-first (4 pasos: empresa → audiencia → objetivos → plan; `STEP_KEYS` en el archivo), vertical-aware (18 industrias seleccionables de 20 + tipos de negocio; ver `docs/business-types-catalog.md`). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
+    onboarding/page.tsx      — Wizard trial-first (4 pasos: empresa → audiencia → objetivos → plan; `STEP_KEYS` en el archivo), vertical-aware (18 industrias seleccionables de 20 + tipos de negocio; ver `docs/domain/business-types-catalog.md`). Arranca trial plan "emprendedor" sin tarjeta; el upgrade vive en Configuración → Billing
     accept-invite/page.tsx   — Aceptar invitación de usuario
     auth/                    — Callbacks OAuth (Google, etc.)
     book/                    — Reserva pública (booking sin auth)

@@ -202,7 +202,7 @@ Sus estados son evidencia operativa, no una certificación ni una orden de autoe
 
 ### Preparación del negocio (`/api/v1/readiness`)
 
-El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Detalle: `docs/domain/business-readiness-runtime.md`.
+El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Detalle: `docs/domain/business-readiness-runtime.md`.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
@@ -216,6 +216,9 @@ El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la 
 | PUT | `/readiness/:tenantId/business-facts/:requirementId` | Super admin (suplantando)/Admin | `{value, scopeKey?, expectedVersion?}`: valida contra la especificación (400), concurrencia optimista (409); devuelve el valor y el delta del veredicto |
 | GET | `/readiness/:tenantId/business-facts/defaults` | Super admin/Admin/Supervisor | Valores por defecto del tenant: qué hace la plataforma y si están aceptados, configurados o por decidir |
 | POST | `/readiness/:tenantId/business-facts/defaults/accept` | Super admin (suplantando)/Admin | `{ids[], specVersion}`: acepta los valores por defecto (C0 §2.5) |
+| GET | `/readiness/:tenantId/go-live` | Super admin/Admin/Supervisor | Control de salida (R4): publicado o no, modo (sombra/aplicado), decisión de hoy, última registrada e informe de sombra (`?days=7`) |
+| POST | `/readiness/:tenantId/go-live` | Super admin (suplantando)/Admin | `{ack?}`: publica; 409 si `no_listo`, o si `limitado` sin reconocer todas las `limitedIntents` |
+| POST | `/readiness/:tenantId/go-live/off` | Super admin (suplantando)/Admin | Despublica |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |

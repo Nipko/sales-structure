@@ -240,10 +240,11 @@ const familiesInNoType = [...familyTools.keys()].filter(key => !familiesInAnyTyp
 // Static tools outside a family, by what they are.
 const PAYMENT_TOOLS = ['apply_discount', 'create_payment_link', 'get_payment_status', 'refund_payment'];
 const IDENTITY_TOOLS = ['request_identity_code', 'verify_identity_code'];
-for (const name of [...PAYMENT_TOOLS, ...IDENTITY_TOOLS]) {
+const PENDING_TOOLS = ['register_pending_question'];
+for (const name of [...PAYMENT_TOOLS, ...IDENTITY_TOOLS, ...PENDING_TOOLS]) {
   if (!toolsOutsideFamilies.includes(name)) throw new Error(`business_types_catalog: ${name} ya no esta fuera de familia; corrige la frase sobre herramientas fuera de familia`);
 }
-const providerTools = toolsOutsideFamilies.filter(name => !PAYMENT_TOOLS.includes(name) && !IDENTITY_TOOLS.includes(name));
+const providerTools = toolsOutsideFamilies.filter(name => !PAYMENT_TOOLS.includes(name) && !IDENTITY_TOOLS.includes(name) && !PENDING_TOOLS.includes(name));
 const notProvider = providerTools.filter(name => toolPolicy.toolOrigin(name) !== 'provider');
 if (notProvider.length) {
   throw new Error(`business_types_catalog: herramientas fuera de familia que no son de origen proveedor ni de pagos/identidad: ${notProvider.join(', ')}`);
@@ -298,7 +299,7 @@ push(
   '',
   `- **${industries.length} industrias** en el registro; **${signupIndustries.length}** se ven en el alta (${industries.filter(i => !signupIndustries.includes(i)).map(i => `\`${i}\``).join(' y ')} solo tienen tipos en lista de espera y el selector las oculta).`,
   `- **${rows.length} configuraciones** industria/tipo resolubles: **${count(r => r.canonical)} tipos de negocio canónicos** (${count(r => r.availability === 'selectable' && r.canonical)} seleccionables + ${count(r => r.availability === 'waitlist')} en lista de espera) y, solo para cuentas anteriores, **${legacyOwnCard} con ficha propia + ${aliasCount} alias** (\`legacy_only\`; los alias son ids antiguos sin ficha que resuelven a otro tipo, ver la tabla de alias).`,
-  `- **${toolPolicy.STATIC_TOOL_NAMES.length} herramientas estáticas del agente**: ${toolsInFamilies.size} repartidas en **${registry.TOOL_FAMILIES.length} familias** y ${toolsOutsideFamilies.length} fuera de familia (cobros, identidad y herramientas de proveedor externo, ver más abajo). Las herramientas de integraciones MCP son dinámicas y no figuran aquí.`,
+  `- **${toolPolicy.STATIC_TOOL_NAMES.length} herramientas estáticas del agente**: ${toolsInFamilies.size} repartidas en **${registry.TOOL_FAMILIES.length} familias** y ${toolsOutsideFamilies.length} fuera de familia (cobros, identidad, consulta pendiente al negocio y herramientas de proveedor externo, ver más abajo). Las herramientas de integraciones MCP son dinámicas y no figuran aquí.`,
   `- Recetas de industria (contenido inicial que se siembra en el alta): ${industries.filter(i => defs.VERTICAL_REGISTRY[i].recipe).map(i => `\`${i}\``).join(', ')}. Las demás industrias nacen con la definición base. \`otro\` genera su propia receta con IA a partir de la descripción del alta. Capas de receta por tipo de negocio (se suman a la receta de la industria): ${recipeOverlays.map(o => `${o.name} (\`${o.industry}/${o.key}\`)`).join(', ')} — ${recipeOverlays.length} en total.`,
   '',
   '## Industrias',
@@ -328,7 +329,7 @@ for (const [key, tools] of familyTools) {
 }
 push(
   '',
-  `Herramientas estáticas fuera de familia: ${toolsOutsideFamilies.map(t => `\`${t}\``).join(', ')}. Las de cobros (${PAYMENT_TOOLS.map(t => `\`${t}\``).join(', ')}) requieren la familia de pagos (\`payments\`) y el plan correspondiente, ${IDENTITY_TOOLS.map(t => `\`${t}\``).join(' y ')} son las de verificación de identidad, y las ${providerTools.length} restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.`,
+  `Herramientas estáticas fuera de familia: ${toolsOutsideFamilies.map(t => `\`${t}\``).join(', ')}. Las de cobros (${PAYMENT_TOOLS.map(t => `\`${t}\``).join(', ')}) requieren la familia de pagos (\`payments\`) y el plan correspondiente, ${IDENTITY_TOOLS.map(t => `\`${t}\``).join(' y ')} son las de verificación de identidad, ${PENDING_TOOLS.map(t => `\`${t}\``).join(', ')} (consulta pendiente al negocio, «lo averiguo») solo se publica cuando el contrato del turno lo ofrece, y las ${providerTools.length} restantes (origen «proveedor») solo existen mientras el tenant tiene conectado el sistema externo correspondiente.`,
   '',
   'Subpermisos que el dueño puede apagar dentro de una familia: ' +
     registry.TOOL_SUBPERMISSION_RULES.map(rule => `\`${rule.family}.${rule.flag}\` (${rule.tools.map(t => `\`${t}\``).join(', ')})`).join('; ') + '.',

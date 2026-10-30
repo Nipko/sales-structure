@@ -8,7 +8,7 @@
  * guarda por `PUT /readiness/:t/business-facts/:id` (`origin=owner_form`) y avisa al panel para que recalcule.
  * Si el dato vive en una pantalla de objeto (catálogos), enlaza a ella.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, History, Loader2 } from "lucide-react";
@@ -27,7 +27,7 @@ export interface DrawerSaved {
     verdictAfter: string | null;
 }
 
-export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, screen, onClose, onSaved, saveWith }: {
+export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, screen, onClose, onSaved, saveWith, initialValue, notice }: {
     tenantId: string;
     requirementId: string | null;
     viewer: PanelViewer;
@@ -42,6 +42,13 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
      * consultas y avisa a los clientes. Sin ella, el `PUT` de siempre.
      */
     saveWith?: (body: { value: unknown; expectedVersion?: number }) => Promise<ApiEnvelope<BusinessFactWriteResponse>>;
+    /**
+     * Valor con el que abre el formulario en vez del guardado (R6): «editar y aprobar» una propuesta del copiloto abre
+     * el valor propuesto. Debe ser una referencia estable (el estado de la página), no un objeto nuevo en cada render.
+     */
+    initialValue?: unknown;
+    /** Contexto arriba del formulario (R6: la evidencia de la propuesta que se está aprobando). */
+    notice?: ReactNode;
 }) {
     const t = useTranslations("readinessForms");
     const tp = useTranslations("readinessPanel");
@@ -62,11 +69,11 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
         if (res.success && res.data) {
             setDetail(res.data);
             // el valor guardado manda; si no hay, el que lee el motor (también heredado de una pantalla vieja)
-            setValue(initialFormValue(res.data.form, res.data.fact?.value ?? res.data.current.record?.value ?? null));
+            setValue(initialFormValue(res.data.form, initialValue !== undefined ? initialValue : res.data.fact?.value ?? res.data.current.record?.value ?? null));
         } else setError(res.error || t("loadError"));
         setVersions(hist.success && Array.isArray(hist.data) ? hist.data : []);
         setLoading(false);
-    }, [tenantId, t]);
+    }, [tenantId, t, initialValue]);
 
     useEffect(() => {
         setDetail(null);
@@ -122,6 +129,7 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
                 </SheetHeader>
 
                 <div className="space-y-4 px-4 pb-4">
+                    {notice}
                     {loading && !detail && <p role="status" className="flex items-center gap-2 text-sm text-neutral-500"><Loader2 size={14} className="animate-spin" />{t("loading")}</p>}
                     {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{error}</p>}
                     {saved && (

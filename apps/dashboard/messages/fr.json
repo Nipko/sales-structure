@@ -15880,6 +15880,8 @@
     "pendingLink": "Connaissances en attente",
     "pendingLinkCount": "Connaissances en attente ({count})",
     "rehearsalLink": "Répétition",
+    "copilotLink": "Propositions du copilote",
+    "copilotLinkCount": "Propositions du copilote ({count})",
     "goLive": {
       "title": "Service aux vrais clients",
       "state": {
@@ -16379,5 +16381,65 @@
       "rehearsal_deadline": "La répétition a atteint sa durée maximale et s’est arrêtée.",
       "process_restarted": "La répétition a été interrompue par un redémarrage du service."
     }
+  },
+  "readinessCopilot": {
+    "title": "Propositions du copilote",
+    "subtitle": "Le copilote lit votre site, vos documents et vos FAQ et vous propose les données manquantes, chacune avec la citation qui la justifie.",
+    "promise": "Rien n’est enregistré sans votre accord : le copilote ne fait que proposer. Une proposition sans citation littérale de votre site ou document, ou avec un chiffre absent de la citation, est écartée automatiquement.",
+    "back": "Retour à la préparation",
+    "loading": "Chargement…",
+    "tenantRequired": "Choisissez une entreprise.",
+    "error": "Impossible de charger les propositions.",
+    "empty": "Aucune proposition dans cette vue.",
+    "readOnly": "Seul un administrateur de l’entreprise peut approuver ou rejeter.",
+    "run": "Analyser mes sources",
+    "running": "Analyse en cours…",
+    "runDone": "{proposed, plural, =0 {Aucune nouvelle donnée} one {# donnée proposée} other {# données proposées}} · {contradictions, plural, =0 {aucune contradiction} one {# contradiction} other {# contradictions}} · {questions, plural, =0 {aucune question} one {# question} other {# questions}}{discarded, plural, =0 {} one { · # proposition écartée faute de citation vérifiable} other { · # propositions écartées faute de citation vérifiable}}",
+    "runNote": {
+      "no_sources": "Aucune source à analyser : ajoutez votre site ou vos documents dans la base de connaissances.",
+      "nothing_missing": "Il ne manque aucune donnée que le copilote puisse proposer.",
+      "malformed_response": "Le copilote n’a pas renvoyé de réponse lisible. Réessayez.",
+      "llm_unavailable": "Le copilote n’est pas disponible pour le moment. Réessayez plus tard."
+    },
+    "dailyCap": "Vous avez déjà analysé vos sources plusieurs fois aujourd’hui. Réessayez demain.",
+    "notOpen": "Cette proposition n’est plus ouverte (décidée, remplacée ou expirée).",
+    "filters": {
+      "open": "À examiner",
+      "applied": "Approuvées",
+      "rejected": "Rejetées",
+      "superseded": "Remplacées",
+      "expired": "Expirées",
+      "all": "Toutes"
+    },
+    "status": {
+      "proposed": "à examiner",
+      "applied": "approuvée",
+      "expired": "expirée",
+      "rejected": "rejetée",
+      "superseded": "remplacée"
+    },
+    "kind": {
+      "value": "Donnée proposée",
+      "contradiction": "Contradiction",
+      "question": "Question"
+    },
+    "proposed": "Proposition",
+    "current": "Ce qui est indiqué aujourd’hui",
+    "alternative": "Version {n}",
+    "evidence": "Preuves",
+    "approve": "Approuver",
+    "editApprove": "Modifier et approuver",
+    "useThis": "Utiliser cette version",
+    "reject": "Rejeter",
+    "dismiss": "Ignorer",
+    "answer": "Répondre dans le formulaire",
+    "openFaqs": "Ouvrir les FAQ",
+    "genericFaq": "La FAQ « {question} » {reason, select, seeded {est un contenu modèle} example {est un exemple} other {ne dit rien de concret}} : complétez-la ou supprimez-la pour que l’agent ne l’utilise pas.",
+    "expires": "Expire le {date}",
+    "decided": "Décidée le {date}",
+    "edited": "avec modifications",
+    "approved": "Approuvé : la donnée est confirmée.",
+    "rejected": "C’est fait.",
+    "drawerNotice": "Proposition du copilote. Vérifiez les preuves, corrigez ce qu’il faut et enregistrez pour l’approuver."
   }
 }

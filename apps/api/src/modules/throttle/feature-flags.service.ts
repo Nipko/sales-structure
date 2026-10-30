@@ -40,6 +40,12 @@ export const REQUIRED_READS_APPOINTMENTS_FLAG = 'agentRuntime.requiredReads.appo
 export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
 /** Per-tenant flag: the service catalogue decides what is offered, over a FAQ about a service it does not list (F4300-24). */
 export const CATALOG_OVER_FAQ_FLAG = 'agentRuntime.catalogOverFaq';
+/**
+ * R4 (ADR 0010): los dos controles nuevos nacen en modo sombra (se calculan y se registran, no cambian nada). Cada bandera
+ * los pasa a aplicado para un tenant, después de 7 días de datos de sombra (docs/domain/business-readiness-runtime.md).
+ */
+export const GO_LIVE_GATE_FLAG = 'readiness.goLiveGate';
+export const WRITE_MODE_CAPABILITY_FLAG = 'readiness.writeModeCapability';
 const CACHE_TTL = 300;
 
 /**
@@ -96,6 +102,9 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // (list_services), a FAQ or document naming a service the catalogue does not list is marked not_in_catalogue, the
     // contract says the catalogue decides what is offered (rule 20b), and a reply saying «sí, ofrecemos X» for such an X is
     // replaced by a not-offered answer that lists the catalogue. Off = the prompt and the reply pipeline are exactly the previous ones.
+    // R4 (ADR 0010). Off = modo sombra: la decisión se registra y no cambia nada.
+    { key: GO_LIVE_GATE_FLAG, label: 'Go-live gate (enforce)', description: 'An unpublished tenant (go-live off) gets no AI replies on live channels: the customer receives a fixed notice and the conversation goes to the human inbox. Off = shadow mode (the decision is only recorded). Agent Test is never gated', category: 'killswitch', default: false },
+    { key: WRITE_MODE_CAPABILITY_FLAG, label: 'Write mode decides writers (enforce)', description: 'The business WRITE_MODE per object decides which booking/order writers the agent may use (none or undeclared = no writer); per-agent switches can only restrict. Off = shadow mode (differences are logged)', category: 'experimental', default: false },
     { key: CATALOG_OVER_FAQ_FLAG, label: 'Catalogue over FAQ', description: 'The service catalogue decides what the business offers: a FAQ or document about a service the catalogue does not list is not presented as an offered service, and the agent answers that it is not among the services and offers the real ones', category: 'experimental', default: false },
 ];
 

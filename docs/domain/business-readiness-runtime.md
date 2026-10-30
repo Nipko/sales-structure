@@ -1,6 +1,6 @@
-# Preparación del negocio en tiempo de ejecución (R2–R3b)
+# Preparación del negocio en tiempo de ejecución (R2–R4)
 
-Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2), [ADR 0007](../decisions/0007-procedencia-y-valores-del-negocio-r3.md) (R3, procedencia), [ADR 0008](../decisions/0008-formularios-del-panel-r3.md) (R3, formularios) y [ADR 0009](../decisions/0009-unificacion-horario-politicas-identidad-r3b.md) (R3b, lo que lee el agente).
+Cómo usa la plataforma la especificación (`packages/business-spec`) para decir si un tenant está listo para atender, y cómo se guardan los valores del negocio con su procedencia. Diseño: C0 §1.1, §2.1, §2.2, §2.5, §2.7, §2.9, §4.1 y §5 R2–R3. Decisiones de construcción: [ADR 0004](../decisions/0004-panel-de-preparacion-r2.md) (R2), [ADR 0007](../decisions/0007-procedencia-y-valores-del-negocio-r3.md) (R3, procedencia), [ADR 0008](../decisions/0008-formularios-del-panel-r3.md) (R3, formularios) , [ADR 0009](../decisions/0009-unificacion-horario-politicas-identidad-r3b.md) (R3b, lo que lee el agente) y [ADR 0010](../decisions/0010-control-de-salida-y-contrato-del-turno-r4.md) (R4: contrato del turno, control de salida y `WRITE_MODE`).
 
 ## Flujo
 
@@ -13,6 +13,7 @@ GET /readiness/:tenantId[?refresh=1]
        ├─ fromLegacyRows → evaluate(spec, foto, ahora)           ← @parallext/business-spec, puro
        │     procedencia real donde vale; reglas L1–L7 para el resto
        ├─ readiness_evaluations: INSERT solo si result_hash cambió
+       ├─ R4: buildTurnContract(spec, foto, resultado) → Redis readiness:contract:{tenant}:{spec_version} (misma vida)
        └─ eventos readiness.evaluated / readiness.verdict_changed
 
 PUT /readiness/:tenantId/business-facts/:requirementId
@@ -27,6 +28,16 @@ Turno del agente (R3b)
        ├─ fuentes: public.tenants + companies (is_primary) + policies activas + requirement_values (RUNTIME_FACT_IDS)
        └─ resolveBusinessHours / resolvePolicy / resolveNotOffered / resolveIdentity  ← @parallext/business-spec, puro
             misma regla que la foto: valor del dueño vigente, si no el almacenamiento de hoy tal cual
+
+Mensaje entrante de un canal real (R4)
+  └─ GoLiveService.check()  ← decideGoLive: publicado → atiende; no publicado → no (salvo lista blanca)
+       ├─ go_live_decisions: una fila por mensaje (sombra y aplicado)
+       └─ bandera readiness.goLiveGate apagada (sombra): sigue igual · encendida: aviso fijo + bandeja humana
+
+Turno del agente (R4), también en Agent Test
+  ├─ ReadinessContextService.forTurn() → <knowledge_status> en la capa 3; la regla 20 del contrato L1 dice qué hacer
+  └─ EffectiveCapabilityService: writeModeDecision (WRITE_MODE por objeto) junto a la exclusión vieja
+       └─ bandera readiness.writeModeCapability apagada (sombra): solo registra · encendida: saca los escritores
 ```
 
 - **Una sola regla.** El veredicto, los huecos y su nivel los decide el motor. La API solo lee, guarda y sirve; el panel solo agrupa. `readiness:report` (CLI) y el panel dan el mismo veredicto sobre la misma foto (lo prueban `readiness.service.spec.ts` y `readiness-panel.spec.ts` con las 7 fotos golden).
@@ -47,6 +58,9 @@ Turno del agente (R3b)
 | PUT | `/readiness/:tenantId/business-facts/:requirementId` | super_admin, tenant_admin | `{value, scopeKey?, expectedVersion?}` → escribe con `origin=owner_form`, confirmado; responde el valor y el delta (`verdictBefore`, `verdictAfter`, evaluación del requisito). 400 si no cumple la especificación, 409 si `expectedVersion` quedó vieja |
 | GET | `/readiness/:tenantId/business-facts/defaults` | super_admin, tenant_admin, tenant_supervisor | Requisitos del tenant con `predicate_kind: default_accepted`: pregunta, qué hace el default (`when_missing.behavior`) y estado (`accepted`, `configured`, `pending`) |
 | POST | `/readiness/:tenantId/business-facts/defaults/accept` | super_admin, tenant_admin | `{ids[], specVersion}` → acepta los valores por defecto (§2.5); 409 si `specVersion` no es la vigente |
+| GET | `/readiness/:tenantId/go-live?days=7` | super_admin, tenant_admin, tenant_supervisor | Control de salida (R4): `state` (`off`/`on`), cuándo y quién, `ack`, `mode` (`shadow`/`enforce`), la decisión de hoy, la última registrada y el informe de sombra (`summary`: total, `wouldBlock`, `byReason`) |
+| POST | `/readiness/:tenantId/go-live` | super_admin (suplantando), tenant_admin | `{ack?: string[]}` → publica. 409 con `blockingGaps` si `no_listo`; si `limitado`, 409 con `limitedIntents` y `missing` hasta que `ack` las traiga todas |
+| POST | `/readiness/:tenantId/go-live/off` | super_admin (suplantando), tenant_admin | Despublica |
 
 Una escritura de `super_admin` exige suplantación: el actor guarda el usuario efectivo y la delegación (`auditActor`), nunca solo uno de los dos.
 
@@ -57,6 +71,7 @@ Una escritura de `super_admin` exige suplantación: el actor guarda el usuario e
 - `requirement_value_versions` (append-only): la misma forma más `value_id`, `actor` (`{kind:'user', userId, role, delegation?}` o `{kind:'script', name}`) y `created_at`. Una fila por escritura.
 - Columnas de procedencia (R3, C0 §2.2) en `services`, `menu_items`, `products`, `tour_packages`, `properties`, `real_estate_listings`, `courses`, `membership_plans`, `insurance_plans`, `vehicles`, `faqs` y `knowledge_documents`: `content_status` (default `confirmed`), `origin`, `confirmed_by`, `confirmed_at`, `source_ref`; en las tablas con precio, `price_type` (`fijo|desde|a_cotizar|gratis`) y `price_status` (`confirmed|example`). `services` y `membership_plans` conservan su `price_status` de antes (`confirmed|example|quote`, lo escriben sus pantallas): solo reciben `price_type`. Los paquetes de fotografía y el catálogo de servicios del hogar viven en `services`. La lista es `PROVENANCE_TABLES` del paquete.
 - Las crea `tenant-schema.sql` y, en los tenants existentes, la migración `20261030140000_add_business_facts_provenance` (aditiva). `business-facts-schema.spec.ts` exige que las dos definiciones y `PROVENANCE_TABLES` coincidan.
+- R4: `public.tenants.go_live_state` (`off`/`on`, default `off`), `go_live_at`, `go_live_by`, `go_live_spec_version`, `go_live_ack` (el reconocimiento de «limitado»); y `go_live_decisions` por tenant: `channel_type`, `conversation_id`, `mode` (`shadow`/`enforce`), `serve`, `reason`, `go_live_state`, `verdict`, `spec_version`, `created_at`. Migración `20261030160000_add_go_live_gate` (aditiva); `go-live-schema.spec.ts` exige que `tenant-schema.sql` y la migración coincidan.
 
 **Única puerta de escritura.** `requirement_values` solo lo escribe `BusinessFactsService` (sus sentencias viven en `business-facts.statements.ts`, sin Nest ni Prisma, para que la migración use el mismo SQL). `business-facts-writes.spec.ts` falla con cualquier `INSERT` o `UPDATE` sobre `requirement_values` fuera de esos dos archivos y con cualquier `UPDATE`, `DELETE` o `TRUNCATE` sobre `requirement_value_versions`.
 
@@ -128,6 +143,28 @@ El agente lee horario, políticas, `not_offered` e identidad **solo** por `Busin
 | El enlace secundario «pantalla actual» del cajón (ADR 0008 §6) | cuando la pantalla vieja deje de escribir |
 
 
+## Contrato del turno (R4, C0 §1.2)
+
+`buildTurnContract(spec, foto, resultado)` (`packages/business-spec/src/contract/turn.ts`) arma el contrato y `renderKnowledgeStatus` lo pinta como `<knowledge_status>` en la capa 3 del prompt, en vivo y en Agent Test (el agente se comporta igual en cualquier estado del tenant). Una evaluación sellada no lo lleva.
+
+- `<fact id>`: afirmable, con su valor compacto; `source="items|text|default"` cuando sale de los ítems, de una FAQ confirmada o del default aceptado. Hoy solo los `always_in_context`: la API todavía no pasa las intenciones del turno.
+- `<unknown code="NC+AV|PREG|HUM|EXT|GAP">`: los IDs aplicables que no constan, marcados `[seeded]`, `[example]`, `[contradictory]`, `[stale]` o `[n/m]`. No depende de detectar la intención.
+- `<never>`: las prohibiciones propias de los requisitos EXT y HUM; las comunes van en la regla 20.
+- `<offers pending_question handoff [handoff_hours] [writes]>`: `writes` solo cuando `WRITE_MODE` está aplicado.
+
+La regla 20 del contrato L1 (`RULE_20_KNOWLEDGE_STATUS`) dice qué hacer con cada código y absorbe la de «no ofrecido»; sin bloque, el contrato es el de antes. Presupuesto: ≤ 2.200 caracteres en los 7 tenants QA (≈ 600 tokens; `turn-contract.spec.ts`). Qué reglas se retiraron y cuáles quedan para la fase D: ADR 0010 §4.
+
+## Control de salida (R4, C0 §1.2)
+
+- **Binario.** Publicado (`go_live_state = on`) atiende; no publicado no atiende, salvo los contactos de `settings.goLive.testContacts` (lista blanca temporal de C0 §7.2: teléfonos, comparados por dígitos, o correos). Un publicado que cae a `no_listo` sigue atendiendo y el panel lo dice. Agent Test, el ensayo y las evaluaciones nunca pasan por aquí.
+- **Publicar** desde `/admin/readiness` (tarjeta «Atención a clientes reales»): `no_listo` no puede; `limitado` exige marcar cada intención que quedará en «no consta» (queda en `go_live_ack`); `listo` publica directo.
+- **Modo sombra (por defecto).** Cada mensaje entrante de un canal real registra la decisión y no cambia nada. Informe por tenant: `GET /readiness/:t/go-live?days=7`. Entre tenants, en el VPS, por cada esquema de tenant: `SELECT reason, serve, count(*) FROM <schema>.go_live_decisions WHERE created_at > now() - interval '7 days' GROUP BY reason, serve`.
+- **Aplicar.** Encender la bandera `readiness.goLiveGate` del tenant (super_admin → banderas, sin despliegue) **después de 7 días de sombra**, con el informe revisado y el tenant publicado o en la lista blanca si debe seguir atendiendo. Aplicado: el mensaje se guarda, el cliente recibe un aviso fijo en su idioma (es/en/pt/fr) y la conversación pasa a la bandeja humana; en el web chat la IA no responde (el aviso fijo del web chat está pendiente). Apagar la bandera vuelve a sombra.
+
+## `WRITE_MODE` y escritores (R4)
+
+El modo que declara el negocio (`OBJ.<X>.WRITE_MODE`) decide qué escritores usa el agente; los interruptores por agente (`canBook`, `canCancel`…) solo restringen (ADR 0010 §8). Sin modo declarado, el objeto solo informa. `EffectiveCapabilityService` deja `writeModeDecision` en el contrato de capacidades y registra `[capability-write-mode] {tenantId, mode, onlyNew, objects}` cuando la regla nueva sacaría escritores que la vieja publica. Se aplica con la bandera `readiness.writeModeCapability`, con los mismos 7 días de sombra; antes de encenderla, cada objeto que deba reservar o pedir necesita su `WRITE_MODE` en el panel. `required_fields` es una lista cerrada: `customer_fields_common` + `customer_fields` del objeto (`objects.yaml`); un campo libre guardado antes sigue valiendo.
+
 ## Migración de los tenants existentes (`backfill-provenance`, C0 §2.9)
 
 `apps/api/scripts/readiness/backfill-provenance.cjs` aplica L1–L7 una vez y deja escrita la procedencia. Siempre primero `--dry-run`:
@@ -198,4 +235,5 @@ El descriptor sale de `formFor(requisito, spec)` (`packages/business-spec/src/fo
 - **Retirado en R3:** la siembra de FAQs de plantilla (alta, extras de tours, dental e inmobiliaria, re-siembra y cambio de vertical) y los montos de ejemplo de los servicios y planes de muestra. Con los formularios: la acción «Pronto podrás completarlo aquí» de los huecos sin pantalla (`readinessPanel.action.comingSoon`) y el enlace de los huecos con formulario como acción principal (queda como secundario dentro del cajón hasta R3b).
 - **Retirado en R3b:** la lectura directa del agente de `settings.businessHours`, `policies` y `companies` (pasa por `BusinessFactsReader`); el `notOffered` de plataforma por perfil en el prompt (`VerticalTurnContextService`, el respaldo del turno), en el contrato de dominio (`prompt.notOffered` y su `unresolved`) y en los packs de evaluación (escenarios `declared_limit`/`limit_N`: 18.704 casos por canal en lugar de 19.768); el «no ofrecemos X» de «catálogo sobre FAQ» sin entrada del negocio (ahora «no veo X»); la regla de prompt 20 como lista de plataforma (se reescribió para la lista del negocio).
 - **Sigue hasta la release siguiente (contract de R3b):** `settings.businessHours`, `agent_personas.config_json.hours` como horario, la tabla `policies` y `companies` como identidad, escritos por las pantallas viejas y por la proyección (tabla de la sección «Escritura doble»); `price_status = quote`.
-- **Sigue hasta R4:** `VerticalReadinessService`, `READINESS`, `TOOL_GROUP_READINESS` y `readiness-predicate-authority.util.ts` (C0 §4.2).
+- **Retirado en R4:** la regla de prompt 20 «NOT OFFERED» como regla aparte (con `<knowledge_status>` la absorbe la regla 20 «KNOWLEDGE STATUS»); `WRITE_MODE.required_fields` como lista abierta. Las reglas 22a, 20b, 13h y 5/6 quedan para la fase D (ADR 0010 §4).
+- **Sigue hasta aplicar `readiness.writeModeCapability` en todos los tenants:** `VerticalReadinessService`, `READINESS`, `VerticalReadinessKey`, el `readiness` del manifiesto, `TOOL_GROUP_READINESS`, `TOOL_READINESS` y `readiness-predicate-authority.util.ts` (C0 §4.2): son la exclusión vieja contra la que se mide la sombra. Con ellos se retiran los interruptores `canBook`/`canCancel` de la pantalla del agente.

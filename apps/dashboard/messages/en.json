@@ -15885,6 +15885,45 @@
     }
   },
   "readinessPanel": {
+    "goLive": {
+      "title": "Serving real customers",
+      "state": {
+        "on": "Published: the AI answers your customers",
+        "off": "Not published: the AI does not answer real customers"
+      },
+      "since": "since {date}",
+      "mode": {
+        "shadow": "The gate is in trial mode: it only records each message; for now the AI keeps answering as usual.",
+        "enforce": "The gate is active: while unpublished, your customers get a fixed notice and the conversation goes to your team."
+      },
+      "today": {
+        "serve": "Today the AI would answer a real customer.",
+        "block": "Today the AI would not answer a real customer: {reason}."
+      },
+      "reason": {
+        "published": "published",
+        "published_regressed": "published, but blocking data is missing today",
+        "not_published": "not published yet",
+        "no_listo": "blocking data is missing",
+        "test_contact": "test contact",
+        "unavailable": "the state could not be read"
+      },
+      "last": "Last message: {date} · {channel} · {result} ({reason})",
+      "lastServe": "the AI answered",
+      "lastBlock": "the AI would not have answered",
+      "summary": "{total} messages in {days} days; {blocked} without an AI reply with the gate active",
+      "noDecisions": "No messages recorded yet.",
+      "publish": "Publish",
+      "publishLimited": "Publish in limited mode",
+      "unpublish": "Unpublish",
+      "confirmUnpublish": "Confirm: stop answering with AI",
+      "blockedHint": "Complete the blocking items to publish.",
+      "readOnly": "Only the business administrator can publish.",
+      "ackTitle": "Confirm each topic: the agent will say it is not on record and offer an alternative",
+      "acknowledged": "You acknowledged {count} limited topics on {date}.",
+      "agentTest": "Test agent always works, published or not.",
+      "error": "The publication could not be loaded or changed."
+    },
     "title": "Business readiness",
     "defaultsLink": "Default values",
     "subtitle": "Which business data the agent can already use and what is missing to serve customers well.",
@@ -15963,6 +16002,7 @@
     }
   },
   "readinessForms": {
+    "notInList": "(not in the list)",
     "loading": "Loading…",
     "loadError": "This item could not be loaded.",
     "close": "Close",

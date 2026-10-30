@@ -15885,6 +15885,45 @@
     }
   },
   "readinessPanel": {
+    "goLive": {
+      "title": "Atendimento a clientes reais",
+      "state": {
+        "on": "Publicado: a IA atende seus clientes",
+        "off": "Não publicado: a IA não atende clientes reais"
+      },
+      "since": "desde {date}",
+      "mode": {
+        "shadow": "O controle está em modo de teste: só registra cada mensagem; por enquanto a IA continua respondendo como sempre.",
+        "enforce": "O controle está ativo: sem publicar, seus clientes recebem um aviso fixo e a conversa vai para a sua equipe."
+      },
+      "today": {
+        "serve": "Hoje a IA atenderia um cliente real.",
+        "block": "Hoje a IA não atenderia um cliente real: {reason}."
+      },
+      "reason": {
+        "published": "publicado",
+        "published_regressed": "publicado, mas hoje faltam dados obrigatórios",
+        "not_published": "falta publicar",
+        "no_listo": "faltam dados obrigatórios",
+        "test_contact": "contato de teste",
+        "unavailable": "não foi possível ler o estado"
+      },
+      "last": "Última mensagem: {date} · {channel} · {result} ({reason})",
+      "lastServe": "a IA atendeu",
+      "lastBlock": "a IA não teria atendido",
+      "summary": "{total} mensagens em {days} dias; {blocked} sem resposta da IA com o controle ativo",
+      "noDecisions": "Ainda não há mensagens registradas.",
+      "publish": "Publicar",
+      "publishLimited": "Publicar em modo limitado",
+      "unpublish": "Despublicar",
+      "confirmUnpublish": "Confirmar: parar de atender com IA",
+      "blockedHint": "Complete os itens obrigatórios para publicar.",
+      "readOnly": "Só o administrador do negócio pode publicar.",
+      "ackTitle": "Confirme cada tema: o agente dirá que não consta e oferecerá uma alternativa",
+      "acknowledged": "Você reconheceu {count} temas limitados em {date}.",
+      "agentTest": "Testar agente funciona sempre, publicado ou não.",
+      "error": "Não foi possível carregar ou alterar a publicação."
+    },
     "title": "Prontidão do negócio",
     "defaultsLink": "Valores padrão",
     "subtitle": "Quais dados do seu negócio o agente já pode usar e o que falta para atender bem.",
@@ -15963,6 +16002,7 @@
     }
   },
   "readinessForms": {
+    "notInList": "(fora da lista)",
     "loading": "Carregando…",
     "loadError": "Não foi possível carregar este dado.",
     "close": "Fechar",

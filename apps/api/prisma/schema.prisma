@@ -86,6 +86,14 @@ model Tenant {
   firstMessageAt           DateTime? @map("first_message_at")
   signupSource             String?   @map("signup_source") // landing_page|api|partner|...
 
+  /// Control de salida (C0 §1.2, R4, ADR 0010): si la IA atiende a clientes reales. `off` → `on` exige veredicto ≠
+  /// no_listo y, si es «limitado», el reconocimiento del dueño (`goLiveAck`). Lo escribe GoLiveService (SQL).
+  goLiveState        String    @default("off") @map("go_live_state") @db.VarChar(8)
+  goLiveAt           DateTime? @map("go_live_at") @db.Timestamptz
+  goLiveBy           String?   @map("go_live_by")
+  goLiveSpecVersion  String?   @map("go_live_spec_version")
+  goLiveAck          Json?     @map("go_live_ack")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

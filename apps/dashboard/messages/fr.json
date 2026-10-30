@@ -15885,6 +15885,45 @@
     }
   },
   "readinessPanel": {
+    "goLive": {
+      "title": "Service aux vrais clients",
+      "state": {
+        "on": "Publié : l'IA répond à vos clients",
+        "off": "Non publié : l'IA ne répond pas aux vrais clients"
+      },
+      "since": "depuis le {date}",
+      "mode": {
+        "shadow": "Le contrôle est en mode test : il enregistre seulement chaque message ; pour l'instant l'IA continue de répondre comme d'habitude.",
+        "enforce": "Le contrôle est actif : tant que ce n'est pas publié, vos clients reçoivent un message fixe et la conversation passe à votre équipe."
+      },
+      "today": {
+        "serve": "Aujourd'hui, l'IA répondrait à un vrai client.",
+        "block": "Aujourd'hui, l'IA ne répondrait pas à un vrai client : {reason}."
+      },
+      "reason": {
+        "published": "publié",
+        "published_regressed": "publié, mais des données bloquantes manquent aujourd'hui",
+        "not_published": "pas encore publié",
+        "no_listo": "des données bloquantes manquent",
+        "test_contact": "contact de test",
+        "unavailable": "l'état n'a pas pu être lu"
+      },
+      "last": "Dernier message : {date} · {channel} · {result} ({reason})",
+      "lastServe": "l'IA a répondu",
+      "lastBlock": "l'IA n'aurait pas répondu",
+      "summary": "{total} messages en {days} jours ; {blocked} sans réponse de l'IA avec le contrôle actif",
+      "noDecisions": "Aucun message enregistré pour l'instant.",
+      "publish": "Publier",
+      "publishLimited": "Publier en mode limité",
+      "unpublish": "Dépublier",
+      "confirmUnpublish": "Confirmer : arrêter de répondre avec l'IA",
+      "blockedHint": "Complétez les éléments bloquants pour publier.",
+      "readOnly": "Seul l'administrateur de l'entreprise peut publier.",
+      "ackTitle": "Confirmez chaque sujet : l'agent dira que l'information n'est pas disponible et proposera une alternative",
+      "acknowledged": "Vous avez reconnu {count} sujets limités le {date}.",
+      "agentTest": "Tester l'agent fonctionne toujours, publié ou non.",
+      "error": "La publication n'a pas pu être chargée ou modifiée."
+    },
     "title": "Préparation de l’entreprise",
     "defaultsLink": "Valeurs par défaut",
     "subtitle": "Les données de votre entreprise que l’agent peut déjà utiliser et ce qui manque pour bien répondre.",
@@ -15963,6 +16002,7 @@
     }
   },
   "readinessForms": {
+    "notInList": "(hors de la liste)",
     "loading": "Chargement…",
     "loadError": "Impossible de charger cette donnée.",
     "close": "Fermer",

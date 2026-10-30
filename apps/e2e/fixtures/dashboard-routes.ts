@@ -85,6 +85,12 @@ export const readinessPanelRoutes = (tenantId = TENANT): ApiRoutes => ({
   }),
   [`readiness/${tenantId}/business-facts/CORE.HOURS.REGULAR/versions`]: ok([]),
   [`readiness/${tenantId}/business-facts/defaults`]: ok({ specVersion: "1.0.0-rc.1", items: [] }),
+  // R4: the go-live card under the verdict (not published, gate in shadow mode, nothing recorded yet).
+  [`readiness/${tenantId}/go-live`]: ok({
+    state: "off", at: null, by: null, specVersion: null, ack: null, mode: "shadow",
+    decision: { serve: false, reason: "no_listo" }, lastDecision: null,
+    summary: { days: 7, total: 0, wouldBlock: 0, byReason: {}, since: null },
+  }),
 });
 
 export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({

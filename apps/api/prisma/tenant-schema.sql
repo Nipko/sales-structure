@@ -6489,6 +6489,29 @@ CREATE INDEX IF NOT EXISTS idx_readiness_evaluations_created
         ON "{{SCHEMA_NAME}}"."readiness_evaluations" (created_at DESC);
 -- END READINESS EVALUATIONS
 
+-- BEGIN GO LIVE DECISIONS
+-- Control de salida en modo sombra (C0 §1.2 y §5 R4, ADR 0010): una fila por mensaje entrante de un canal real con la
+-- decisión que tomaría el control (atiende o no) y por qué. En sombra NO bloquea; con la bandera `readiness.goLiveGate`
+-- encendida, la misma decisión se aplica. Agent Test y el ensayo nunca escriben aquí. La migración
+-- 20261030160000_add_go_live_gate crea lo mismo en los tenants que ya existen, y go-live-schema.spec.ts exige que las
+-- dos definiciones coincidan.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."go_live_decisions" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        channel_type TEXT NOT NULL,
+        conversation_id UUID,
+        mode TEXT NOT NULL,
+        serve BOOLEAN NOT NULL,
+        reason TEXT NOT NULL,
+        go_live_state TEXT NOT NULL,
+        verdict TEXT,
+        spec_version TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT go_live_decisions_mode CHECK (mode IN ('shadow','enforce'))
+    );
+CREATE INDEX IF NOT EXISTS idx_go_live_decisions_created
+        ON "{{SCHEMA_NAME}}"."go_live_decisions" (created_at DESC);
+-- END GO LIVE DECISIONS
+
 -- BEGIN BUSINESS FACTS
 -- Valores del negocio con procedencia (C0 §2.1, rebanada R3): una fila por requisito de la especificación
 -- (@parallext/business-spec) y alcance. `value` tiene la forma de `data.structure` del requisito; `[]` es «no hay»,

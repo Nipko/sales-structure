@@ -1,0 +1,15 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`turnContract sobre los 7 tenants QA bloque del prompt de la clínica dental QA (instantánea) 1`] = `
+"  <knowledge_status spec="1.1.0-rc.1" verdict="no_listo">
+    <fact id="CORE.IDENTITY.NAME">{"display_name":"Spark QA Dental 03"}</fact>
+    <fact id="CORE.IDENTITY.DESCRIPTION">{"short":"Negocio ficticio de Salud / Odontología exclusivamente para pruebas funcionales, sin clientes reales.","audience":["B2C"]}</fact>
+    <unknown code="EXT">DOM.HEALTH.EMERGENCY_PROTOCOL</unknown>
+    <unknown code="HUM">CORE.CONTACT.SPECIAL, CORE.PAYMENT.INVOICING, CORE.PRIVACY.NOTICE, CORE.PRIVACY.DATA_REQUESTS, CORE.HANDOFF.HOURS_SLA, CORE.COMPLAINT.PROCEDURE, CORE.SAFETY.FORBIDDEN_TOPICS[seeded], DOM.HEALTH.CLINICAL_SCOPE, OBJ.APPOINTMENT.CHANGE_RULES</unknown>
+    <unknown code="NC+AV">CORE.LOCATIONS.LIST, CORE.LOCATIONS.ACCESS, CORE.HOURS.REGULAR[seeded], CORE.HOURS.HOLIDAYS, CORE.HOURS.EXCEPTIONS, CORE.HOURS.BY_SERVICE, CORE.CONTACT.CHANNELS, CORE.LANGUAGES.SERVED, CORE.OFFER.ITEMS[seeded], CORE.OFFER.PRICE_MODEL[example], CORE.OFFER.ITEM_DETAILS[0/3], CORE.OFFER.NOT_OFFERED, CORE.OFFER.FEES, CORE.OFFER.PROMOTIONS, CORE.OFFER.CURRENCY_CONVERSION, CORE.PAYMENT.METHODS, CORE.PAYMENT.TIMING_DEPOSIT[seeded], CORE.PAYMENT.FINANCING, CORE.POLICY.CANCELLATION_CHANGES, CORE.POLICY.HOUSE_RULES, CORE.KNOWLEDGE.FAQ_HYGIENE[seeded 0/10], CORE.KNOWLEDGE.SOURCES, PROF.P09.PREPARATIONS[0/3], OBJ.APPOINTMENT.CATALOG[seeded 0/3], OBJ.APPOINTMENT.AVAILABILITY_SOURCE, OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS</unknown>
+    <unknown code="PREG">CORE.OFFER.RECOMMENDATION_RULES</unknown>
+    <unknown code="GAP">CORE.IDENTITY.REGION</unknown>
+    <never>DOM.HEALTH.EMERGENCY_PROTOCOL: diagnosticar; recomendar medicamentos o dosis; demorar con preguntas de agenda | CORE.CONTACT.SPECIAL: confundir 'vagas' (empleo) con cupos | CORE.HANDOFF.HOURS_SLA: prometer una respuesta inmediata fuera del horario humano | CORE.COMPLAINT.PROCEDURE: prometer reembolso, reposición o descuento no definidos | DOM.HEALTH.CLINICAL_SCOPE: interpretar resultados; decidir aptitud o contraindicaciones | OBJ.APPOINTMENT.CHANGE_RULES: cancelar sin confirmación explícita; prometer reembolso fuera de la política</never>
+    <offers pending_question="false" handoff="true" />
+  </knowledge_status>"
+`;

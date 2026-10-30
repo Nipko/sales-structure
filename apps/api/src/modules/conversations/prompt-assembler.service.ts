@@ -103,6 +103,18 @@ function withCatalogueRule(rules: readonly string[]): string[] {
     return out;
 }
 
+/**
+ * Rule 20 with the turn knowledge contract (R4, C0 §1.2, ADR 0010): when <turn><knowledge_status> is present it is the
+ * state of every business fact this turn, and this rule replaces the not-offered rule 20 (folded in at its end) and
+ * carries the prohibitions common to every fact that is not on record (the block omits them to stay in budget). Without
+ * the block (no readiness evaluation, sealed evaluations) the contract is byte-identical to the previous one.
+ */
+export const RULE_20_KNOWLEDGE_STATUS = '  20. KNOWLEDGE STATUS: <turn><knowledge_status> is the state of the business facts for this turn. A <fact> is confirmed: state it as given. Every id listed in an <unknown> group is NOT on record — a bracket says why: seeded or example = a template value, contradictory = two sources disagree, stale = expired, n/m = only n of m items are complete. Never state, estimate or deny such a fact, and never present a seeded or example value as real; an item may be named, its unconfirmed values may not. Handle it by the group code: NC+AV = say plainly in <turn><language> that it is not on record and offer what <offers> allows (pending_question="true": offer to ask the team and come back with the answer; handoff="true": offer a person from the team; otherwise the business contact); PREG = ask the customer for the one missing detail; HUM = offer a person from the team; EXT = first, in one sentence, the official or emergency contact, before any other question; GAP = say it is not available here and offer a person. A tool result of THIS turn about that subject still answers it. <never> lists what must not be said about specific facts; for every fact that is not on record, also never deny an attribute or a service that is not declared, never infer a city, country or currency, never present an example as a price and never promise a booking, notice or refund that no procedure backs. When <offers> carries writes, an object with mode none is informational only (offer a person instead of taking its booking or order), and request_to_business records a request the business confirms later: call it a request, never confirmed. NOT OFFERED: <turn><vertical_context><not_offered> lists what this business itself declared it does NOT do (an entry may name an alternative): say so plainly, mention the alternative when there is one and offer a person; something absent from that list is not a declared limit.';
+
+function withKnowledgeStatusRule(rules: readonly string[]): string[] {
+    return rules.map(rule => (rule.startsWith('  20. ') ? RULE_20_KNOWLEDGE_STATUS : rule));
+}
+
 @Injectable()
 export class PromptAssemblerService {
     constructor(private readonly personaService: PersonaService) {}
@@ -137,7 +149,7 @@ export class PromptAssemblerService {
      * Assemble the full system prompt for a given turn.
      */
     assemble(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): string {
-        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined);
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined, turn.knowledgeStatus !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const layer3 = this.buildTurnLayer(turn);
         return `${layer1}\n\n${layer2}\n\n${layer3}`;
@@ -150,7 +162,7 @@ export class PromptAssemblerService {
      * only dynamic part and sits after the boundary.
      */
     assembleWithCacheBoundary(config: TenantConfig, turn: TurnContext, tenantBusinessHours?: any): { systemPrompt: string; cachePrefixChars: number } {
-        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined);
+        const layer1 = this.buildContractLayer(turn.verifiedFacts !== undefined, turn.factTokens !== undefined, turn.catalogueAuthority !== undefined, turn.knowledgeStatus !== undefined);
         const layer2 = this.personaService.buildSystemPrompt(this.personaConfigForTurn(config, turn), tenantBusinessHours);
         const stablePrefix = `${layer1}\n\n${layer2}`;
         const layer3 = this.buildTurnLayer(turn);
@@ -164,7 +176,7 @@ export class PromptAssemblerService {
      * Layer 1 — universal contract. Applies to every agent regardless of config.
      * Short, authoritative, defines the bot's relationship to the backend.
      */
-    private buildContractLayer(factsLedger = false, renderedFacts = false, catalogOverFaq = false): string {
+    private buildContractLayer(factsLedger = false, renderedFacts = false, catalogOverFaq = false, knowledgeStatus = false): string {
         const rules = [
             '  You are a customer-facing conversational agent.',
             '',
@@ -258,7 +270,8 @@ export class PromptAssemblerService {
             '  - Financial investment advice as if you were a licensed advisor',
             '  If the customer brings up any of these, refuse briefly in the language from <turn><language>, offer safe help related to the business when appropriate, and escalate emergencies according to the configured handoff rules.',
         ];
-        const catalogueRules = catalogOverFaq ? withCatalogueRule(rules) : rules;
+        const statusRules = knowledgeStatus ? withKnowledgeStatusRule(rules) : rules;
+        const catalogueRules = catalogOverFaq ? withCatalogueRule(statusRules) : statusRules;
         const ledgerRules = factsLedger ? withFactsLedgerRules(catalogueRules) : catalogueRules;
         return ['<contract>', ...(renderedFacts ? withRenderedFactsRules(ledgerRules) : ledgerRules).map((rule) => escapeXmlText(rule)), '</contract>'].join('\n');
     }
@@ -302,6 +315,9 @@ export class PromptAssemblerService {
         }
         lines.push(`  <now>${this.xmlEscape(turn.now)}</now>`);
         lines.push(`  <business_hours_status>${this.xmlEscape(turn.businessHoursStatus)}</business_hours_status>`);
+        // R4: the turn knowledge contract (what is on record, what is not and what to do about it). Built and escaped by
+        // @parallext/business-spec renderKnowledgeStatus; rule 20 says how to use it.
+        if (turn.knowledgeStatus?.block) lines.push(turn.knowledgeStatus.block);
 
         // El estado del contrato viaja como DATO. El backend ya bloquea la
         // escritura; lo que faltaba era que el modelo supiera por que la

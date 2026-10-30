@@ -76,6 +76,7 @@ export function compile(docs: SpecDocs, options: CompileOptions = {}): { spec: C
 
     // ── objetos ──
     const objects: Record<string, ObjectDef> = {};
+    const commonCustomerFields: string[] = (docs.objects?.customer_fields_common ?? []).map(String);
     for (const o of docs.objects?.objects ?? []) {
         const name = String(o.object);
         if (objects[name]) err('DUPLICATE_ID', `objeto duplicado ${name}`, name);
@@ -86,6 +87,7 @@ export function compile(docs: SpecDocs, options: CompileOptions = {}): { spec: C
             catalogFields: { required: (o.catalog_fields?.required ?? []).map(String), optional: (o.catalog_fields?.optional ?? []).map(String) },
             availabilityKinds: (o.availability_kinds ?? []).map(String),
             defaultWriteMode: o.default_write_mode, defaultIdentity: String(o.default_identity ?? 'canal'),
+            customerFields: [...new Set([...commonCustomerFields, ...(o.customer_fields ?? []).map(String)])],
             ...(o.availability_default ? { availabilityDefault: o.availability_default } : {}),
         };
     }

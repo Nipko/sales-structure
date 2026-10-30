@@ -1106,6 +1106,12 @@ export interface TurnContext {
      * knowledge named that the catalogue does not list.
      */
     catalogueAuthority?: { offered: string[]; notInCatalogue: string[] };
+    /**
+     * R4 (C0 §1.2, ADR 0010): the turn knowledge contract of @parallext/business-spec, rendered by the API as the
+     * <knowledge_status> block (already escaped). Present = the contract rule 20 replaces the not-offered rule; absent
+     * (no readiness evaluation, sealed evaluation) = the previous prompt, byte for byte.
+     */
+    knowledgeStatus?: { block: string; specVersion: string; verdict: string; resultHash: string; unknownIds: string[] };
     /** Probable but unverified knowledge; must be presented with uncertainty. */
     possibleKnowledge?: RetrievedKnowledgeItem[];
     /** E-commerce catalog sample (T2.17): real products so the agent never invents them. */

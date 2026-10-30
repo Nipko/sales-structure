@@ -177,7 +177,7 @@ describe('ReadinessController', () => {
             getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []),
             formRequirementIds: ['CORE.IDENTITY.NAME'], screenTargets: jest.fn(() => ({ 'CORE.OFFER.ITEMS': '/admin/menu' })),
         };
-        const controller = new ReadinessController(service as any, {} as any);
+        const controller = new ReadinessController(service as any, {} as any, {} as any);
         await expect(controller.current(TENANT, '1')).resolves.toEqual({
             success: true,
             data: { result: { verdict: 'listo' }, formRequirementIds: ['CORE.IDENTITY.NAME'], screenTargets: { 'CORE.OFFER.ITEMS': '/admin/menu' } },
@@ -192,7 +192,7 @@ describe('ReadinessController', () => {
     it('el detalle del requisito suma la fila guardada con su versión (lo que abre el cajón)', async () => {
         const service = { getRequirement: jest.fn(async () => ({ specVersion: 'v', form: { mode: 'form' } })) };
         const facts = { get: jest.fn(async () => ({ fact: { version: 3 } })) };
-        const controller = new ReadinessController(service as any, facts as any);
+        const controller = new ReadinessController(service as any, facts as any, {} as any);
         await expect(controller.requirement(TENANT, 'CORE.IDENTITY.NAME')).resolves.toEqual({ success: true, data: { specVersion: 'v', form: { mode: 'form' }, fact: { version: 3 } } });
         expect(facts.get).toHaveBeenCalledWith(TENANT, 'CORE.IDENTITY.NAME', '');
     });

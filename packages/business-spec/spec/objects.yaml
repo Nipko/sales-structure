@@ -16,6 +16,11 @@ write_modes:
     El agente solo informa. Ante la intención de reservar/pedir ofrece contacto o persona (HUM) y no
     recoge datos de reserva.
 
+# Diccionario de campos que el negocio puede pedir al cliente (OBJ.*.WRITE_MODE.required_fields, R4, ADR 0010):
+# lista CERRADA = estos comunes + los `customer_fields` de cada objeto. La escritura y el formulario la exigen; el motor
+# no deja de cumplir por un valor guardado antes con un campo libre (lista abierta hasta R3).
+customer_fields_common: [nombre, telefono, email, documento, fecha_hora, servicio, cantidad, direccion, notas]
+
 identity_levels: {canal: "A1 · identidad del canal (número o cuenta)", codigo: "código de reserva o pedido", otp: "A2 · código de un solo uso", humano: "A4 · aprobación o lectura por una persona"}
 
 # ═══════════════════════════ (1) PLANTILLA ═══════════════════════════
@@ -180,6 +185,7 @@ objects:
     optional: [price, staff_ids, modality, sessions_estimate, preparation_ref, buffer, min_age, includes]
   availability_kinds: [profesional, recurso]
   default_write_mode: direct_commit
+  customer_fields: [profesional, motivo]
   default_identity: canal
   storage_today: {catalog: "services (+ price_status), service_staff, staff_members", availability: "availability_slots, staff_schedules, staff_breaks, blocked_dates, calendar_integrations", records: "appointments, treatment_plans/sessions", ui: "/admin/service-catalog, /admin/appointments, /admin/settings/public-booking"}
   extra_requirements:
@@ -211,6 +217,7 @@ objects:
     optional: [description, modifiers, allergens, diet_tags, available_on, prep_time, combos, images, nutrition]
   availability_kinds: [stock]
   default_write_mode: direct_commit
+  customer_fields: [items, modalidad_entrega, forma_pago, alergias]
   default_identity: canal
   storage_today: {catalog: "menu_items, menu_categories, menu_promotions", records: "food_orders, food_order_items", ui: "/admin/menu, /admin/food-orders"}
   overrides: {CORE.DELIVERY.TERMS: "bloqueante (R2) si variant = delivery", CORE.SERVICE_AREA: "bloqueante (R2) si variant = delivery"}
@@ -264,6 +271,7 @@ objects:
     optional: [sku, variants, attributes, compatibility, images, restrictions, requires_prescription, warranty_ref, vin, year, km, condition]
   availability_kinds: [stock]
   default_write_mode: direct_commit
+  customer_fields: [items, modalidad_entrega, forma_pago]
   default_identity: canal
   storage_today: {catalog: "products / ecommerce_products, product_categories, vehicles", availability: "stock_movements", records: "orders, order_items, abandoned_carts", ui: "/admin/catalog, /admin/inventory, /admin/orders, /admin/vehicles"}
   overrides: {CORE.POLICY.REFUND_RETURNS: "bloqueante (R2) si WRITE_MODE = direct_commit", CORE.POLICY.WARRANTY: "bloqueante (R2) si WRITE_MODE = direct_commit"}
@@ -278,6 +286,7 @@ objects:
     optional: [occupancy_pricing, seasonal_pricing, bedrooms, bathrooms, area_m2, view, amenities, includes, excludes, images]
   availability_kinds: [calendario_noches]
   default_write_mode: request_to_business
+  customer_fields: [fecha_entrada, fecha_salida, huespedes, unidad, hora_llegada]
   default_identity: canal
   storage_today: {catalog: "properties", availability: "ical_feeds, ical_blocks, property_bookings", records: "property_bookings", ui: "/admin/properties, /admin/stays"}
   overrides: {CORE.OFFER.FEES: "bloqueante (R2): el total de la estancia depende de limpieza, persona extra e impuestos/tasas"}
@@ -311,6 +320,7 @@ objects:
   availability_kinds: [cupos_por_salida]
   availability_data: "departures[]: {date, departure_time, return_time, seats_left, guide_language?}"
   default_write_mode: request_to_business
+  customer_fields: [paquete, fecha_salida, pasajeros, edades]
   default_identity: canal
   storage_today: {catalog: tour_packages, availability: tour_inventory, records: tour_bookings, ui: "/admin/tours, /admin/tour-bookings"}
   notes: "includes/excludes y meeting_point son required: es donde más se inventa (B1 P06-1, P06-3). La FAQ general es respaldo, nunca sustituto."
@@ -326,6 +336,7 @@ objects:
   availability_kinds: [profesional]
   availability_note: "status del listado (disponible/reservado/vendido) + franjas del asesor para visitas"
   default_write_mode: request_to_business
+  customer_fields: [inmueble, operacion, presupuesto, fecha_visita]
   default_identity: canal
   storage_today: {catalog: "real_estate_listings, listing_zone_agents", records: "leads + opportunities (no hay tabla de visitas)", ui: "/admin/listings"}
   extra_requirements:
@@ -358,6 +369,7 @@ objects:
   availability_kinds: [cupos_por_salida]
   availability_data: "cohorts[]: {start_date, schedule, seats_left, application_deadline?}"
   default_write_mode: request_to_business
+  customer_fields: [curso, fecha_inicio, nivel, edad]
   default_identity: canal
   storage_today: {catalog: "courses, course_cohorts, placement_tests", records: enrollments, ui: "/admin/courses, /admin/catalog/courses"}
   notes: "official_recognition: si no consta, el agente no afirma validez oficial (P14-5). En admission, la decisión la comunica un humano (P15-5)."
@@ -373,6 +385,7 @@ objects:
   availability_kinds: [cupos_por_salida]
   availability_data: "class_schedule[]: {class, weekday, time, capacity, spots_left, waitlist}"
   default_write_mode: direct_commit
+  customer_fields: [plan, clase, fecha_inicio]
   default_identity: canal
   change_rules_extra: "freeze (preaviso, máximo, cargo) y cancel_membership (preaviso, cargos, derecho legal de cancelar del pack). Nunca retener con trucos (P13-5)."
   storage_today: {catalog: "membership_plans (+ price_status)", availability: "fitness_classes, class_bookings", records: "members, member_check_ins", ui: "/admin/memberships, /admin/classes, /admin/plans"}
@@ -387,6 +400,7 @@ objects:
     optional: [price_from, payment_frequency, eligibility]
   availability_kinds: []
   default_write_mode: request_to_business
+  customer_fields: [producto, fecha_nacimiento, bien_asegurado, poliza]
   default_identity: otp
   write_notes: "quote_request.required_fields por ramo (vehículo: placa/modelo/año/valor; vida: edad/valor asegurado…) + consentimiento. claim_first_notice: request + EXT si hay heridos (DOM.INSURANCE.ASSISTANCE_LINES)."
   storage_today: {catalog: insurance_plans, records: "insurance_quotes, insurance_policies, insurance_claims", ui: "/admin/insurance"}
@@ -401,6 +415,7 @@ objects:
     optional: [price, visit_fee, includes_materials, estimate_required, vehicle_types, warranty_ref, safety_instructions_ref]
   availability_kinds: [profesional, recurso]
   default_write_mode: request_to_business
+  customer_fields: [tipo_servicio, descripcion_problema, fecha_visita, fotos]
   default_identity: canal
   overrides: {CORE.SERVICE_AREA: "bloqueante (R2) en home_service"}
   storage_today: {records: "service_requests, repair_orders, repair_order_events, customer_vehicles", ui: "/admin/service-requests, /admin/repair-orders, /admin/dispatch"}
@@ -451,6 +466,7 @@ objects:
     optional: [weekly_rate, addons, pickup_locations, one_way_fee, transmission, seats, images]
   availability_kinds: [recurso]
   default_write_mode: request_to_business
+  customer_fields: [vehiculo, fecha_retiro, fecha_devolucion, licencia, lugar_retiro]
   default_identity: canal
   overrides: {CORE.OFFER.FEES: "bloqueante (R2)", CORE.PAYMENT.TIMING_DEPOSIT: "bloqueante (R2): depósito/retención en tarjeta", OBJ.RENTAL.CUSTOMER_REQUIREMENTS: "bloqueante (R2): elegibilidad del conductor"}
   storage_today: {records: "resource_rentals, resource_rental_events, resource_rental_inspections, resource_rental_damages", ui: "/admin/resource-rentals"}
@@ -483,6 +499,7 @@ objects:
     optional: [webcam, photo_updates, walks, transport_addon]
   availability_kinds: [recurso]
   default_write_mode: request_to_business
+  customer_fields: [mascota, especie, raza, vacunas, fecha_entrada, fecha_salida]
   default_identity: canal
   pet_fields: "pet: especie, raza, tamaño/peso, edad, vacunas (pet_vaccinations)"
   overrides: {OBJ.PET_BOARDING.CUSTOMER_REQUIREMENTS: "bloqueante (R3): vacunas y requisitos de ingreso"}
@@ -516,6 +533,7 @@ objects:
     optional: [price, second_shooter, video, album, unit_price_per_sku, travel_fee_ref]
   availability_kinds: [fecha_exclusiva]
   default_write_mode: request_to_business
+  customer_fields: [tipo_sesion, fecha_evento, lugar, duracion]
   default_identity: canal
   overrides: {CORE.PAYMENT.TIMING_DEPOSIT: "bloqueante (R2): depósito para separar la fecha, reembolsable o no"}
   storage_today: {records: photo_sessions, ui: "/admin/photo-sessions"}
@@ -548,6 +566,7 @@ objects:
     optional: [initial_consult_price, modality, deadlines_note]
   availability_kinds: []
   default_write_mode: request_to_business
+  customer_fields: [tipo_caso, descripcion, documentos]
   default_identity: otp
   write_notes: "La consulta inicial se agenda como appointment(variant consult) o como solicitud; siempre con revisión de conflicto de interés humana antes de aceptar el caso."
   storage_today: {records: "opportunities (professional-cases.controller) + leads", ui: "/admin/cases"}
@@ -558,6 +577,7 @@ objects:
   variants: {quote: "P00, P23, P20-7, P26 trade-in", callback: P00, owner_intake: "P07-12", credit_application: "P25 (decisión siempre humana)"}
   template_applies: [WRITE_MODE, ACCOUNT_READ]
   default_write_mode: request_to_business
+  customer_fields: [motivo, presupuesto, horario_contacto]
   default_identity: canal
   write_notes: "required_fields por variante (qué, cantidad, fecha, presupuesto, contacto, franja de llamada) + business_confirm_sla = plazo de respuesta de la cotización. Es el objeto mínimo de P00."
   storage_today: {records: "leads, opportunities, deals, form_submissions", ui: "/admin/pipeline, /admin/contacts"}

@@ -238,7 +238,10 @@ const patch = (d: FormDescriptor, key: string, extra: Partial<FormField>) => {
     if (f) Object.assign(f, extra);
 };
 
-/** Campos que el formulario de cada tipo de objeto sugiere pedir al cliente (WRITE_MODE.required_fields). */
+/**
+ * Respaldo de WRITE_MODE.required_fields cuando no hay especificación a mano: los campos comunes del diccionario
+ * (`customer_fields_common` de objects.yaml). Con especificación, la lista es la CERRADA del objeto (R4, ADR 0010).
+ */
 const BOOKING_FIELDS = ['nombre', 'telefono', 'email', 'documento', 'fecha_hora', 'servicio', 'cantidad', 'direccion', 'notas'];
 const CONFIRMATION_TERMS = ['ítem', 'fecha_hora', 'cantidad', 'total', 'depósito', 'cancelación'];
 
@@ -329,11 +332,13 @@ const ADJUSTMENTS: Readonly<Record<string, Adjust>> = {
         patch(d, 'sla_in_hours', { required: true });
         patch(d, 'sla_out_of_hours', { required: true });
     },
-    'OBJ.*.WRITE_MODE': d => {
+    'OBJ.*.WRITE_MODE': (d, req, spec) => {
         const active = { field: 'mode', notIn: ['none'] };
         const request = { field: 'mode', in: ['request_to_business'] };
         patch(d, 'mode', { required: true });
-        put(d, 'required_fields', field('required_fields', 'enum_list', { options: options(BOOKING_FIELDS), open: true, required: true, minItems: 1, when: active }));
+        // R4 (ADR 0010): lista CERRADA, el diccionario del objeto (objects.yaml `customer_fields`)
+        const dictionary = (req.object && spec?.objects[req.object]?.customerFields) || BOOKING_FIELDS;
+        put(d, 'required_fields', field('required_fields', 'enum_list', { options: options(dictionary), open: false, required: true, minItems: 1, when: active }));
         put(d, 'confirmation_terms', field('confirmation_terms', 'enum_list', { options: options(CONFIRMATION_TERMS), open: true, required: true, minItems: 1, when: active }));
         patch(d, 'consent_required', { when: active });
         patch(d, 'payment_required_to_confirm', { when: active });

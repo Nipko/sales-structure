@@ -39,7 +39,7 @@ An agent only works well when the minimum is defined. On save, the editor checks
 - **At least one rule** of behavior.
 - **At least one reason** under **When to hand off to a human**.
 
-If you clear one of those fields to rewrite it, save only once it is complete again: an agent with no fallback message or no handoff reasons shows up in **Agent health** as an important thing to fix, under **Unknown-answer response** or **Handoff reasons**.
+If you clear one of those fields to rewrite it, save only once it is complete again: an agent with no fallback message shows up in **Agent health** as an important thing to fix, under **Unknown-answer response**. Handoff reasons and the person who receives a handoff are checked by the business readiness panel, not by Agent health.
 
 **If your agent runs in custom-prompt mode**, this list changes. When your account has that feature enabled and the agent uses it, a single text you write replaces the guided personality: **Agent health** marks identity, tone, greeting, fallback message, and rules as **Not applicable**, and requires instead that the prompt is not empty. What **stays mandatory** is at least one reason under **When to hand off to a human**: without it the conversation never reaches a person, whatever the prompt says. If you see “Not applicable” where this guide says “required”, that is why, not a mistake.
 

@@ -178,7 +178,7 @@ describe('the handoff to the screen that owns the decision', () => {
 
     it('reports the readiness that is not met, so the trip is not wasted', () => {
         const notReady = buildAgentHandoff('publication.agent.publish', {},
-            ['channel_assignment', 'business_hours']);
+            ['channel_assignment', 'llm_limits']);
         expect(notReady.ok).toBe(true);
         if (!notReady.ok) return;
         // Only the codes this operation actually depends on, not everything the

@@ -119,9 +119,9 @@ export default function BusinessInfoPage() {
             setError(t("errors.companyNameRequired"));
             return;
         }
-        // `business_identity` is a CRITICAL quality check and it needs both the
-        // name and "Sobre nosotros"; the page only ever asked for the name, so a
-        // tenant could save a form that looked complete and stay blocked.
+        // The agent needs both the name and "Sobre nosotros" to say who it
+        // represents; the page only ever asked for the name, so a tenant could
+        // save a form that looked complete and still have nothing to say.
         if (!form.about.trim()) {
             setError(t("errors.aboutRequired"));
             return;

@@ -118,6 +118,8 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   // configuration, this decides which one customers get.
   { id: "agentPublications", pattern: "/admin/agent/:agentId/publications", titleKey: "agentPublications.openWorkspace", scope: "tenant", parentId: "agentDetail" },
   { id: "agentQuality", pattern: "/admin/agent/quality", titleKey: "nav.items.agentQuality", scope: "tenant" },
+  { id: "readiness", pattern: "/admin/readiness", titleKey: "nav.items.readiness", scope: "tenant",
+    keywords: ["preparación", "listo", "huecos", "requisitos", "datos del negocio", "readiness", "requirements", "gaps", "prontidão", "préparation"] },
   { id: "agentSimulation", pattern: "/admin/agent/simulation", titleKey: "nav.items.agentSimulation", scope: "tenant", parentId: "agents" },
   { id: "procedures", pattern: "/admin/procedures", titleKey: "nav.items.procedures", scope: "tenant" },
   { id: "knowledge", pattern: "/admin/knowledge", titleKey: "nav.items.knowledgeBase", scope: "tenant" },

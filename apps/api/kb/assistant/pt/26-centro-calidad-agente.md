@@ -40,12 +40,12 @@ agentes, conexões ou configurações em **IA e crescimento → Agente de IA**.
 - **Preparação:** verifica negócio e escopo, conhecimento, conversa e marca, ações,
   segurança e transferência, e robustez operacional. Uma capacidade fora do escopo
   pode aparecer como **Não se aplica** e não reduz o resultado. O estado geral é
-  decidido pelos **essenciais** (canal, agente, negócio, equipe) e por qualquer
+  decidido pelos **essenciais** (canal, agente e preparação do negócio) e por qualquer
   problema real; uma missão sem ajustar ou um teste sem rodar ficam como pendências,
-  mas não declaram um agente que já responde como «não pronto». Por exemplo,
-  enquanto o negócio não confirmar os preços de exemplo que vieram da receita
-  do seu ramo (serviços e, numa academia, planos de matrícula), aparece o aviso não
-  crítico **Preços sem confirmar**: o agente não diz esses preços até que sejam confirmados; também conta os serviços e planos que ainda não têm preço.
+  mas não declaram um agente que já responde como «não pronto». Se o negócio tem seus dados
+  (identidade, horário, perguntas frequentes, políticas, serviços, preços, equipe para a
+  transferência) já não é revisado pela Saúde dos agentes: quem decide é o painel de
+  preparação do negócio, com um veredito e o link para a tela onde cada dado se completa.
 - **Qualidade testada:** mostra a avaliação crítica e a simulação mais recentes, com
   versão, data, limite e cenários. Evidências anteriores podem ficar desatualizadas
   quando o agente muda. É evidência automatizada, não uma certificação.
@@ -210,10 +210,10 @@ conectar, em vez de afirmar que você não tem canais conectados.
 ## Perguntas frequentes
 
 **O checklist de configuração é igual ao Centro de qualidade?**
-Não. O cartão **Primeiros passos** no Início mostra somente os quatro essenciais (canal,
-agente, negócio e equipe) disponíveis para seu plano e papel, sinaliza a etapa **Próximo**
-e desaparece ao concluí-los. Ele substitui a antiga pílula flutuante `8/9`. Saúde dos
-agentes acrescenta o que melhora o agente (missão, conhecimento, horário, agendamentos,
+Não. O cartão **Primeiros passos** no Início mostra somente os essenciais (canal,
+agente e o veredito de preparação do negócio) disponíveis para seu plano e papel, sinaliza a
+etapa **Próximo** e desaparece ao concluí-los. Ele substitui a antiga pílula flutuante `8/9`.
+Saúde dos agentes acrescenta o técnico que melhora o agente (missão, configuração de busca,
 catálogo), os testes e a evidência de produção.
 
 **Uma boa pontuação de simulação basta para deixá-lo atender sozinho?**

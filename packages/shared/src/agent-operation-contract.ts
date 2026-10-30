@@ -279,7 +279,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
             { key: 'role', kind: 'choice', choices: ['tenant_admin', 'tenant_supervisor', 'tenant_agent'] },
         ],
         readiness: [],
-        resultCheck: 'human_handoff_route',
+        resultCheck: 'assessment',
         target: { module: 'auth', service: 'AuthController', method: 'updateUser', table: 'public.users' },
         roles: ['super_admin', 'tenant_admin'],
         route: '/admin/users',
@@ -292,7 +292,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         requirements: [],
         // Publishing an agent that nothing reaches, or that never escalates,
         // is a round trip back to where the person started.
-        readiness: ['agent_active', 'channel_assignment', 'handoff_triggers', 'fallback_message'],
+        readiness: ['agent_active', 'channel_assignment', 'fallback_message'],
         resultCheck: 'assessment',
         target: { module: 'persona', service: 'AgentPublicationService', method: 'publish', table: 'agent_publication_events' },
         roles: ['super_admin', 'tenant_admin'],
@@ -322,10 +322,10 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         reason: 'outward_facing_effect',
         requiresCapability: 'appointment_booking',
         requirements: [],
-        // A booking screen with no service and no availability has nothing to
-        // book, and the two checks that say so are the ones to fix first.
-        readiness: ['tool_appointments'],
-        resultCheck: 'tool_appointments',
+        // Whether the agenda has services and availability is the readiness
+        // engine's question since R2 (C0 §4.2), not a quality check.
+        readiness: [],
+        resultCheck: 'assessment',
         target: { module: 'appointments', service: 'AppointmentsService', method: 'create', table: 'appointments' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor', 'tenant_agent'],
         route: '/admin/appointments',
@@ -340,7 +340,7 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         requiresCapability: 'appointment_booking',
         requirements: [],
         readiness: [],
-        resultCheck: 'tool_appointments',
+        resultCheck: 'assessment',
         target: { module: 'appointments', service: 'AppointmentsService', method: 'saveAvailability', table: 'availability_slots' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor'],
         route: '/admin/appointments',
@@ -370,10 +370,10 @@ export const AGENT_OPERATION_REGISTRY: readonly AgentOperationDefinition[] = Obj
         availability: 'route_to_screen',
         reason: 'commercial_commitment',
         requirements: [],
-        // An offer is bound to a course or a campaign that must already exist,
-        // so the catalogue check is what says the screen has anything to offer.
-        readiness: ['tool_catalog'],
-        resultCheck: 'tool_offers',
+        // An offer is bound to a course or a campaign that must already exist;
+        // whether the catalogue has one is the readiness engine's question (R2).
+        readiness: [],
+        resultCheck: 'assessment',
         target: { module: 'catalog', service: 'CatalogService', method: 'createOffer', table: 'commercial_offers' },
         roles: ['super_admin', 'tenant_admin', 'tenant_supervisor'],
         route: '/admin/catalog/offers',

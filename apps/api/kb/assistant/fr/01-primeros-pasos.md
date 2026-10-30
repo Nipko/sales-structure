@@ -76,17 +76,16 @@ Pendant votre jour 0, l'étape de connexion de l'assistant n'affiche pas **Montr
 
 ## La carte « Mise en route »
 
-**Mise en route** apparaît sur l'**Accueil** tant qu'il manque l'un des **quatre essentiels**
+**Mise en route** apparaît sur l'**Accueil** tant qu'il manque l'un des **essentiels**
 disponibles pour votre forfait et votre rôle, dans cet ordre :
 
 - **connecter un canal** (WhatsApp, Instagram, Messenger, Telegram ou le chat web) ;
 - **relire votre agent** (nom, message lorsqu'il ne peut pas répondre, règles et motifs de transfert vers une personne) ;
-- **raconter ce que fait votre entreprise** dans Informations de l'entreprise ;
-- **inviter une personne** qui reçoit les conversations lorsque l'IA les transfère.
+- **préparer votre entreprise** : le verdict du panneau de préparation de l'entreprise, qui liste ce qui manque (identité, horaires, paiements, politiques, catalogue, la personne qui reçoit les conversations lorsque l'IA les transfère…) avec le lien vers l'écran où compléter chaque donnée.
 
-L'étape marquée **Suivant** est celle qu'il convient de faire maintenant. Charger les connaissances, confirmer les horaires,
-préparer les rendez-vous ou le catalogue améliorent l'agent, mais ne sont pas requis pour qu'il réponde : ils vivent dans
-**Santé des agents**, pas dans cette carte. Sur l'Accueil, tant que la carte est là,
+L'étape marquée **Suivant** est celle qu'il convient de faire maintenant. Ce qui ne bloque pas
+l'attention (le nécessaire et le recommandé du panneau de préparation, les tests) améliore l'agent, mais n'est pas requis
+pour qu'il réponde : ce n'est pas dans cette carte. Sur l'Accueil, tant que la carte est là,
 c'est elle qui vous dit ce qui manque : la bannière globale **Il y a quelque chose d’important à régler dans vos agents.** ne s'y affiche pas.
 
 Chaque élément a **Continuer**, qui ouvre l'écran concerné et, lorsqu'un parcours couvre cette étape, aussi **Montrez-moi où**, qui met en évidence, étape par étape, le champ ou le bouton exact. Certaines étapes n'ont pas de parcours — le catalogue propre à votre secteur, par exemple — et les rôles qui ne peuvent pas lancer de parcours ne voient que **Continuer**. Chaque étape ouvre une route autorisée. La carte disparaît une fois tout terminé et

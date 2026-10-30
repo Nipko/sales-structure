@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { evaluate, fromLegacyRows, renderReportMarkdown, type LegacyTenantRows, type ReadinessResult } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/src/load';
-import { SnapshotReader, type LegacyTenantRowsDto, type SqlJsonRunner } from '../src/modules/readiness/snapshot-reader';
+import { SnapshotReader, type SqlJsonRunner } from '../src/modules/readiness/snapshot-reader';
 
 /** Los 7 tenants QA de la campaña 4300 (C0 §5). */
 export const QA_TENANT_SCHEMAS: readonly string[] = [
@@ -36,8 +36,8 @@ export function psqlRunner(command: string): SqlJsonRunner {
 }
 
 /** Anonimiza los contactos y deja de la configuración solo lo que lee el motor (C0 §5, riesgos de R1). */
-export function anonymiseRows(rows: LegacyTenantRowsDto): LegacyTenantRowsDto {
-    const copy = JSON.parse(JSON.stringify(rows)) as LegacyTenantRowsDto;
+export function anonymiseRows(rows: LegacyTenantRows): LegacyTenantRows {
+    const copy = JSON.parse(JSON.stringify(rows)) as LegacyTenantRows;
     const ids = new Map<string, string>();
     const anonId = (id: unknown) => {
         const k = String(id);
@@ -77,7 +77,7 @@ export async function main(argv: string[]): Promise<void> {
     const outMd = arg(argv, '--out-md');
     const outJson = arg(argv, '--out-json');
     const format = arg(argv, '--format') ?? 'both';
-    const rowsList: LegacyTenantRowsDto[] = [];
+    const rowsList: LegacyTenantRows[] = [];
 
     if (fixtures) {
         for (const f of fs.readdirSync(fixtures).filter(x => x.endsWith('.snapshot.json')).sort()) {
@@ -96,7 +96,7 @@ export async function main(argv: string[]): Promise<void> {
     const timings: string[] = [];
     for (const rows of rowsList) {
         const t0 = Date.now();
-        const snap = fromLegacyRows(rows as unknown as LegacyTenantRows);
+        const snap = fromLegacyRows(rows);
         const result = evaluate(spec, snap);
         timings.push(`${rows.tenant.slug}: ${Date.now() - t0} ms`);
         results.push(result);

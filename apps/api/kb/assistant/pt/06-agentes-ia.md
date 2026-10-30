@@ -39,7 +39,7 @@ Um agente só atende bem com o mínimo definido. Ao salvar, o editor confere e a
 - **Pelo menos uma regra** de comportamento.
 - **Pelo menos um motivo** em **Quando passar para um humano**.
 
-Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver completo: um agente sem mensagem de apoio ou sem motivos de transferência aparece na **Saúde dos agentes** como uma coisa importante para resolver, em **Resposta quando não sabe** ou em **Motivos de transferência**.
+Se você esvaziar um desses campos para reescrevê-lo, salve só quando estiver completo: um agente sem mensagem de apoio aparece na **Saúde dos agentes** como uma coisa importante para resolver, em **Resposta quando não sabe**. Os motivos de transferência e a pessoa que recebe a transferência são revisados pelo painel de preparação do negócio, não pela Saúde dos agentes.
 
 **Se o seu agente estiver no modo prompt personalizado**, esta lista muda. Quando a sua conta tem esse recurso habilitado e o agente o usa, um único texto escrito por você substitui a personalidade guiada: a **Saúde dos agentes** marca identidade, tom, saudação, mensagem de apoio e regras como **Não se aplica** e passa a exigir que esse prompt não esteja vazio. O que **continua obrigatório** é pelo menos um motivo em **Quando passar para um humano**: sem isso a conversa nunca chega a uma pessoa, escreva o que escrever no prompt. Se você vir “Não se aplica” onde este guia diz “obrigatório”, é por isso, não por um erro.
 

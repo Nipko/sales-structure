@@ -40,12 +40,12 @@ conexiones o configuración desde **IA y crecimiento → Agente IA**.
 - **Preparación:** revisa negocio y alcance, conocimiento, conversación y marca,
   acciones, seguridad y handoff, y robustez operativa. Una capacidad fuera del
   alcance puede aparecer como **No aplica** y no reduce el resultado. El estado general
-  lo deciden los **esenciales** (canal, agente, negocio, equipo) y cualquier problema
+  lo deciden los **esenciales** (canal, agente y preparación del negocio) y cualquier problema
   real; una misión sin ajustar o una prueba sin correr quedan como pendientes, pero no
-  declaran «no listo» a un agente que ya responde. Por ejemplo, mientras el
-  negocio no confirme los precios de ejemplo que trajo la receta de su rubro (servicios
-  y, en un gimnasio, planes de membresía), aparece la advertencia no crítica
-  **Precios sin confirmar**: el agente no dice esos precios hasta que se confirman; también cuenta los servicios y planes que todavía no tienen precio.
+  declaran «no listo» a un agente que ya responde. Si el negocio tiene sus datos
+  (identidad, horario, preguntas frecuentes, políticas, servicios, precios, equipo para el
+  traspaso) ya no lo revisa Salud de agentes: lo decide el panel de preparación del
+  negocio, con un veredicto y el enlace a la pantalla donde se completa cada dato.
 - **Calidad probada:** muestra la evaluación crítica y la simulación más recientes,
   con versión, fecha, umbral y escenarios. Si cambió el agente, la evidencia anterior
   puede quedar desactualizada. Es evidencia automatizada, no una certificación.
@@ -211,11 +211,11 @@ en vez de afirmar que no tienes canales conectados.
 ## Preguntas frecuentes
 
 **¿El checklist de configuración es lo mismo que el Centro de calidad?**
-No. La tarjeta **Puesta en marcha** de Inicio muestra solo los cuatro esenciales (canal,
-agente, negocio y equipo) disponibles para tu plan y rol, señala el **Siguiente** paso y
-desaparece al completarlos. Reemplaza la antigua pastilla flotante `8/9`. Salud de agentes
-añade lo que mejora al agente (misión, conocimiento, horario, citas, catálogo), las
-pruebas y la evidencia de producción.
+No. La tarjeta **Puesta en marcha** de Inicio muestra solo los esenciales (canal,
+agente y el veredicto de preparación del negocio) disponibles para tu plan y rol, señala el
+**Siguiente** paso y desaparece al completarlos. Reemplaza la antigua pastilla flotante `8/9`.
+Salud de agentes añade lo técnico que mejora al agente (misión, configuración de búsqueda,
+catálogo), las pruebas y la evidencia de producción.
 
 **¿Un buen puntaje de simulación basta para dejarlo atender solo?**
 No. Ayuda a reducir riesgo, pero debe revisarse junto con lo que quede por resolver, la vigencia

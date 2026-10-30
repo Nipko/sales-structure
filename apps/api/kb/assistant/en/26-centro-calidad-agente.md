@@ -40,12 +40,12 @@ edit agents, connections, or configuration under **AI & Growth → AI Agent**.
 - **Preparation:** checks business and scope, knowledge, conversation and brand,
   actions, safety and handoff, and operational robustness. A capability outside the
   agent's scope can be **Not applicable** and does not lower the result. The overall
-  status is decided by the **essentials** (channel, agent, business, team) and any
+  status is decided by the **essentials** (channel, agent, business readiness) and any
   real problem; an unfinished mission or a test that hasn't run stay as pending, but
-  they do not mark an agent that already answers as "not ready". For example,
-  while the business hasn't confirmed the example prices its industry recipe
-  seeded (services and, for a gym, membership plans), it shows the non-critical
-  **Unconfirmed prices** warning: the agent doesn't state those prices until they are confirmed; it also counts services and plans that have no price yet.
+  they do not mark an agent that already answers as "not ready". Whether the business has its
+  data (identity, hours, FAQs, policies, services, prices, a team for handoffs) is no
+  longer checked by Agent health: the business readiness panel decides it, with a
+  verdict and a link to the screen where each fact is completed.
 - **Tested quality:** shows the latest critical evaluation and simulation, including
   version, date, threshold, and scenarios. Earlier evidence can become outdated when
   the agent changes. It is automated evidence, not a certification.
@@ -207,11 +207,11 @@ claiming that you have no connected channels.
 ## Frequently asked questions
 
 **Is the setup checklist the same as the Quality center?**
-No. The **Getting started** card on Home shows only the four essentials (channel,
-agent, business, and team) available for your plan and role, flags the **Next** step,
-and disappears when they are complete. It replaces the old floating `8/9` pill. Agent
-health adds what improves the agent (mission, knowledge, hours, appointments,
-catalog), tests, and production evidence.
+No. The **Getting started** card on Home shows only the essentials (channel,
+agent, and the business readiness verdict) available for your plan and role, flags the
+**Next** step, and disappears when they are complete. It replaces the old floating `8/9`
+pill. Agent health adds the technical things that improve the agent (mission, search
+settings, catalog), tests, and production evidence.
 
 **Is a strong simulation score enough to let it handle conversations on its own?**
 No. It helps reduce risk, but review it together with what is left to fix, version

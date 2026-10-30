@@ -61,6 +61,7 @@
 | Widget | `modules/widget/` | 13 + WS | Web chat widget embebible + triggers + Socket.IO `/widget` |
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
 | Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
+| Readiness | `modules/readiness/` | 4 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -198,6 +199,17 @@ Sus estados son evidencia operativa, no una certificación ni una orden de autoe
 | POST | `/quality/:tenantId/signals/:signalId/snooze` | Super admin/Admin/Supervisor | Posponer con `durationHours` o `until` (máximo 720 h) |
 | GET | `/quality/:tenantId` | Super admin/Admin/Supervisor | Resumen QA del rango (`start`, `end`) |
 | GET | `/quality/:tenantId/flagged` | Super admin/Admin/Supervisor | Conversaciones QA marcadas (`start`, `end`, `limit`) |
+
+### Preparación del negocio (`/api/v1/readiness`)
+
+De solo lectura (R2). El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Detalle: `docs/domain/business-readiness-runtime.md`.
+
+| Método | Ruta | Roles | Descripción |
+|--------|------|-------|-------------|
+| GET | `/readiness/:tenantId` | Super admin/Admin/Supervisor | Última evaluación; `?refresh=1` reevalúa |
+| GET | `/readiness/:tenantId/history` | Super admin/Admin/Supervisor | Historial (`limit` máximo 100) |
+| GET | `/readiness/:tenantId/requirements/:requirementId` | Super admin/Admin/Supervisor | Definición del requisito y su evaluación actual |
+| GET | `/readiness/:tenantId/snapshot` | Super admin | Foto `business-spec/tenant-snapshot@1` para `business-spec qa-truth` |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |

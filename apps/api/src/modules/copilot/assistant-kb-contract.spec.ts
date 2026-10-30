@@ -1190,7 +1190,7 @@ describe('Parallly Assist knowledge-base contract', () => {
 
       // The checks are named in the quality article exactly as the panel names them.
       const quality = articles.get('centro-calidad-agente')!.body;
-      for (const code of ['channel_unanswered', 'whatsapp_delivery', 'services_example_price']) {
+      for (const code of ['channel_unanswered', 'whatsapp_delivery']) {
         const label: unknown = messages?.agentQuality?.checks?.[code];
         expect(typeof label).toBe('string');
         expect({ locale, code, named: quality.includes(`**${label}**`) })
@@ -1204,39 +1204,27 @@ describe('Parallly Assist knowledge-base contract', () => {
     }
   });
 
-  it('names the price check by the panel label in every article that names it, never by its old name', () => {
+  it('never names the retired price warning: unconfirmed prices are a readiness gap since R2', () => {
     /**
-     * H3 (sep-2026): `services_example_price` also counts services and plans with
-     * no price at all, so "Precios de ejemplo sin confirmar" became "Precios sin
-     * confirmar". Three articles per language name the warning; an owner who
-     * reads one name on screen and another in Assist asks which is which. The
-     * label is read from the dashboard messages and the old one is refused, so
-     * renaming it on either side alone goes red.
+     * `services_example_price` was a Salud check with its own rule for "does
+     * the business have confirmed prices". R2 (C0 §4.2) retired it: the
+     * readiness engine decides that once and the readiness panel links to the
+     * screen. An article that still names the warning would send the owner to
+     * look for a label that no longer exists.
      */
-    const oldLabel: Record<(typeof LOCALES)[number], string> = {
-      es: 'Precios de ejemplo sin confirmar',
-      en: 'Unconfirmed example prices',
-      pt: 'Preços de exemplo sem confirmar',
-      fr: "Prix d'exemple non confirmés",
+    const retiredLabels: Record<(typeof LOCALES)[number], string[]> = {
+      es: ['Precios sin confirmar', 'Precios de ejemplo sin confirmar'],
+      en: ['Unconfirmed prices', 'Unconfirmed example prices'],
+      pt: ['Preços sem confirmar', 'Preços de exemplo sem confirmar'],
+      fr: ['Prix non confirmés', "Prix d'exemple non confirmés"],
     };
     for (const locale of LOCALES) {
       const messages = JSON.parse(fs.readFileSync(path.join(dashboardMessagesRoot, `${locale}.json`), 'utf8'));
-      const label: unknown = messages?.agentQuality?.checks?.services_example_price;
-      expect(typeof label).toBe('string');
-      expect(label).not.toBe(oldLabel[locale]);
-      for (const id of ['citas-calendarios', 'centro-calidad-agente', 'herramientas-tipo-negocio']) {
-        const body = byLocale[locale].find((article) => article.id === id)!.body;
-        expect({ locale, id, named: body.includes(`**${label}**`), old: body.includes(`**${oldLabel[locale]}**`) })
-          .toEqual({ locale, id, named: true, old: false });
-      }
-      // Nor anywhere else, as a label: an article outside those three that
-      // quotes the warning would still teach its old name. (The plain words —
-      // "mientras queden precios de ejemplo sin confirmar" — describe the
-      // state and stay; the capitalised label is what an owner looks for.)
-      const stillOld = byLocale[locale]
-        .filter((article) => article.body.includes(oldLabel[locale]))
+      expect(messages?.agentQuality?.checks?.services_example_price).toBeUndefined();
+      const stillNamed = byLocale[locale]
+        .filter((article) => retiredLabels[locale].some((label) => article.body.includes(`**${label}**`)))
         .map((article) => article.id);
-      expect({ locale, stillOld }).toEqual({ locale, stillOld: [] });
+      expect({ locale, stillNamed }).toEqual({ locale, stillNamed: [] });
     }
   });
 
@@ -1437,7 +1425,7 @@ describe('Parallly Assist knowledge-base contract', () => {
         'centro-calidad-agente': [health.bannerCritical, health.bannerAtRisk, health.noPriorityActions, blockers],
         'primeros-pasos': [health.bannerCritical],
         'canales-whatsapp': [checks.channel_connection],
-        'agentes-ia': [checks.agent_active, checks.fallback_message, checks.handoff_triggers],
+        'agentes-ia': [checks.agent_active, checks.fallback_message],
       };
       for (const [id, labels] of Object.entries(named)) {
         const body = articles.get(id)!.body;

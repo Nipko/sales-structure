@@ -6,6 +6,7 @@
  */
 
 import type { VerticalDefinitions } from "./vertical-catalog";
+import type { ReadinessCurrentResponse, ReadinessHistoryEntry } from "@/lib/readiness-panel";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
@@ -1692,6 +1693,11 @@ export const api = {
         apiGet(`/quality/${tenantId}/flagged?start=${params.start}&end=${params.end}&limit=${params.limit || 50}`),
     listAgentQualityAgents: (tenantId: string) =>
         apiGet<Array<{ id: string; name: string; is_active: boolean; is_default: boolean }>>(`/quality/${tenantId}/agents`),
+    /** Preparación del negocio (motor @parallext/business-spec en la API). `refresh` reevalúa ahora. */
+    getReadiness: (tenantId: string, refresh = false) =>
+        apiGet<ReadinessCurrentResponse>(`/readiness/${tenantId}${refresh ? '?refresh=1' : ''}`),
+    getReadinessHistory: (tenantId: string, limit = 30) =>
+        apiGet<ReadinessHistoryEntry[]>(`/readiness/${tenantId}/history?limit=${limit}`),
     getAgentAssessment: (tenantId: string, agentId?: string) =>
         apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>

@@ -305,7 +305,7 @@ export function checkExternal(spec: CompiledSpec, ext: { canonicalSubtypes?: rea
     }
     if (ext.uiTargetExists) {
         for (const r of Object.values(spec.requirements)) {
-            if (r.uiTarget && !ext.uiTargetExists(r.uiTarget)) errors.push({ code: 'UNKNOWN_UI_TARGET', id: r.id, message: `${r.id}: ${r.uiTarget} no está en dashboard-page-access.ts` });
+            if (r.uiTarget && !ext.uiTargetExists(r.uiTarget)) errors.push({ code: 'UNKNOWN_UI_TARGET', id: r.id, message: `${r.id}: ${r.uiTarget} no está en dashboard-page-access.ts o el dueño (tenant_admin) no la puede abrir` });
         }
     }
     return errors;

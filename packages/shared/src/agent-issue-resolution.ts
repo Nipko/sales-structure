@@ -26,9 +26,7 @@ import { findGuidedTourForQualityCode, type GuidedTourId } from './guided-tour-c
  *    check's own `href`, which is already specific and already sanitised on the
  *    way to the UI. Copying it here would be a second copy to go stale.
  *  · **It does not promise green.** `clears` says what following the
- *    resolution actually achieves, and `misleadingOperation` names the Assist
- *    operation a reader would reasonably expect to fix the check and which does
- *    not. That field exists because of two real cases, both below.
+ *    resolution actually achieves.
  */
 
 /** Where the answer lives. */
@@ -93,12 +91,6 @@ export interface AgentIssueResolution {
     /** Must match `findGuidedTourForQualityCode(code)`, including its absence. */
     readonly tourId?: GuidedTourId;
     readonly clears: AgentIssueClearance;
-    /**
-     * An Assist operation a reader would expect to clear this check, that does
-     * not — with the reason. Assist is told this so it stops offering a write
-     * that cannot move the thing the person was sent to fix.
-     */
-    readonly misleadingOperation?: { readonly operation: AgentOperationKey; readonly because: string };
     /** Required whenever `clears` is anything but `closes`: what is still left to do. */
     readonly note?: string;
     /**
@@ -146,9 +138,6 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
         },
     }),
     entry({ code: 'persona_identity', kind: 'guided_tour', tourId: 'agent_handoff_rules', clears: 'closes' }),
-    entry({ code: 'business_identity', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
-    entry({ code: 'business_contact', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
-    entry({ code: 'business_context', kind: 'guided_tour', tourId: 'business_identity', clears: 'closes' }),
 
     // ── Conversación y marca ─────────────────────────────────────────────────
     entry({ code: 'agent_language', kind: 'screen', clears: 'closes' }),
@@ -160,34 +149,12 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
 
     // ── Conocimiento ─────────────────────────────────────────────────────────
     entry({
-        code: 'knowledge_coverage', kind: 'assist_operation', operation: 'knowledge.faq.create',
-        tourId: 'knowledge_base', clears: 'closes',
-    }),
-    entry({
         code: 'rag_knowledge', kind: 'assist_operation', operation: 'knowledge.faq.create',
         tourId: 'knowledge_base', clears: 'needs_person',
         note: 'The resource is written and ingested in the same call, but the check counts embedded chunks: if the '
             + 'ingest fails the row exists and the check does not move, and the knowledge screen shows why.',
     }),
     entry({ code: 'rag_configuration', kind: 'screen', clears: 'closes' }),
-    entry({
-        code: 'tool_faqs', kind: 'guided_tour', tourId: 'knowledge_base', clears: 'closes',
-        misleadingOperation: {
-            operation: 'knowledge.faq.create',
-            because: 'it writes a knowledge resource of type faq, which feeds retrieval, while this check counts '
-                + 'published rows of the faqs table behind /admin/knowledge/faqs. Both are called "FAQ" in the '
-                + 'product and they are two different objects.',
-        },
-    }),
-    entry({
-        code: 'tool_policies', kind: 'screen', clears: 'closes',
-        misleadingOperation: {
-            operation: 'policies.legal_text.create',
-            because: 'it writes an inactive row in legal_text_versions — the customer-facing legal texts of '
-                + '/admin/compliance — while this check counts active rows of the policies table. Different table, '
-                + 'and deliberately inactive: publishing terms to the tenant\'s customers is a person\'s decision.',
-        },
-    }),
     entry({
         code: 'media_privacy_policy', kind: 'guided_tour', tourId: 'privacy_policy', clears: 'closes',
         note: 'Media analysis is included by the plan, but processing remains blocked until an active privacy policy '
@@ -222,25 +189,6 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
             + 'owner resumes the paused number (or re-checks funding) on the same screen. An unestablished currency '
             + 'under enforced spend protection needs a reconnect, or protection back in observe.',
     }),
-    entry({
-        code: 'tool_appointments', kind: 'assist_operation', operation: 'agenda.service.create',
-        tourId: 'appointments_setup', clears: 'needs_person',
-        note: 'Assist can add the service; the check also needs availability, and saving a week replaces the whole '
-            + 'set rather than adding a row, so a person does that on the agenda screen.',
-    }),
-    entry({
-        code: 'services_example_price', kind: 'screen', clears: 'closes',
-        note: 'Recipe-seeded services, and a gym\'s membership plans, keep the example price until the owner confirms '
-            + 'it: the agent never states an unconfirmed amount. A service or plan with no price at all counts too: '
-            + 'the agent tells the customer it is to be confirmed until the owner writes a price, marks it free or '
-            + 'quoted case by case. Non-critical: booking works meanwhile, and the check never reaches readiness. No '
-            + 'tour on purpose: the screen is Citas for agenda verticals, the service catalogue for the ones that seed '
-            + 'services without an agenda, and /admin/memberships when only a gym\'s membership plans are pending (an '
-            + 'example price or no price), so the check carries the right href instead.',
-    }),
-    entry({ code: 'tool_vehicles', kind: 'screen', clears: 'closes' }),
-    entry({ code: 'tool_vehicle_rentals', kind: 'screen', clears: 'closes' }),
-    entry({ code: 'tool_pet_boarding', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_repair_orders', kind: 'screen', clears: 'closes' }),
     entry({
         code: 'tool_payments', kind: 'assist_route', operation: 'payments.rail.configure', clears: 'closes',
@@ -250,16 +198,7 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
         note: 'Deliberately no tour: the fix is two switches on the agent itself, and the setup card suppresses a '
             + 'tour for this code for the same reason.',
     }),
-    entry({ code: 'test_drive_service', kind: 'guided_tour', tourId: 'appointments_setup', clears: 'closes' }),
-    entry({ code: 'test_drive_staff', kind: 'guided_tour', tourId: 'appointments_setup', clears: 'closes' }),
-    entry({ code: 'tool_catalog', kind: 'screen', clears: 'closes' }),
-    entry({ code: 'tool_ecommerce', kind: 'screen', clears: 'closes' }),
     entry({ code: 'tool_orders', kind: 'screen', clears: 'closes' }),
-    entry({
-        code: 'tool_offers', kind: 'assist_route', operation: 'catalogue.offer.create', clears: 'closes',
-        note: 'An offer is a price the agent will then quote, bound to a course or campaign that must already '
-            + 'exist. Assist routes to the offers screen rather than guessing at a commitment.',
-    }),
     entry({ code: 'tool_crm', kind: 'screen', clears: 'closes' }),
 
     // Vertical catalogues. Six of them count rows of `services`, which is the
@@ -285,17 +224,12 @@ export const AGENT_ISSUE_RESOLUTIONS: readonly AgentIssueResolution[] = Object.f
 
     // ── Seguridad y escalada ─────────────────────────────────────────────────
     entry({ code: 'forbidden_topics', kind: 'guided_tour', tourId: 'agent_handoff_rules', clears: 'closes' }),
-    entry({ code: 'handoff_triggers', kind: 'guided_tour', tourId: 'agent_handoff_rules', clears: 'closes' }),
-    entry({
-        code: 'human_handoff_route', kind: 'assist_route', operation: 'roles.member.grant',
-        tourId: 'human_handoff_route', clears: 'closes',
-        note: 'The check wants an active human who can take the conversation. Who may do that is a privilege '
-            + 'decision, so Assist opens the team screen instead of granting it.',
-    }),
 
     // ── Robustez y operación ─────────────────────────────────────────────────
-    entry({ code: 'business_hours', kind: 'guided_tour', tourId: 'business_hours', clears: 'closes' }),
-    entry({ code: 'after_hours_behavior', kind: 'guided_tour', tourId: 'business_hours', clears: 'closes' }),
+    // Whether the business has its data (identity, hours, FAQs, policies,
+    // services, catalogue, team for handoff) is the readiness engine's
+    // question since R2 (C0 §4.2): it has no row here because Health no
+    // longer checks it. The panel /admin/readiness links each gap to its screen.
     entry({ code: 'llm_limits', kind: 'screen', clears: 'closes' }),
 
     // ── Recomendaciones del pilar probado ────────────────────────────────────
@@ -427,21 +361,6 @@ export function assistExecutableIssueCodes(): readonly string[] {
 }
 
 /**
- * The pairs Assist must not offer: a code, and the operation that looks like it
- * would fix it. Fed to the model so it names the screen instead of the write.
- */
-export function misleadingAssistOperations(): ReadonlyArray<{ code: string; operation: AgentOperationKey; because: string }> {
-    return Object.freeze(AGENT_ISSUE_RESOLUTIONS
-        .filter((resolution): resolution is AgentIssueResolution & { misleadingOperation: NonNullable<AgentIssueResolution['misleadingOperation']> } =>
-            resolution.misleadingOperation !== undefined)
-        .map(resolution => ({
-            code: resolution.code,
-            operation: resolution.misleadingOperation.operation,
-            because: resolution.misleadingOperation.because,
-        })));
-}
-
-/**
  * Structural problems with the table itself, as a list rather than a boolean:
  * an operation that is not in the registry, a tour that disagrees with the tour
  * contract, a non-`closes` row with nothing said about what is left.
@@ -481,10 +400,6 @@ export function agentIssueResolutionDefects(
         }
         if (resolution.clears !== 'closes' && !(resolution.note ?? '').trim()) {
             defects.push(`${resolution.code}: ${resolution.clears} without saying what is left to do`);
-        }
-        if (resolution.misleadingOperation
-            && !executable.has(resolution.misleadingOperation.operation)) {
-            defects.push(`${resolution.code}: misleadingOperation names ${resolution.misleadingOperation.operation}, which is not executable`);
         }
         if (resolution.byMode) {
             for (const mode of AGENT_CHANGE_MODES) {

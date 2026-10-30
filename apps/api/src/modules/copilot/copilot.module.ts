@@ -18,6 +18,7 @@ import { ComplianceModule } from '../compliance/compliance.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { EvaluationRevisionModule } from '../evaluation-revision/evaluation-revision.module';
 import { AppointmentsModule } from '../appointments/appointments.module';
+import { ReadinessModule } from '../readiness/readiness.module';
 
 @Module({
     // The content operations reuse the module that owns each table rather than
@@ -25,7 +26,7 @@ import { AppointmentsModule } from '../appointments/appointments.module';
     // different rules. Appointments is a forwardRef for the same reason
     // ConversationsModule holds one: it reaches back through channels.
     imports: [ConfigModule, AIModule, KnowledgeModule, VerticalsModule, QualityModule, PersonaModule,
-        ComplianceModule, CatalogModule, EvaluationRevisionModule,
+        ComplianceModule, CatalogModule, EvaluationRevisionModule, ReadinessModule,
         forwardRef(() => AppointmentsModule),
         forwardRef(() => TenantsModule), forwardRef(() => ConversationsModule)],
     controllers: [CopilotController],

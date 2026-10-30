@@ -1024,6 +1024,7 @@
       "automationTemplates": "Plantillas",
       "sales": "Ventas",
       "agentQuality": "Salud de agentes",
+      "readiness": "Preparación del negocio",
       "agentSimulation": "Probar agente",
       "procedures": "Procedimientos",
       "organizations": "Organizaciones",
@@ -12923,6 +12924,13 @@
         "connectLead": "Conecta {channel}"
       },
       "pendingReason": "Pendiente: {check}",
+      "readinessVerdict": {
+        "no_listo": "Faltan datos que bloquean la atención:",
+        "limitado": "Puede atender; algunas respuestas quedan en «no consta» hasta completar los datos.",
+        "listo": "Tu negocio tiene lo necesario para atender.",
+        "openPanel": "Ver todo lo que falta",
+        "askAdmin": "Pídeselo a un administrador"
+      },
       "verificationUnavailable": "Pendiente de verificar. Reintenta cuando la consulta esté disponible.",
       "title": "Puesta en marcha",
       "description": "Lo mínimo para que tu agente responda a un cliente. Empieza por el paso marcado; el resto toma minutos.",
@@ -12934,12 +12942,8 @@
       "items": {
         "agent": "Revisar a tu agente",
         "channel": "Conectar y asignar un canal",
-        "knowledge": "Cargar lo que el agente debe saber",
         "catalog": "Cargar tu catálogo",
-        "business": "Contar qué hace tu negocio",
-        "team": "Contar con una persona que reciba los chats",
-        "hours": "Confirmar tu horario",
-        "appointments": "Configurar servicios y disponibilidad",
+        "business": "Preparar tu negocio para atender",
         "mission": "Acordar la misión del agente",
         "tests": "Probar los resultados del agente"
       },
@@ -12984,14 +12988,7 @@
         "fix_channel_connection": "{credentialIssue, select, none {{agent} no tiene ningún canal conectado que pueda recibir mensajes. Conecta {disconnected} o asigna un canal que ya esté conectado.} expiring {{agent} responde con normalidad por {connectedChannels}, pero la autorización de ese canal vence pronto. Reautorízala antes de que deje de enviar.} unknown {{agent} está conectado a {connectedChannels}, pero no pudimos verificar la autorización de ese canal. Ábrelo en Canales para confirmar que sigue vigente.} other {{agent} está conectado a {connectedChannels}, pero esa autorización ya no sirve ({credentialIssue}): hasta reautorizarla, el agente no puede enviar respuestas.}}",
         "fix_channel_coverage": "{agent} está asignado a {assigned} canales y solo {connected} están conectados. Sin conexión: {disconnected}. Conecta ese canal o quítalo de la asignación del agente.",
         "fix_channel_assignment": "{agent} no tiene ningún canal asignado, así que hoy no atiende a nadie. Marca en el agente los canales que va a responder.",
-        "fix_human_handoff_route": "No hay ninguna persona activa que pueda recibir la conversación cuando {agent} la pasa a un humano. Invita al menos a alguien con rol agente o supervisor.",
-        "fix_handoff_triggers": "{agent} no tiene motivos definidos para pasar una conversación a una persona, así que intenta responder todo. Agrega al menos un motivo de escalamiento.",
-        "fix_business_identity": "Falta la información básica del negocio, así que {agent} responde sin saber a quién representa. Completa el nombre y qué hace el negocio.",
         "fix_rag_knowledge": "{agent} no tiene conocimiento indexado para consultar: responde solo con lo que dice su instrucción. Sube documentos o activa una fuente de conocimiento.",
-        "fix_knowledge_coverage": "El conocimiento cargado no alcanza para las preguntas que están llegando y quedan temas sin respuesta. Agrega contenido o publica lo que está en borrador.",
-        "fix_tool_appointments": "La agenda está activada pero le falta configuración, así que {agent} va a decir que no hay horarios. Carga servicios y bloques de disponibilidad.",
-        "fix_services_example_price": "{priceScope, select, plans {{count, plural, one {Hay # plan de membresía con un precio de ejemplo de tu rubro.} other {Hay # planes de membresía con un precio de ejemplo de tu rubro.}}} both {{count, plural, one {Hay # precio de ejemplo de tu rubro entre servicios y planes.} other {Hay # precios de ejemplo de tu rubro entre servicios y planes.}}} other {{count, plural, one {Hay # servicio con un precio de ejemplo de tu rubro.} other {Hay # servicios con un precio de ejemplo de tu rubro.}}}} {agent} no dice un precio de ejemplo hasta que lo confirmes.",
-        "fix_business_hours": "El negocio no tiene horario definido, así que {agent} no puede decir cuándo atienden ni qué responder fuera de hora. Define el horario o marca atención 24/7.",
         "fix_fallback_message": "Falta el mensaje para cuando {agent} no puede responder y la conversación queda sin salida. Escribe qué debe decir y a quién pasa el caso.",
         "fix_behavior_rules": "{agent} no tiene reglas de comportamiento, así que improvisa en cada conversación. Escribe al menos una regla de qué hacer y qué no.",
         "run_eval": "{agent} todavía no pasó una prueba automática, así que no hay evidencia de cómo responde. Corre una evaluación antes de dejarlo atendiendo solo.",
@@ -12999,13 +12996,9 @@
         "collect_production_evidence": "Todavía no hay suficientes conversaciones reales de {agent} para medir su desempeño. Sigue atendiendo con él y vuelve cuando haya más muestra.",
         "resolve_knowledge_gaps": "Hubo preguntas que {agent} no pudo responder con el conocimiento disponible. Revisa esos huecos y agrega el contenido que falta.",
         "generic": "Esta acción quedó abierta para {agent}. Abre la pantalla, corrige lo que falta y el estado se actualiza solo.",
-        "fix_tool_vehicles": "Carga al menos un vehículo disponible para que {agent} pueda mostrar opciones reales.",
         "fix_test_drive_permissions": "La misión de {agent} incluye pruebas de manejo. Activa la agenda y el permiso de agendar, o ajusta la misión si solo debe informar sobre vehículos.",
-        "fix_test_drive_service": "Crea un servicio presencial o híbrido de duración fija para las pruebas de manejo. Una consulta en línea no sirve para reservar un vehículo.",
-        "fix_test_drive_staff": "Asigna un usuario activo del negocio y configura un bloque de disponibilidad que alcance para la duración de la prueba. El horario concreto se verifica al reservar.",
         "fix_whatsapp_delivery": "{reason, select, timezone_missing {{agent} no puede responder por WhatsApp porque falta confirmar la zona horaria de facturación de tu número; elígela en la pantalla de WhatsApp y sus respuestas vuelven a salir.} funding_absent {Tu cuenta de WhatsApp no tiene un método de pago en Meta: los mensajes los cobra Meta, no nosotros, y desde el 1 de octubre de 2026 deja de entregar las respuestas de {agent} si no agregas uno.} funding_restricted {Meta restringió los cobros de tu cuenta de WhatsApp, así que no entrega las respuestas de {agent} hasta que resuelvas el pago en Meta y reanudes el número en la pantalla de WhatsApp.} currency_unknown {Todavía no sabemos en qué moneda te cobra Meta por WhatsApp y, como tienes activa la protección de gasto, las respuestas de {agent} esperan hasta saberlo.} other {Tu cuenta de WhatsApp está frenando las respuestas de {agent} antes de que salgan; revisa en la pantalla de WhatsApp qué le falta.}}",
-        "fix_channel_unanswered": "{cause, select, conflict {Hay dos agentes asignados a {channels} y, como no elegimos uno por ti, no contesta ninguno. Deja ese canal en un solo agente.} mixed {Nadie contesta en {channels}: algunos de esos canales no tienen agente y otros tienen dos a la vez. Deja cada canal en un solo agente.} other {Ningún agente contesta en {channels}: los mensajes que llegan ahí se quedan sin respuesta. Asigna ese canal a un agente o marca uno como agente predeterminado.}}",
-        "services_no_price": "{priceScope, select, plans {{count, plural, one {Hay # plan de membresía sin precio.} other {Hay # planes de membresía sin precio.}}} both {{count, plural, one {Hay # servicio o plan de membresía sin precio.} other {Hay # servicios y planes de membresía sin precio.}}} other {{count, plural, one {Hay # servicio sin precio.} other {Hay # servicios sin precio.}}}} Mientras falte el precio, {agent} le dice al cliente que está por confirmar."
+        "fix_channel_unanswered": "{cause, select, conflict {Hay dos agentes asignados a {channels} y, como no elegimos uno por ti, no contesta ninguno. Deja ese canal en un solo agente.} mixed {Nadie contesta en {channels}: algunos de esos canales no tienen agente y otros tienen dos a la vez. Deja cada canal en un solo agente.} other {Ningún agente contesta en {channels}: los mensajes que llegan ahí se quedan sin respuesta. Asigna ese canal a un agente o marca uno como agente predeterminado.}}"
       },
       "channelNames": {
         "whatsapp": "WhatsApp",
@@ -13176,48 +13169,28 @@
     "checks": {
       "agent_active": "Agente activo",
       "persona_identity": "Identidad y rol del agente",
-      "business_identity": "Identidad del negocio",
-      "business_contact": "Datos de contacto del negocio",
-      "business_context": "Contexto, objetivos y público",
       "agent_language": "Idioma configurado",
       "brand_voice": "Voz y tono de marca",
       "greeting": "Saludo inicial",
       "fallback_message": "Respuesta cuando no sabe",
       "behavior_rules": "Reglas de comportamiento",
       "custom_prompt": "Prompt personalizado",
-      "knowledge_coverage": "Cobertura de conocimiento",
       "rag_knowledge": "Base de conocimiento lista",
       "rag_configuration": "Configuración de recuperación",
       "tool_knowledge": "Herramienta de conocimiento",
-      "tool_faqs": "Preguntas frecuentes",
-      "tool_policies": "Políticas del negocio",
       "media_privacy_policy": "Privacidad para imágenes y audios",
-      "tool_catalog": "Catálogo disponible",
-      "tool_appointments": "Agenda y disponibilidad",
-      "services_example_price": "Precios sin confirmar",
       "tool_orders": "Gestión de pedidos",
-      "tool_ecommerce": "Integración de comercio",
-      "tool_offers": "Ofertas vigentes",
       "tool_crm": "Acciones de CRM",
       "channel_assignment": "Canal asignado al agente",
       "operational_channel_scope": "Solo canales conversacionales certificados",
       "channel_connection": "Conexión operativa del canal",
       "forbidden_topics": "Temas restringidos",
-      "handoff_triggers": "Motivos de escalamiento",
-      "human_handoff_route": "Ruta hacia atención humana",
-      "business_hours": "Horarios del negocio",
-      "after_hours_behavior": "Comportamiento fuera de horario",
       "llm_limits": "Límites de respuesta del modelo",
       "vertical_tool": "Herramienta operativa de la industria",
       "unknown": "Control de configuración",
-      "tool_vehicles": "Inventario de vehículos disponible",
-      "tool_vehicle_rentals": "Inventario para alquileres",
-      "tool_pet_boarding": "Capacidad de guardería y hotel",
       "tool_repair_orders": "Órdenes de taller",
       "tool_payments": "Proveedor de cobros",
       "test_drive_permissions": "Permiso para reservar pruebas de manejo",
-      "test_drive_service": "Servicio para pruebas de manejo",
-      "test_drive_staff": "Asesor y horario para pruebas de manejo",
       "channel_unanswered": "Cada canal conectado tiene un agente que responde",
       "whatsapp_delivery": "WhatsApp puede entregar las respuestas"
     },
@@ -15909,6 +15882,83 @@
       "smtpUnknown": "El servidor no confirmó el resultado. Revisa la bandeja y los registros antes de repetir el envío.",
       "ineligible": "El destinatario dejó de cumplir los criterios de la audiencia.",
       "invalidInput": "Revisa los campos, sus límites y las traducciones antes de guardar."
+    }
+  },
+  "readinessPanel": {
+    "title": "Preparación del negocio",
+    "subtitle": "Qué datos de tu negocio ya puede usar el agente y qué falta para atender bien.",
+    "loading": "Calculando la preparación…",
+    "tenantRequired": "Elige un negocio para ver su preparación.",
+    "error": "No se pudo calcular la preparación.",
+    "refresh": "Recalcular",
+    "evaluatedAt": "calculado el {date}",
+    "summary": "{blocking} bloqueantes · {necessary} necesarios · {coverage}% de lo recomendado",
+    "verdict": {
+      "no_listo": {
+        "title": "Aún no está listo",
+        "description": "Faltan datos sin los cuales el agente no puede atender a clientes reales."
+      },
+      "limitado": {
+        "title": "Listo con límites",
+        "description": "Puede atender, pero algunas preguntas quedarán en «no consta» hasta que completes los datos necesarios."
+      },
+      "listo": {
+        "title": "Listo",
+        "description": "El agente tiene los datos que necesita para atender."
+      }
+    },
+    "groups": {
+      "blocking": {
+        "title": "Bloqueantes",
+        "description": "Sin estos datos el agente no puede salir a atender.",
+        "empty": "No hay bloqueantes."
+      },
+      "necessary": {
+        "title": "Necesarios",
+        "description": "El agente atiende, pero responderá «no consta» en estos temas.",
+        "empty": "No falta nada necesario."
+      },
+      "recommended": {
+        "title": "Recomendados",
+        "description": "Mejoran las respuestas. Cobertura: {pct}%.",
+        "show": "Ver recomendados"
+      },
+      "quality": {
+        "title": "Calidad",
+        "description": "Datos de ejemplo, sembrados, contradictorios o heredados que conviene revisar."
+      },
+      "platform": {
+        "title": "Plataforma",
+        "description": "Lo resolvemos nosotros; no tienes que hacer nada."
+      }
+    },
+    "limitedIntents": "{count, plural, one {# pregunta quedará} other {# preguntas quedarán}} en «no consta»",
+    "whyItMatters": "Afecta a:",
+    "alsoFixes": "Al completarlo también se resuelve:",
+    "ratio": "{ok} de {total} completos",
+    "action": {
+      "fix": "Completar",
+      "askAdmin": "Pídeselo a un administrador",
+      "comingSoon": "Pronto podrás completarlo aquí"
+    },
+    "cause": {
+      "ausente": "falta",
+      "ejemplo": "de ejemplo",
+      "sembrado": "de plantilla",
+      "contradictorio": "contradictorio",
+      "parcial": "incompleto",
+      "caducado": "vencido",
+      "hecho_sin_declarar": "sin declarar",
+      "plataforma": "plataforma"
+    },
+    "coverage": {
+      "title": "Cobertura por área",
+      "value": "{ok}/{total} · {pct}%"
+    },
+    "history": {
+      "title": "Historial",
+      "empty": "Aún no hay historial.",
+      "counts": "{blocking} bloqueantes · {necessary} necesarios"
     }
   }
 }

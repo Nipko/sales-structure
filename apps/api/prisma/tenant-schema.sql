@@ -6467,3 +6467,24 @@ CREATE INDEX IF NOT EXISTS "idx_insurance_quotes_conversation"
 CREATE INDEX IF NOT EXISTS "idx_resource_rentals_conversation"
     ON "{{SCHEMA_NAME}}"."resource_rentals" ("conversation_id") WHERE "conversation_id" IS NOT NULL;
 -- END OPERATION ORIGIN THREAD
+
+-- BEGIN READINESS EVALUATIONS
+-- Historial de la preparación del negocio (C0 §2.7, rebanada R2). Una fila por resultado DISTINTO del motor
+-- de @parallext/business-spec (`result_hash` no depende de la hora de la lectura); la última evaluación vive
+-- además en Redis. La migración 20261030120000_add_readiness_evaluations crea lo mismo en los tenants que ya
+-- existen, y readiness-evaluations-schema.spec.ts exige que las dos definiciones coincidan.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."readiness_evaluations" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        spec_version TEXT NOT NULL,
+        snapshot_hash TEXT NOT NULL,
+        result_hash TEXT NOT NULL,
+        verdict TEXT NOT NULL,
+        counts JSONB NOT NULL DEFAULT '{}'::jsonb,
+        result JSONB NOT NULL,
+        "trigger" TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT readiness_evaluations_verdict CHECK (verdict IN ('no_listo','limitado','listo'))
+    );
+CREATE INDEX IF NOT EXISTS idx_readiness_evaluations_created
+        ON "{{SCHEMA_NAME}}"."readiness_evaluations" (created_at DESC);
+-- END READINESS EVALUATIONS

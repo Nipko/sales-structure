@@ -43,12 +43,13 @@ Agent IA**.
   conversation et la marque, les actions, la sécurité et le transfert, ainsi que la
   robustesse opérationnelle. Une capacité hors périmètre peut être **Non applicable**
   et ne réduit pas le résultat. L'état général est déterminé par les **essentiels**
-  (canal, agent, entreprise, équipe) et par tout problème réel ; une mission non ajustée
+  (canal, agent, préparation de l'entreprise) et par tout problème réel ; une mission non ajustée
   ou un test non exécuté restent en attente, mais ne déclarent pas « pas prêt » pour un
-  agent qui répond déjà. Par exemple, tant que l'entreprise n'a pas confirmé
-  les prix d'exemple apportés par la recette de son secteur (services et, dans une salle de
-  sport, forfaits d'adhésion), l'avertissement non critique **Prix non confirmés**
-  s'affiche : l'agent n'annonce pas ces prix tant qu'ils ne sont pas confirmés ; il compte aussi les services et forfaits encore sans prix.
+  agent qui répond déjà. Savoir si l'entreprise a ses
+  données (identité, horaires, questions fréquentes, politiques, services, prix, équipe
+  pour le transfert) n'est plus vérifié par la Santé des agents : c'est le panneau de
+  préparation de l'entreprise qui le décide, avec un verdict et le lien vers l'écran où
+  compléter chaque donnée.
 - **Qualité testée :** affiche la dernière évaluation critique et la dernière
   simulation, avec version, date, seuil et scénarios. Les preuves antérieures peuvent
   devenir obsolètes lorsque l'agent change. Il s'agit d'une preuve automatisée, pas
@@ -222,11 +223,11 @@ lieu d'affirmer que vous n'avez aucun canal connecté.
 ## Questions fréquentes
 
 **La checklist de configuration est-elle identique au Centre de qualité ?**
-Non. La carte **Mise en route** de l'Accueil affiche uniquement les quatre essentiels
-(canal, agent, entreprise et équipe) disponibles pour votre forfait et votre rôle,
-signale l'étape **Suivant** et disparaît une fois terminée. Elle remplace l'ancienne
-pastille flottante `8/9`. La Santé des agents ajoute ce qui améliore l'agent (mission,
-connaissances, horaires, rendez-vous, catalogue), les tests et les preuves réelles.
+Non. La carte **Mise en route** de l'Accueil affiche uniquement les essentiels
+(canal, agent et le verdict de préparation de l'entreprise) disponibles pour votre forfait
+et votre rôle, signale l'étape **Suivant** et disparaît une fois terminée. Elle remplace
+l'ancienne pastille flottante `8/9`. La Santé des agents ajoute le technique qui améliore
+l'agent (mission, réglages de recherche, catalogue), les tests et les preuves réelles.
 
 **Un bon score de simulation suffit-il pour le laisser s'occuper des clients seul ?**
 Non. Il réduit le risque, mais doit être examiné avec ce qui reste à régler, la

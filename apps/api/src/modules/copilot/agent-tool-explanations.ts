@@ -51,20 +51,6 @@ export interface AgentToolExplanation {
         readonly repairRoute: string | null;
         readonly readiness: readonly string[];
     };
-    /**
-     * Each readiness requirement, citing the predicate its tool really runs.
-     *
-     * `requires.readiness` and `missing.readiness` are key names — `faq_content`,
-     * `appointment_services` — and a key name is not an audit. It does not say
-     * what was asked, on which table, about which dimension, or whether the
-     * answer came back at all. So a check that filters a column the table does
-     * not have and a tenant who genuinely loaded nothing produced the same two
-     * words on screen, and the owner was told to do the one thing that could not
-     * help. These citations name the predicate, the table, the dimensions it
-     * decides, whether the source was readable, and the screen whose write
-     * actually moves it — which is not always the one the CTA opens.
-     */
-    readonly readinessAudit: readonly ReadinessCitation[];
     /** A sentence from this business, not a generic one. */
     readonly example: string | null;
     /** Whether it can be exercised without touching a customer. */
@@ -202,8 +188,11 @@ export function buildAgentToolExplanations(input: {
                 : evidence.includes('stale') ? 'stale' : 'verified';
 
         // Each readiness requirement, audited against the predicate its tool
-        // runs. Built before the state, because a requirement whose source
-        // nobody could read changes what the state is allowed to say.
+        // runs, only to know whether its source could be read: a requirement
+        // nobody could read changes what the state is allowed to say. The
+        // citation itself is no longer handed to the surfaces — the gap of the
+        // readiness engine (`@parallext/business-spec`) explains a missing fact
+        // since R2 (C0 §4.2); this audit goes with the predicate register in R4.
         const definitions = input.readinessDefinitions ?? {};
         const readinessAudit = readiness
             .map(key => {
@@ -260,7 +249,6 @@ export function buildAgentToolExplanations(input: {
                 repairRoute: exclusion?.repairRoute ?? null,
                 readiness: Object.freeze(missingReadiness),
             }),
-            readinessAudit: Object.freeze(readinessAudit),
             example: businessExample(input.contract?.subtypeProfileId ?? null, using[0]?.key, language),
             safeTest: Object.freeze({
                 available: input.safeToolNames.has(tool),

@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { AGENT_CONFIG_TOOL_FAMILIES, AGENT_QUALITY_DIMENSIONS, AgentQualityOverview } from '@parallext/shared';
-import { AgentQualityService } from './agent-quality.service';
+import { AgentQualityService, READINESS_OWNED_TOOL_FAMILIES, RETIRED_BUSINESS_DATA_CHECKS } from './agent-quality.service';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const AGENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -42,28 +42,12 @@ type HarnessOptions = {
     credentialLookupFails?: boolean;
     legacyWhatsAppRows?: any[];
     boundChannelBindings?: string[];
-    activeHumans?: number;
     knowledgeChunks?: number;
     knowledgeUpdatedAt?: string | null;
-    faqs?: number;
-    policies?: number;
     privacyPolicies?: number;
     mediaProcessing?: { audioPerMonth: number; imagePerMonth: number };
     planLookupFails?: boolean;
-    services?: number;
-    slots?: number;
-    testDriveServices?: number;
-    testDriveSlots?: number;
-    vehicles?: number;
-    products?: number;
     orders?: number;
-    offers?: number;
-    boardingServices?: number;
-    examplePriceServices?: number;
-    examplePricePlans?: number;
-    /** Active services / plans with no amount at all (confirmed or NULL status, `price IS NULL`). */
-    noPriceServices?: number;
-    noPricePlans?: number;
     industry?: string;
     paymentConfig?: { ready: boolean; activeProvider: string | null } | Error;
     verticalCatalogs?: Record<string, number>;
@@ -154,28 +138,13 @@ function createHarness(options: HarnessOptions = {}) {
         if (query.includes('FROM agent_personas')) return agent ? [agent] : [];
         if (query.includes('FROM whatsapp_channels')) return options.legacyWhatsAppRows ?? [];
         if (query.includes('FROM companies')) {
-            const company = options.company === null ? null : {
-                name: 'Parallly Demo',
-                about: 'Ayudamos a negocios a atender mejor.',
-                phone: '+573001234567',
-                email: null,
-                website: null,
-                address: null,
-                updated_at: '2026-08-01T00:00:00.000Z',
-                ...(options.company || {}),
-            };
-            return company ? [company] : [];
+            return [{ updated_at: options.company === null ? null : (options.company?.updated_at ?? '2026-08-01T00:00:00.000Z') }];
         }
         if (query.includes('FROM knowledge_embeddings')) return [{ count: options.knowledgeChunks ?? 1, updated_at: options.knowledgeUpdatedAt ?? '2026-08-01T00:00:00.000Z' }];
-        if (query.includes('FROM faqs')) return [{ count: options.faqs ?? 0, updated_at: null }];
-        if (query.includes('FROM policies')) return [{ count: options.policies ?? 0, privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
+        if (query.includes('FROM faqs')) return [{ updated_at: null }];
+        if (query.includes('FROM policies')) return [{ privacy_count: options.privacyPolicies ?? 0, updated_at: null }];
         if (query.includes('FROM properties') && query.includes('tour_packages')) return [options.verticalCatalogs ?? {}];
-        if (query.includes('FROM services') && query.includes('availability_slots')) return [{ services: options.services ?? 0, slots: options.slots ?? 0, example_price_services: options.examplePriceServices ?? 0, no_price_services: options.noPriceServices ?? 0, test_drive_services: options.testDriveServices ?? 0, test_drive_slots: options.testDriveSlots ?? 0, boarding_services: options.boardingServices ?? 0 }];
-        if (query.includes('FROM membership_plans') && query.includes('price_status')) return [{ count: options.examplePricePlans ?? 0, no_price: options.noPricePlans ?? 0 }];
-        if (query.includes('FROM vehicles')) return [{ count: options.vehicles ?? 0 }];
-        if (query.includes('FROM products')) return [{ count: options.products ?? 0 }];
         if (query.includes('FROM orders')) return [{ count: options.orders ?? 0 }];
-        if (query.includes('FROM commercial_offers')) return [{ count: options.offers ?? 0 }];
         if (query.includes('FROM eval_runs')) return latestEval ? [latestEval] : [];
         if (query.includes('FROM simulation_runs')) return latestSimulation ? [latestSimulation] : [];
         if (query.includes('information_schema.columns')) return [{
@@ -234,7 +203,6 @@ function createHarness(options: HarnessOptions = {}) {
                 return options.channelRows ?? [{ channel_type: 'whatsapp', account_id: 'wa-1', waba_timezone: 'America/Bogota' }];
             }
             if (query.includes('widget_configs')) return options.widgetRows ?? [];
-            if (query.includes('FROM users')) return [{ count: options.activeHumans ?? 1 }];
             throw new Error(`Unhandled global test SQL: ${query}`);
         }),
     };
@@ -268,31 +236,21 @@ describe('AgentQualityService', () => {
             evidence: { unsupportedAssignments: 1, unsupportedChannelTypes: 'email' } });
     });
 
-    it.each([
-        [{ aiOutsideHours: false, afterHoursMessageOverride: 'Volvemos mañana.' }, 'pass'],
-        [{}, 'pass'], // Runtime defaults to answering outside business hours.
-        [{ aiOutsideHours: false, afterHoursMessageOverride: '   ' }, 'warning'],
-    ])('checks the effective after-hours behavior for %j', async (hours, expected) => {
-        const result = await createHarness({ config: { ...completeConfig, hours },
-            tenantSettings: { businessHours: { is247: false, schedule: { monday: { enabled: true, open: '09:00', close: '17:00' } } } },
-        }).service.getOverview(TENANT_ID, AGENT_ID);
-        expect(check(result, 'business_hours').status).toBe('pass');
-        expect(check(result, 'after_hours_behavior').status).toBe(expected);
-    });
-
     it('diagnoses every configurable tool family, including the latest native operations', async () => {
         const tools = Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, { enabled: true }]));
         const result = await createHarness({
-            config: { ...completeConfig, tools }, vehicles: 0, boardingServices: 0,
+            config: { ...completeConfig, tools },
             paymentConfig: { ready: false, activeProvider: null },
         }).service.getOverview(TENANT_ID, AGENT_ID);
         const codes = new Set(result.preparation.dimensions.flatMap(dimension => dimension.checks.map(item => item.code)));
         for (const family of Object.keys(tools)) {
             const snake = family.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-            expect(codes.has(family === 'knowledge' ? 'rag_knowledge' : `tool_${snake}`)).toBe(true);
+            // Families whose only question was "does the business have the data"
+            // are the readiness engine's (C0 §4.2): never re-checked here, and
+            // never reported as a missing diagnostic either.
+            if (READINESS_OWNED_TOOL_FAMILIES.includes(snake)) expect(codes.has(`tool_${snake}`)).toBe(false);
+            else expect(codes.has(family === 'knowledge' ? 'rag_knowledge' : `tool_${snake}`)).toBe(true);
         }
-        expect(check(result, 'tool_vehicle_rentals')).toMatchObject({ status: 'fail', critical: true, href: '/admin/vehicles' });
-        expect(check(result, 'tool_pet_boarding')).toMatchObject({ status: 'fail', critical: true, href: '/admin/service-catalog' });
         expect(check(result, 'tool_repair_orders')).toMatchObject({ status: 'pass' });
         expect(check(result, 'tool_payments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/settings/integrations/payments' });
     });
@@ -307,7 +265,6 @@ describe('AgentQualityService', () => {
     it('blocks media processing when the plan includes it but no active privacy policy exists', async () => {
         const result = await createHarness({
             mediaProcessing: { audioPerMonth: 100, imagePerMonth: 50 },
-            policies: 2,
             privacyPolicies: 0,
         }).service.getOverview(TENANT_ID, AGENT_ID);
         expect(check(result, 'media_privacy_policy')).toMatchObject({
@@ -322,7 +279,6 @@ describe('AgentQualityService', () => {
     it('passes media privacy readiness only with an active privacy policy', async () => {
         const result = await createHarness({
             mediaProcessing: { audioPerMonth: -1, imagePerMonth: 0 },
-            policies: 1,
             privacyPolicies: 1,
         }).service.getOverview(TENANT_ID, AGENT_ID);
         expect(check(result, 'media_privacy_policy')).toMatchObject({ status: 'pass', critical: true });
@@ -333,46 +289,61 @@ describe('AgentQualityService', () => {
         expect(check(result, 'media_privacy_policy')).toMatchObject({ status: 'unknown', critical: true });
     });
 
-    it('identifies test-drive prerequisites even when the general agenda has rows', async () => {
-        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
-        const result = await createHarness({ config, services: 1, slots: 1, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
-        expect(check(result, 'tool_appointments').status).toBe('pass');
-        expect(check(result, 'tool_vehicles').status).toBe('pass');
-        expect(check(result, 'test_drive_service')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=services' });
-        expect(check(result, 'test_drive_staff')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=config' });
-    });
     it('keeps the intended test-drive mission pending when booking permission is disabled', async () => {
         const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: false } } };
-        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
+        const result = await createHarness({ config }).service.getOverview(TENANT_ID, AGENT_ID);
         expect(check(result, 'test_drive_permissions')).toMatchObject({ status: 'fail', href: `/admin/agent/${AGENT_ID}` });
     });
-    it('reports verified setup without claiming that the vehicle task has passed evaluation', async () => {
+    it('reports booking permission as configured without claiming that the vehicle task has passed evaluation', async () => {
         const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
-        const result = await createHarness({ config, vehicles: 1, testDriveServices: 1, testDriveSlots: 1, latestEval: null, latestSimulation: null }).service.getOverview(TENANT_ID, AGENT_ID);
-        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('pass');
+        const result = await createHarness({ config, latestEval: null, latestSimulation: null }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'test_drive_permissions').status).toBe('pass');
         expect(result.tested.status).not.toBe('ready');
     });
     it('does not require booking for a mission explicitly limited to finding vehicles', async () => {
         const config = { ...completeConfig, mission: { intentKeys: ['find_vehicle'] }, tools: { vehicles: { enabled: true } } };
-        const result = await createHarness({ config, vehicles: 1 }).service.getOverview(TENANT_ID, AGENT_ID);
-        for (const code of ['test_drive_service', 'test_drive_staff', 'test_drive_permissions']) expect(check(result, code).status).toBe('not_applicable');
+        const result = await createHarness({ config }).service.getOverview(TENANT_ID, AGENT_ID);
+        expect(check(result, 'test_drive_permissions').status).toBe('not_applicable');
     });
-    it('does not present failed inventory or schedule probes as empty data', async () => {
-        const config = { ...completeConfig, tools: { vehicles: { enabled: true }, appointments: { enabled: true } } };
-        const result = await createHarness({ config, failedQueries: ['FROM vehicles', 'availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
-        for (const code of ['tool_vehicles', 'test_drive_service', 'test_drive_staff']) expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
+
+    /**
+     * R2 (C0 §4.2): whether the business has its data is decided once, by the
+     * readiness engine. Health keeps the technical checks only, so the two
+     * surfaces can never say different things about the same fact.
+     */
+    it('never reports a business-data check: those belong to the readiness engine', async () => {
+        const tools = Object.fromEntries(AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, { enabled: true }]));
+        const overviews = await Promise.all([
+            createHarness(),
+            createHarness({ config: { ...completeConfig, tools } }),
+            createHarness({ config: { ...completeConfig, behavior: { rules: [], forbiddenTopics: [], handoffTriggers: [] }, hours: {} },
+                tenantSettings: {} }),
+        ].map(harness => harness.service.getOverview(TENANT_ID, AGENT_ID)));
+        const technical = new Set([
+            'agent_active', 'persona_identity', 'agent_language', 'brand_voice', 'greeting', 'fallback_message', 'behavior_rules',
+            'custom_prompt', 'rag_knowledge', 'rag_configuration', 'media_privacy_policy', 'channel_assignment',
+            'operational_channel_scope', 'channel_connection', 'channel_coverage', 'channel_unanswered', 'whatsapp_delivery',
+            'test_drive_permissions', 'tool_orders', 'tool_crm', 'tool_repair_orders', 'tool_payments', 'forbidden_topics', 'llm_limits',
+        ]);
+        for (const overview of overviews) {
+            const codes = overview.preparation.dimensions.flatMap(dimension => dimension.checks.map(item => item.code));
+            for (const code of codes) expect(RETIRED_BUSINESS_DATA_CHECKS).not.toContain(code);
+            // The vertical catalogue families keep their editor-family check
+            // (`tool_<family>`) until R4 retires the per-family readiness.
+            for (const code of codes.filter(code => !technical.has(code))) expect(code).toMatch(/^tool_[a-z_]+$/);
+        }
+        expect(RETIRED_BUSINESS_DATA_CHECKS).toHaveLength(20);
     });
     beforeAll(() => jest.useFakeTimers().setSystemTime(NOW));
     afterAll(() => jest.useRealTimers());
 
     it('keeps unavailable readiness evidence distinct from verified missing configuration', async () => {
-        const { service } = createHarness({ failedQueries: ['FROM companies', 'FROM knowledge_embeddings', 'FROM users', 'FROM channel_accounts'], legacyWhatsAppRows: [] });
+        const { service } = createHarness({ failedQueries: ['FROM companies', 'FROM knowledge_embeddings', 'FROM channel_accounts'], legacyWhatsAppRows: [] });
         const result = await service.getOverview(TENANT_ID, AGENT_ID);
-        for (const code of ['business_identity', 'rag_knowledge', 'human_handoff_route', 'channel_connection']) {
+        for (const code of ['rag_knowledge', 'channel_connection']) {
             expect(check(result, code)).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
             expect(Object.values(check(result, code).evidence!)).not.toContain(0);
         }
-        expect(check(result, 'knowledge_coverage').status).toBe('unknown');
         expect(check(result, 'persona_identity').status).toBe('pass');
     });
 
@@ -431,159 +402,11 @@ describe('AgentQualityService', () => {
         const { service } = createHarness();
         const overview = await service.getOverview(TENANT_ID, AGENT_ID);
 
-        expect(check(overview, 'tool_appointments').status).toBe('not_applicable');
-        expect(check(overview, 'tool_catalog').status).toBe('not_applicable');
+        expect(check(overview, 'tool_orders').status).toBe('not_applicable');
+        expect(check(overview, 'tool_payments').status).toBe('not_applicable');
         const allChecks = overview.preparation.dimensions.flatMap((dimension) => dimension.checks);
         expect(overview.preparation.applicable).toBe(allChecks.filter((item) => item.status !== 'not_applicable').length);
         expect(overview.preparation.applicable).toBeLessThan(allChecks.length);
-    });
-
-    it('blocks an enabled appointment tool without real availability and links to its setup', async () => {
-        const config = { ...completeConfig, tools: { appointments: { enabled: true } } };
-        const { service } = createHarness({ config, services: 1, slots: 0 });
-
-        const overview = await service.getOverview(TENANT_ID, AGENT_ID);
-        expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', critical: true, href: '/admin/appointments?tab=config' });
-        expect(overview.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_tool_appointments', href: '/admin/appointments?tab=config' }));
-    });
-
-    it('opens the service editor when the appointment tool has no services yet', async () => {
-        const config = { ...completeConfig, tools: { appointments: { enabled: true } } };
-        const overview = await createHarness({ config, services: 0, slots: 0 }).service.getOverview(TENANT_ID, AGENT_ID);
-        expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'fail', href: '/admin/appointments?tab=services' });
-    });
-
-    describe('services still carrying an example price', () => {
-        const booking = { ...completeConfig, tools: { appointments: { enabled: true } } };
-
-        it('warns, without blocking, while a recipe-seeded price is still unconfirmed', async () => {
-            const { service } = createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 1 });
-            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
-
-            expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'warning', critical: false, weight: 2, href: '/admin/appointments?tab=services',
-                evidence: { examplePriceServices: 1 },
-            });
-            expect(overview.recommendations).toContainEqual(expect.objectContaining({
-                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments?tab=services',
-            }));
-            // An example price is a number nobody agreed to, not a broken agenda:
-            // the booking check keeps its own verdict and readiness stays untouched.
-            expect(check(overview, 'tool_appointments')).toMatchObject({ status: 'pass', critical: true });
-            expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
-            expect(overview.preparation.status).toBe('needs_attention');
-        });
-
-        it('passes once every active service has a confirmed price', async () => {
-            const { service } = createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 0 });
-            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
-
-            expect(check(overview, 'services_example_price')).toMatchObject({ status: 'pass', critical: false, evidence: { examplePriceServices: 0 } });
-            expect(overview.recommendations.map(item => item.code)).not.toContain('fix_services_example_price');
-        });
-
-        it('never joins the critical blockers, whatever the agenda looks like', async () => {
-            for (const options of [
-                { config: booking, services: 1, slots: 0, examplePriceServices: 1 },
-                { config: booking, services: 0, slots: 0, examplePriceServices: 3 },
-                { config: booking, failedQueries: ['availability_slots'] },
-                { config: completeConfig, services: 2, examplePriceServices: 2 },
-            ]) {
-                const overview = await createHarness(options).service.getOverview(TENANT_ID, AGENT_ID);
-                expect(check(overview, 'services_example_price').critical).toBe(false);
-                expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
-            }
-        });
-
-        it('steps aside when nothing quotes services, and reports a lost probe as unknown rather than confirmed', async () => {
-            const idle = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0 }).service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(idle, 'services_example_price').status).toBe('not_applicable');
-
-            // Booking is off, but a vertical tool can still quote these services.
-            const quoting = await createHarness({ config: completeConfig, services: 2, examplePriceServices: 2 }).service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(quoting, 'services_example_price')).toMatchObject({ status: 'warning', critical: false });
-
-            const lost = await createHarness({ config: booking, failedQueries: ['availability_slots'] }).service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(lost, 'services_example_price')).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
-        });
-
-        it('counts gym membership plans still at the example price, and sends the owner to the memberships screen', async () => {
-            // get_membership_plans withholds an unconfirmed amount like a
-            // service's: a gym whose only pending prices are its plans has an
-            // agent that cannot say what the membership costs.
-            const gym = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0, examplePricePlans: 3 })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(gym, 'services_example_price')).toMatchObject({
-                status: 'warning', critical: false, href: '/admin/memberships',
-                evidence: { examplePriceServices: 0, examplePricePlans: 3 },
-            });
-            expect(gym.recommendations).toContainEqual(expect.objectContaining({ code: 'fix_services_example_price', href: '/admin/memberships' }));
-            expect(gym.preparation.criticalBlockers).not.toContain('services_example_price');
-
-            // Services pending too: their screen, and the evidence keeps both counts apart.
-            const both = await createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 1, examplePricePlans: 2 })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(both, 'services_example_price')).toMatchObject({
-                status: 'warning', href: '/admin/appointments?tab=services', evidence: { examplePriceServices: 1, examplePricePlans: 2 },
-            });
-
-            const confirmed = await createHarness({ config: completeConfig, services: 0, examplePriceServices: 0, examplePricePlans: 0 })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(confirmed, 'services_example_price').status).toBe('not_applicable');
-        });
-
-        it('a lost plan probe is unknown for a gym, and does not touch the services verdict of anyone else', async () => {
-            const failedQueries = ['AS count FROM membership_plans'];
-            const gym = await createHarness({ config: booking, industry: 'gimnasios', services: 1, slots: 1, examplePriceServices: 0, failedQueries })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(gym, 'services_example_price')).toMatchObject({ status: 'unknown', evidence: { sourceAvailability: 'unavailable' } });
-
-            const clinic = await createHarness({ config: booking, services: 1, slots: 1, examplePriceServices: 0, failedQueries })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(clinic, 'services_example_price')).toMatchObject({ status: 'pass' });
-            // The services counts come from their own probe and survive it.
-            expect(check(clinic, 'tool_appointments')).toMatchObject({ status: 'pass' });
-        });
-
-        /**
-         * A service created without a price (Assist never invents one) is
-         * stored confirmed with NULL. Every customer projection reads it as "por
-         * confirmar" and the panel shows "Sin precio" — and this check, counting
-         * only `price_status = 'example'`, stayed green: no nudge anywhere.
-         */
-        it('counts a service with no amount at all, and keeps it apart from the example ones', async () => {
-            const { service, calls } = createHarness({ config: booking, services: 2, slots: 1, examplePriceServices: 0, noPriceServices: 2 });
-            const overview = await service.getOverview(TENANT_ID, AGENT_ID);
-
-            expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'warning', critical: false, href: '/admin/appointments?tab=services',
-                evidence: { examplePriceServices: 0, examplePricePlans: 0, noPriceServices: 2, noPricePlans: 0 },
-            });
-            expect(overview.recommendations).toContainEqual(expect.objectContaining({
-                code: 'fix_services_example_price', severity: 'medium', href: '/admin/appointments?tab=services',
-            }));
-            expect(overview.preparation.criticalBlockers).not.toContain('services_example_price');
-            // The same reading as `customerFacingPrice`: not example, not quote, no amount.
-            const probe = calls.find((call) => call.query.includes('AS no_price_services'))!.query.replace(/\s+/g, ' ');
-            expect(probe).toContain("COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote') AND price IS NULL");
-        });
-
-        it('a plan with no amount sends the owner to the memberships screen, like an example one', async () => {
-            const overview = await createHarness({ config: completeConfig, services: 0, noPricePlans: 1 })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'warning', href: '/admin/memberships',
-                evidence: { examplePriceServices: 0, examplePricePlans: 0, noPriceServices: 0, noPricePlans: 1 },
-            });
-        });
-
-        it('passes only when nothing a customer could ask about is left without a price', async () => {
-            const overview = await createHarness({ config: booking, services: 2, slots: 1, examplePriceServices: 0, noPriceServices: 0 })
-                .service.getOverview(TENANT_ID, AGENT_ID);
-            expect(check(overview, 'services_example_price')).toMatchObject({
-                status: 'pass', evidence: { noPriceServices: 0, noPricePlans: 0 },
-            });
-        });
     });
 
     it('requires a custom prompt only when the editor is in prompt mode', async () => {
@@ -713,7 +536,6 @@ describe('AgentQualityService', () => {
         expect(check(overview, 'persona_identity').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=name`);
         expect(check(overview, 'fallback_message').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=fallback`);
         expect(check(overview, 'behavior_rules').href).toBe(`/admin/agent/${AGENT_ID}?tab=instructions&focus=rules`);
-        expect(check(overview, 'handoff_triggers').href).toBe(`/admin/agent/${AGENT_ID}?tab=instructions&focus=handoff`);
         expect(check(overview, 'channel_assignment').href).toBe(`/admin/agent/${AGENT_ID}?tab=persona&focus=channels`);
     });
 
@@ -1100,11 +922,11 @@ describe('AgentQualityService', () => {
 
     it('does not let a noncritical configuration warning mask a failed eval', async () => {
         const overview = await createHarness({
-            company: { phone: null, email: null, website: null, address: null },
+            config: { ...completeConfig, persona: { ...completeConfig.persona, greeting: '' } },
             latestEval: { passed: false, eval_activable: false, avg_score: 4 },
         }).service.getOverview(TENANT_ID, AGENT_ID);
 
-        expect(check(overview, 'business_contact').status).toBe('warning');
+        expect(check(overview, 'greeting').status).toBe('warning');
         expect(overview.preparation.status).toBe('needs_attention');
         expect(overview.status).toBe('at_risk');
         expect(overview.nextMilestone).toBe('pass_critical_tests');

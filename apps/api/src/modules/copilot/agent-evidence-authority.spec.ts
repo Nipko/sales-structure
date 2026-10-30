@@ -124,9 +124,8 @@ function harness(options: {
     // Every setup task passes, so the only unfinished parts left in these cases
     // are the mission's own evidence and its tools.
     const passing = ['channel_assignment', 'channel_connection', 'channel_coverage', 'operational_channel_scope',
-        'agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules', 'handoff_triggers',
-        'business_identity', 'business_contact', 'knowledge_coverage', 'rag_knowledge', 'rag_configuration',
-        'tool_faqs', 'tool_policies', 'human_handoff_route', 'business_hours', 'after_hours_behavior'];
+        'agent_active', 'persona_identity', 'custom_prompt', 'fallback_message', 'behavior_rules',
+        'rag_knowledge', 'rag_configuration'];
     const quality = { getOverview: jest.fn().mockResolvedValue({
         agent: { id: AGENT, version: 2, name: 'Luna' }, status: 'ready_for_pilot',
         preparation: { dimensions: [{ checks: [...passing.map(code => check(code)), check('tool_menu', 'pass', '/admin/menu')] }] },
@@ -145,7 +144,8 @@ function harness(options: {
     // evidence source unreadable at runtime. `authority: false` is how a case
     // asks for it to be absent.
     const authority = options.authority === false ? undefined : revisions;
-    return { service: new AgentAssessmentService(prisma as any, quality as any, capabilities as any, authority as any),
+    return { service: new AgentAssessmentService(prisma as any, quality as any, capabilities as any, authority as any,
+        { currentVerdict: jest.fn().mockResolvedValue('listo') } as any),
         prisma, revisions, capabilities };
 }
 

@@ -17,7 +17,7 @@ import type {
     AgentQualityTestedPillar,
     TenantConfig,
 } from '@parallext/shared';
-import { AGENT_QUALITY_DIMENSIONS, AGENT_CONFIG_TOOL_FAMILIES, VERTICAL_CAPABILITY_MANIFEST } from '@parallext/shared';
+import { AGENT_QUALITY_DIMENSIONS, AGENT_CONFIG_TOOL_FAMILIES } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { TenantPaymentsService } from '../tenant-payments/tenant-payments.service';
@@ -58,6 +58,28 @@ const DIMENSION_WEIGHTS: Record<AgentQualityDimension, number> = {
     robustness_operations: 10,
 };
 
+/**
+ * Tool families whose only quality check asked "does the business have the
+ * data?" (FAQs, policies, services and agenda, catalogue, offers, vehicles,
+ * boarding). That question belongs to the readiness engine
+ * (`@parallext/business-spec`, panel /admin/readiness); retired here in R2
+ * (C0 §4.2) so the two never disagree. Snake-case, as `snake()` names them.
+ */
+export const READINESS_OWNED_TOOL_FAMILIES: readonly string[] = Object.freeze([
+    'faqs', 'policies', 'appointments', 'catalog', 'ecommerce', 'vehicles', 'offers', 'vehicle_rentals', 'pet_boarding',
+]);
+
+/**
+ * The business-data checks retired in R2 (C0 §4.2). Health keeps only the
+ * technical ones; `agent-quality.service.spec.ts` pins that none comes back.
+ */
+export const RETIRED_BUSINESS_DATA_CHECKS: readonly string[] = Object.freeze([
+    'business_identity', 'business_contact', 'business_context', 'business_hours', 'after_hours_behavior',
+    'knowledge_coverage', 'tool_faqs', 'tool_policies', 'tool_appointments', 'services_example_price',
+    'tool_catalog', 'tool_ecommerce', 'tool_vehicles', 'tool_offers', 'tool_vehicle_rentals', 'tool_pet_boarding',
+    'test_drive_service', 'test_drive_staff', 'human_handoff_route', 'handoff_triggers',
+]);
+
 type AgentRow = {
     id: string;
     name: string;
@@ -76,12 +98,10 @@ type TenantContext = {
     /** False when the connected-accounts read failed: absence is unknown, not zero. */
     channelLookupAvailable: boolean;
     channelSourceAvailability?: { accounts: boolean; widgets: boolean };
-    humanLookupAvailable?: boolean;
     industry: string | null;
     updatedAt: Date | string | null;
     activeChannelTypes: Set<string>;
     activeAccountBindings: Set<string>;
-    activeHumanCount: number;
     channelCredentialHealth: Map<string, CredentialHealth>;
     /** Aggregate by channel type — no ids, names or phone numbers. */
     channelTypeSummary: Array<{ type: string; accounts: number; health: CredentialHealth }>;
@@ -226,47 +246,20 @@ type CredentialHealthRow = {
     expiresAt: Date | null;
 };
 
+/**
+ * What the technical checks and the evidence freshness read. Whether the
+ * business has its data (services, catalogue, FAQs, hours…) is the readiness
+ * engine's question (C0 §4.2), not this service's.
+ */
 type ReadinessFacts = {
     unavailableSources?: string[];
-    company: any | null;
     companyUpdatedAt: Date | string | null;
     knowledgeChunks: number;
     knowledgeUpdatedAt: Date | string | null;
-    faqs: number;
     faqsUpdatedAt: Date | string | null;
-    policies: number;
     privacyPolicies: number;
     policiesUpdatedAt: Date | string | null;
-    services: number;
-    availabilitySlots: number;
-    /** Active services still carrying the recipe's example price (`price_status = 'example'`). */
-    examplePriceServices: number;
-    /**
-     * Active gym membership plans still carrying the seeded example price.
-     * `get_membership_plans` withholds an unconfirmed amount exactly like a
-     * service's, so a gym owner who never confirms a plan has an agent that
-     * cannot say what the membership costs.
-     */
-    examplePricePlans: number;
-    /**
-     * Active services with NO amount a customer could be told: status
-     * confirmed (or NULL, read as confirmed) and `price IS NULL`. A service
-     * created without a price — the Assist `agenda.service.create` writer never
-     * invents one — is stored exactly like that, and every customer projection
-     * (`customerFacingPrice`) reads it as "por confirmar" while the panel shows
-     * "Sin precio". Counted apart from the example ones so the panel can say
-     * which of the two the owner has to fix.
-     */
-    noPriceServices: number;
-    /** The same for active membership plans (the column is NOT NULL today: normally 0). */
-    noPricePlans: number;
-    testDriveServices: number;
-    testDriveSlots: number;
-    vehicles: number;
-    products: number;
     orders: number;
-    offers: number;
-    boardingServices: number;
     paymentProviderLookupAvailable: boolean;
     paymentProviderReady: boolean;
     paymentProvider: string | null;
@@ -469,7 +462,7 @@ export class AgentQualityService {
         schemaName: string,
         options: { routing?: boolean } = {},
     ): Promise<TenantContext> {
-        const [tenant, channels, widgets, humans, credentialLookup, legacyWhatsAppRows, boundBindingRows, mediaProcessing, primaryAgent] = await Promise.all([
+        const [tenant, channels, widgets, credentialLookup, legacyWhatsAppRows, boundBindingRows, mediaProcessing, primaryAgent] = await Promise.all([
             this.prisma.tenant.findUnique({
                 where: { id: tenantId },
                 // The last two tell a connection that was recorded from one
@@ -497,15 +490,6 @@ export class AgentQualityService {
                    FROM public.widget_configs
                   WHERE tenant_id = $1::uuid AND is_active = true
                     AND COALESCE(is_demo, false) = false`,
-                tenantId,
-            ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
-                .catch(() => ({ available: false, rows: [] as any[] })),
-            this.prisma.$queryRawUnsafe(
-                `SELECT COUNT(*)::int AS count
-                   FROM users
-                  WHERE tenant_id = $1::uuid
-                    AND is_active = true
-                    AND role IN ('tenant_admin', 'tenant_supervisor', 'tenant_agent')`,
                 tenantId,
             ).then((rows: any) => ({ available: true, rows: (rows as any[]) || [] }))
                 .catch(() => ({ available: false, rows: [] as any[] })),
@@ -572,7 +556,6 @@ export class AgentQualityService {
             ...(Array.isArray(channelLookup?.rows) ? channelLookup.rows : []),
             ...widgets.rows,
         ];
-        const humanRows = humans.rows;
         const healthByAssignment = new Map<string, CredentialHealth>();
         const latestByType = new Map<string, any>();
         for (const credential of credentialLookup.rows) {
@@ -668,10 +651,8 @@ export class AgentQualityService {
             updatedAt: tenant?.updatedAt || null,
             channelLookupAvailable: channelLookup.available && widgets.available,
             channelSourceAvailability: { accounts: channelLookup.available, widgets: widgets.available },
-            humanLookupAvailable: humans.available,
             activeChannelTypes: new Set(channelRows.map((row) => String(row.channel_type))),
             activeAccountBindings: new Set(channelRows.map((row) => `${row.channel_type}:${row.account_id}`)),
-            activeHumanCount: Number(humanRows[0]?.count) || 0,
             channelCredentialHealth: healthByAssignment,
             channelTypeSummary: [...typeGroups.entries()]
                 .map(([type, values]) => ({ type, accounts: values.length, health: worstCredentialHealth(values) }))
@@ -725,13 +706,10 @@ export class AgentQualityService {
                 return { available: false, ready: false, provider: null };
             })
             : Promise.resolve({ available: false, ready: false, provider: null });
-        const [companies, knowledge, faqRows, policyRows, appointmentRows, productRows, orderRows, offerRows, verticalRows, vehicleRows, planPriceRows, payments] = await Promise.all([
+        const [companies, knowledge, faqRows, policyRows, orderRows, verticalRows, payments] = await Promise.all([
             safe<any[]>(
                 'company',
-                `SELECT name, industry, about, phone, email, website, address, city, country, updated_at
-                   FROM companies
-               ORDER BY is_primary DESC, updated_at DESC
-                  LIMIT 1`, [], [],
+                `SELECT MAX(updated_at) AS updated_at FROM companies`, [], [],
             ),
             safe<any[]>(
                 'knowledge',
@@ -743,14 +721,13 @@ export class AgentQualityService {
             ),
             safe<any[]>(
                 'faqs',
-                `SELECT COUNT(*)::int AS count, MAX(updated_at) AS updated_at
+                `SELECT MAX(updated_at) AS updated_at
                    FROM faqs
-                  WHERE is_published = true AND btrim(question) <> '' AND btrim(answer) <> ''`, [], [{ count: 0, updated_at: null }],
+                  WHERE is_published = true AND btrim(question) <> '' AND btrim(answer) <> ''`, [], [{ updated_at: null }],
             ),
             safe<any[]>(
                 'policies',
-                `SELECT COUNT(*)::int AS count,
-                        COUNT(*) FILTER (WHERE type = 'privacy')::int AS privacy_count,
+                `SELECT COUNT(*) FILTER (WHERE type = 'privacy')::int AS privacy_count,
                         MAX(updated_at) AS updated_at
                    FROM policies
                   WHERE is_active = true
@@ -758,33 +735,7 @@ export class AgentQualityService {
                     AND (effective_to IS NULL OR effective_to > NOW())
                     AND btrim(content) <> ''`, [], [{ count: 0, updated_at: null }],
             ),
-            safe<any[]>(
-                'appointments',
-                `SELECT
-                    (SELECT COUNT(*)::int FROM services WHERE is_active = true AND btrim(name) <> '' AND duration_minutes > 0) AS services,
-                    (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true AND start_time < end_time) AS slots,
-                    (SELECT COUNT(*)::int FROM services WHERE is_active = true AND COALESCE(price_status, 'confirmed') = 'example') AS example_price_services,
-                    (SELECT COUNT(*)::int FROM services WHERE is_active = true
-                        AND COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote') AND price IS NULL) AS no_price_services,
-                    (SELECT COUNT(*)::int FROM services WHERE is_active=true AND btrim(name)<>''
-                        AND COALESCE(duration_type,'fixed')='fixed' AND duration_minutes BETWEEN 1 AND 1440
-                        AND COALESCE(location_type,'in_person') IN ('in_person','hybrid')) AS test_drive_services,
-                    (SELECT COUNT(*)::int FROM availability_slots a
-                        JOIN public.users u ON u.id=a.user_id AND u.is_active=true
-                        JOIN public.tenants t ON t.id=u.tenant_id AND t.is_active=true AND t.schema_name=$1
-                        WHERE a.is_active=true AND a.start_time<a.end_time
-                        AND EXISTS(SELECT 1 FROM services s WHERE s.is_active=true AND btrim(s.name)<>''
-                            AND COALESCE(s.duration_type,'fixed')='fixed' AND s.duration_minutes BETWEEN 1 AND 1440
-                            AND COALESCE(s.location_type,'in_person') IN ('in_person','hybrid')
-                            AND EXTRACT(EPOCH FROM (a.end_time-a.start_time))/60 >= s.duration_minutes)) AS test_drive_slots,
-                    (SELECT COUNT(*)::int FROM services WHERE is_active = true
-                        AND translate(lower(category), 'áéíóúü', 'aeiouu') IN ('guarderia', 'hotel')
-                        AND COALESCE(max_concurrent, 0) >= 1) AS boarding_services`,
-                [schemaName], [{ services: 0, slots: 0 }],
-            ),
-            safe<any[]>('products', `SELECT COUNT(*)::int AS count FROM products WHERE is_available = true AND btrim(name) <> ''`, [], [{ count: 0 }]),
             safe<any[]>('orders', `SELECT COUNT(*)::int AS count FROM orders`, [], [{ count: 0 }]),
-            safe<any[]>('offers', `SELECT COUNT(*)::int AS count FROM commercial_offers WHERE active = true`, [], [{ count: 0 }]),
             safe<any[]>(
                 'verticalCatalogs',
                 `SELECT
@@ -802,47 +753,19 @@ export class AgentQualityService {
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS photography,
                     (SELECT COUNT(*)::int FROM services WHERE is_active = true) AS professional_services`, [], [{}],
             ),
-            safe<any[]>('vehicles', `SELECT COUNT(*)::int AS count FROM vehicles WHERE status='available'`, [], [{ count: 0 }]),
-            // Its own probe, not a subquery of the appointments one: a schema
-            // without the gym tables must not take the services counts down.
-            // `no_price` mirrors `customerFacingPrice`: a status that is not
-            // 'example' or 'quote' with no amount is "por confirmar" to a customer.
-            safe<any[]>(
-                'membershipPlans',
-                `SELECT COUNT(*) FILTER (WHERE COALESCE(price_status, 'confirmed') NOT IN ('example', 'quote')
-                                           AND price IS NULL)::int AS no_price,
-                        COUNT(*) FILTER (WHERE COALESCE(price_status, 'confirmed') = 'example')::int AS count FROM membership_plans
-                  WHERE is_active = true`, [], [{ count: 0, no_price: 0 }],
-            ),
             paymentState,
         ]);
 
-        const company = companies[0] || null;
         const vertical = verticalRows[0] || {};
         return {
             unavailableSources,
-            company,
-            companyUpdatedAt: company?.updated_at || null,
+            companyUpdatedAt: companies[0]?.updated_at || null,
             knowledgeChunks: Number(knowledge[0]?.count) || 0,
             knowledgeUpdatedAt: knowledge[0]?.updated_at || null,
-            faqs: Number(faqRows[0]?.count) || 0,
             faqsUpdatedAt: faqRows[0]?.updated_at || null,
-            policies: Number(policyRows[0]?.count) || 0,
             privacyPolicies: Number(policyRows[0]?.privacy_count) || 0,
             policiesUpdatedAt: policyRows[0]?.updated_at || null,
-            services: Number(appointmentRows[0]?.services) || 0,
-            availabilitySlots: Number(appointmentRows[0]?.slots) || 0,
-            examplePriceServices: Number(appointmentRows[0]?.example_price_services) || 0,
-            examplePricePlans: Number(planPriceRows[0]?.count) || 0,
-            noPriceServices: Number(appointmentRows[0]?.no_price_services) || 0,
-            noPricePlans: Number(planPriceRows[0]?.no_price) || 0,
-            testDriveServices: Number(appointmentRows[0]?.test_drive_services) || 0,
-            testDriveSlots: Number(appointmentRows[0]?.test_drive_slots) || 0,
-            vehicles: Number(vehicleRows[0]?.count) || 0,
-            products: Number(productRows[0]?.count) || 0,
             orders: Number(orderRows[0]?.count) || 0,
-            offers: Number(offerRows[0]?.count) || 0,
-            boardingServices: Number(appointmentRows[0]?.boarding_services) || 0,
             paymentProviderLookupAvailable: payments.available,
             paymentProviderReady: payments.ready,
             paymentProvider: payments.provider,
@@ -1071,16 +994,10 @@ export class AgentQualityService {
         }
     }
 
-    private servicesScreenHref(industry: string | null): '/admin/appointments?tab=services' | '/admin/service-catalog' {
-        const routes: readonly string[] | undefined = industry ? (VERTICAL_CAPABILITY_MANIFEST as any)[industry]?.profile?.routes : undefined;
-        return !routes || routes.includes('/admin/appointments') ? '/admin/appointments?tab=services' : '/admin/service-catalog';
-    }
-
     private buildPreparation(agent: AgentRow, tenant: TenantContext, facts: ReadinessFacts): AgentQualityPreparationPillar {
         const config = (agent.config_json || {}) as TenantConfig;
         const persona: any = config.persona || {};
         const behavior: any = config.behavior || {};
-        const hours: any = tenant.settings.businessHours || config.hours || {};
         const tools = (config.tools || {}) as Record<string, any>;
         const channels = Array.isArray(agent.channels) ? agent.channels : [];
         const bindings = Array.isArray(agent.channel_bindings) ? agent.channel_bindings : [];
@@ -1179,26 +1096,13 @@ export class AgentQualityService {
 
         const checks: AgentQualityCheck[] = [];
         const dependencies: Record<string, string[]> = {
-            business_identity: ['company'], business_contact: ['company'],
-            rag_knowledge: ['knowledge'], tool_faqs: ['faqs'], tool_policies: ['policies'],
-            media_privacy_policy: ['policies'],
-            tool_appointments: ['appointments'], tool_catalog: ['products'], tool_ecommerce: ['products'],
-            tool_orders: ['orders'], tool_offers: ['offers'],
-            tool_vehicles: ['vehicles'], test_drive_service: ['appointments'], test_drive_staff: ['appointments'],
-            // A gym's plans are quoted too; for anyone else a lost plan probe
-            // must not turn the services verdict into "unknown".
-            services_example_price: tenant.industry === 'gimnasios' ? ['appointments', 'membershipPlans'] : ['appointments'],
-            tool_vehicle_rentals: ['vehicles'], tool_pet_boarding: ['appointments'], tool_payments: ['payments'],
+            rag_knowledge: ['knowledge'], media_privacy_policy: ['policies'],
+            tool_orders: ['orders'], tool_payments: ['payments'],
         };
         const add = (check: CheckInput) => {
             const required = dependencies[check.code] ?? (check.code.startsWith('tool_') && check.evidence && 'records' in check.evidence ? ['verticalCatalogs'] : []);
             const unavailable = required.filter(source => facts.unavailableSources?.includes(source));
-            if (check.code === 'human_handoff_route' && tenant.humanLookupAvailable === false) unavailable.push('humans');
             if (['channel_connection', 'channel_coverage', 'channel_unanswered'].includes(check.code) && tenant.channelLookupAvailable === false) unavailable.push('channels');
-            if (check.code === 'knowledge_coverage' && Number(check.evidence?.availableSources ?? 0) === 0) {
-                unavailable.push(...(facts.unavailableSources ?? []).filter(source => ['knowledge', 'faqs', 'policies', 'products', 'appointments', 'verticalCatalogs'].includes(source)
-                    || source === 'vehicles' && tools.vehicles?.enabled === true));
-            }
             checks.push(unavailable.length && check.status !== 'not_applicable'
                 ? { ...check, status: 'unknown', evidence: { sourceAvailability: 'unavailable', unavailableSources: [...new Set(unavailable)].join(',') } }
                 : check);
@@ -1214,12 +1118,6 @@ export class AgentQualityService {
         // "Revisar" that lands on a long form the person has to search through is
         // the same dead end as landing on a page that says nothing.
         add({ code: 'persona_identity', dimension: 'business_scope', status: promptMode ? 'not_applicable' : status(text(persona.name) && text(persona.role)), critical: !promptMode, weight: 4, href: `/admin/agent/${agent.id}?tab=persona&focus=name`, evidence: { hasName: text(persona.name), hasRole: text(persona.role) } });
-        add({ code: 'business_identity', dimension: 'business_scope', status: status(!!facts.company && text(facts.company.name) && text(facts.company.about)), critical: true, weight: 4, href: '/admin/settings/business-info', evidence: { configured: !!facts.company, hasAbout: text(facts.company?.about) } });
-        const businessContactMethods = [facts.company?.phone, facts.company?.email, facts.company?.website, facts.company?.address].filter(text).length;
-        add({ code: 'business_contact', dimension: 'business_scope', status: status(businessContactMethods > 0, 'warning'), critical: false, weight: 2, href: '/admin/settings/business-info', evidence: { contactMethods: businessContactMethods } });
-        const goals = tenant.settings.chatReasons;
-        const audiences = tenant.settings.customerTypes;
-        add({ code: 'business_context', dimension: 'business_scope', status: status(list(goals) && list(audiences), 'warning'), critical: false, weight: 2, href: '/admin/settings/business-info', evidence: { goals: Array.isArray(goals) ? goals.length : 0, audiences: Array.isArray(audiences) ? audiences.length : 0 } });
 
         add({ code: 'agent_language', dimension: 'conversation_brand', status: status(text(config.language), 'warning'), critical: false, weight: 2, href: `/admin/agent/${agent.id}`, evidence: { configured: text(config.language) } });
         add({ code: 'brand_voice', dimension: 'conversation_brand', status: promptMode ? 'not_applicable' : status(text(persona.personality?.tone) && text(persona.personality?.formality), 'warning'), critical: false, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { hasTone: text(persona.personality?.tone), hasFormality: text(persona.personality?.formality) } });
@@ -1229,17 +1127,12 @@ export class AgentQualityService {
         add({ code: 'custom_prompt', dimension: 'conversation_brand', status: promptMode ? status(text(customPrompt)) : 'not_applicable', critical: promptMode, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { promptMode, configured: text(customPrompt) } });
 
         const knowledgeRequired = config.rag?.enabled === true || tools.knowledge?.enabled === true;
-        const availableKnowledgeSources = facts.knowledgeChunks + facts.faqs + facts.policies + facts.products
-            + facts.services + (tools.vehicles?.enabled === true ? facts.vehicles : 0) + Object.values(facts.verticalCatalogs).reduce((sum, count) => sum + count, 0);
-        add({ code: 'knowledge_coverage', dimension: 'knowledge_grounding', status: availableKnowledgeSources > 0 ? 'pass' : 'warning', critical: false, weight: 4, href: '/admin/knowledge', evidence: { availableSources: availableKnowledgeSources } });
         add({ code: 'rag_knowledge', dimension: 'knowledge_grounding', status: knowledgeRequired ? status(facts.knowledgeChunks > 0) : 'not_applicable', critical: knowledgeRequired, weight: 6, href: '/admin/knowledge', evidence: { enabled: knowledgeRequired, chunks: facts.knowledgeChunks } });
         const ragValid = Number(config.rag?.chunkSize) > 0
             && Number(config.rag?.topK) > 0
             && Number(config.rag?.similarityThreshold) >= 0
             && Number(config.rag?.similarityThreshold) <= 1;
         add({ code: 'rag_configuration', dimension: 'knowledge_grounding', status: knowledgeRequired ? status(ragValid) : 'not_applicable', critical: knowledgeRequired, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { enabled: knowledgeRequired, valid: ragValid } });
-        add({ code: 'tool_faqs', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.faqs, facts.faqs > 0), critical: tools.faqs?.enabled === true, weight: 3, href: '/admin/knowledge/faqs', evidence: { enabled: tools.faqs?.enabled === true, published: facts.faqs } });
-        add({ code: 'tool_policies', dimension: 'knowledge_grounding', status: this.optionalToolStatus(tools.policies, facts.policies > 0), critical: tools.policies?.enabled === true, weight: 3, href: '/admin/settings/policies', evidence: { enabled: tools.policies?.enabled === true, active: facts.policies } });
         add({
             code: 'media_privacy_policy',
             dimension: 'safety_handoff',
@@ -1432,64 +1325,13 @@ export class AgentQualityService {
                 fundingRequiredFrom: deliveryReasons.includes('funding_absent') ? FUNDING_REQUIRED_FROM : null,
             },
         });
-        add({ code: 'tool_appointments', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.appointments, facts.services > 0 && facts.availabilitySlots > 0), critical: tools.appointments?.enabled === true, weight: 5, href: facts.services === 0 ? '/admin/appointments?tab=services' : '/admin/appointments?tab=config', evidence: { enabled: tools.appointments?.enabled === true, services: facts.services, availabilitySlots: facts.availabilitySlots } });
-        // A recipe seeds services — and, for gyms, membership plans — with an
-        // example price. The agent never states an unconfirmed amount, so until
-        // the owner confirms them it cannot say what anything costs — worth a
-        // warning, never a blocker: the booking still works and readiness is
-        // not touched. It stays out of the way only when nothing quotes a price.
-        //
-        // A row with NO amount is the same silence from the customer's side: a
-        // service created without a price (Assist never invents one) is stored
-        // confirmed with NULL, and every customer projection reads it as "por
-        // confirmar". Counting only `price_status = 'example'` left the panel
-        // showing "Sin precio" with no nudge anywhere. Both kinds count; the
-        // evidence keeps the four numbers apart so the panel can say which.
-        const servicePrices = facts.examplePriceServices + facts.noPriceServices;
-        const planPrices = facts.examplePricePlans + facts.noPricePlans;
-        const pendingPrices = servicePrices + planPrices;
-        add({
-            code: 'services_example_price',
-            dimension: 'actions_outcomes',
-            status: tools.appointments?.enabled !== true && facts.services === 0 && pendingPrices === 0
-                ? 'not_applicable'
-                : pendingPrices > 0 ? 'warning' : 'pass',
-            critical: false,
-            weight: 2,
-            // Verticals that seed services without an agenda (home services,
-            // photography, pet boarding) do not show Citas: their services live
-            // in the service catalogue, and a link into a hidden route bounces.
-            // When only plans are pending, the fix is on the memberships screen.
-            href: servicePrices === 0 && planPrices > 0
-                ? '/admin/memberships'
-                : this.servicesScreenHref(tenant.industry),
-            evidence: {
-                examplePriceServices: facts.examplePriceServices,
-                examplePricePlans: facts.examplePricePlans,
-                noPriceServices: facts.noPriceServices,
-                noPricePlans: facts.noPricePlans,
-            },
-        });
         const missionIntents = (config as any).mission?.intentKeys;
         const wantsTestDrives = tools.vehicles?.enabled === true
             && (!Array.isArray(missionIntents) || missionIntents.includes('schedule_test_drive'));
-        add({ code: 'tool_vehicles', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.vehicles, facts.vehicles > 0), critical: tools.vehicles?.enabled === true,
-            weight: 4, href: '/admin/vehicles', evidence: { enabled: tools.vehicles?.enabled === true, records: facts.vehicles } });
         add({ code: 'test_drive_permissions', dimension: 'actions_outcomes', status: wantsTestDrives ? status(tools.appointments?.enabled === true && tools.appointments?.canBook !== false) : 'not_applicable',
             critical: wantsTestDrives, weight: 3, href: `/admin/agent/${agent.id}`, evidence: { appointmentsEnabled: tools.appointments?.enabled === true, canBook: tools.appointments?.canBook !== false } });
-        add({ code: 'test_drive_service', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveServices > 0) : 'not_applicable',
-            critical: wantsTestDrives, weight: 3, href: '/admin/appointments?tab=services', evidence: { compatibleServices: facts.testDriveServices } });
-        add({ code: 'test_drive_staff', dimension: 'actions_outcomes', status: wantsTestDrives ? status(facts.testDriveSlots > 0) : 'not_applicable',
-            critical: wantsTestDrives, weight: 3, href: '/admin/appointments?tab=config', evidence: { compatibleAvailability: facts.testDriveSlots } });
-        add({ code: 'tool_catalog', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.catalog, facts.products > 0), critical: tools.catalog?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.catalog?.enabled === true, products: facts.products } });
-        add({ code: 'tool_ecommerce', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.ecommerce, facts.products > 0), critical: tools.ecommerce?.enabled === true, weight: 4, href: '/admin/inventory', evidence: { enabled: tools.ecommerce?.enabled === true, products: facts.products } });
         add({ code: 'tool_orders', dimension: 'actions_outcomes', status: tools.orders?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/orders', evidence: { enabled: tools.orders?.enabled === true, existingOrders: facts.orders } });
-        add({ code: 'tool_offers', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.offers, facts.offers > 0), critical: false, weight: 2, href: '/admin/catalog/offers', evidence: { enabled: tools.offers?.enabled === true, activeOffers: facts.offers } });
         add({ code: 'tool_crm', dimension: 'actions_outcomes', status: tools.crm?.enabled === true ? 'pass' : 'not_applicable', critical: false, weight: 2, href: '/admin/contacts', evidence: { enabled: tools.crm?.enabled === true } });
-        add({ code: 'tool_vehicle_rentals', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.vehicleRentals, facts.vehicles > 0), critical: tools.vehicleRentals?.enabled === true,
-            weight: 4, href: '/admin/vehicles', evidence: { enabled: tools.vehicleRentals?.enabled === true, records: facts.vehicles } });
-        add({ code: 'tool_pet_boarding', dimension: 'actions_outcomes', status: this.optionalToolStatus(tools.petBoarding, facts.boardingServices > 0), critical: tools.petBoarding?.enabled === true,
-            weight: 4, href: '/admin/service-catalog', evidence: { enabled: tools.petBoarding?.enabled === true, records: facts.boardingServices } });
         // A workshop order is created from customer-provided vehicle details;
         // it has no tenant catalogue prerequisite. Still expose the family so
         // the quality surface covers every control the agent editor can enable.
@@ -1528,8 +1370,12 @@ export class AgentQualityService {
         // Make the diagnostic taxonomy fail visibly during development when a
         // new editor family ships without a quality check. Knowledge is the one
         // deliberate alias: its readiness is represented by `rag_knowledge`.
-        const representedFamilies = new Set(checks.flatMap(item => item.code.startsWith('tool_')
-            ? [item.code.slice('tool_'.length)] : item.code === 'rag_knowledge' ? ['knowledge'] : []));
+        // The families whose only check was "does the business have the data"
+        // are answered by the readiness engine (@parallext/business-spec, C0 §4.2)
+        // and are deliberately not re-checked here.
+        const representedFamilies = new Set([...checks.flatMap(item => item.code.startsWith('tool_')
+            ? [item.code.slice('tool_'.length)] : item.code === 'rag_knowledge' ? ['knowledge'] : []),
+        ...READINESS_OWNED_TOOL_FAMILIES]);
         for (const family of AGENT_CONFIG_TOOL_FAMILIES) {
             if (!representedFamilies.has(this.snake(family)) && tools[family]?.enabled === true) {
                 add({ code: `tool_${this.snake(family)}`, dimension: 'actions_outcomes', status: 'unknown', critical: true,
@@ -1538,16 +1384,6 @@ export class AgentQualityService {
         }
 
         add({ code: 'forbidden_topics', dimension: 'safety_handoff', status: promptMode ? 'not_applicable' : status(list(behavior.forbiddenTopics), 'warning'), critical: false, weight: 4, href: `/admin/agent/${agent.id}`, evidence: { count: Array.isArray(behavior.forbiddenTopics) ? behavior.forbiddenTopics.length : 0 } });
-        add({ code: 'handoff_triggers', dimension: 'safety_handoff', status: status(list(behavior.handoffTriggers)), critical: true, weight: 5, href: `/admin/agent/${agent.id}?tab=instructions&focus=handoff`, evidence: { count: Array.isArray(behavior.handoffTriggers) ? behavior.handoffTriggers.length : 0 } });
-        add({ code: 'human_handoff_route', dimension: 'safety_handoff', status: list(behavior.handoffTriggers) ? status(tenant.activeHumanCount > 0) : 'unknown', critical: true, weight: 5, href: '/admin/users', evidence: { activeHumans: tenant.activeHumanCount } });
-
-        const hasHours = hours.is247 === true || (hours.schedule && Object.keys(hours.schedule).length > 0)
-            || (config.hours?.schedule && Object.keys(config.hours.schedule).length > 0);
-        add({ code: 'business_hours', dimension: 'robustness_operations', status: status(!!hasHours, 'warning'), critical: false, weight: 4, href: '/admin/settings/business-hours', evidence: { configured: !!hasHours } });
-        const is247 = hours.is247 === true;
-        const hasAfterHoursBehavior = is247 || (config.hours?.aiOutsideHours ?? true)
-            || text(config.hours?.afterHoursMessageOverride) || text(hours.afterHoursMessage) || text(config.hours?.afterHoursMessage);
-        add({ code: 'after_hours_behavior', dimension: 'robustness_operations', status: hasHours && !is247 ? status(hasAfterHoursBehavior, 'warning') : 'not_applicable', critical: false, weight: 2, href: '/admin/settings/business-hours', evidence: { required: !!hasHours && !is247, configured: hasAfterHoursBehavior } });
         add({ code: 'llm_limits', dimension: 'robustness_operations', status: status(Number(config.llm?.maxTokens) > 0 && Number(config.llm?.temperature) >= 0, 'warning'), critical: false, weight: 2, href: `/admin/agent/${agent.id}`, evidence: { maxTokens: Number(config.llm?.maxTokens) || 0 } });
 
         const dimensions = AGENT_QUALITY_DIMENSIONS.map((dimension) => this.scoreDimension(dimension, checks));

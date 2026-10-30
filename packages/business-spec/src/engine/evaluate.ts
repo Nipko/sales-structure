@@ -1,6 +1,10 @@
 /**
  * C1 · Motor de preparación: evaluate(spec, foto, now) → ReadinessResult. Función pura (C0 §0.2):
  * no lee la base ni llama a un LLM; la misma foto y la misma hora dan el mismo resultHash.
+ *
+ * `resultHash` identifica el CONTENIDO del resultado: excluye `asOf` y `snapshotHash`, que cambian en cada
+ * lectura aunque nada haya cambiado (la foto lleva su hora de captura). Así el historial de la API
+ * (`readiness_evaluations`, C0 §2.7) guarda una fila solo cuando el resultado cambió (ADR 0004).
  */
 import { compose, type EffectiveRequirement } from '../compose';
 import { resolveFacts } from '../facts';
@@ -101,10 +105,10 @@ export function evaluate(spec: CompiledSpec, snap: TenantSnapshot, now?: Date): 
                 counted.set(req.id, levels);
             }
         } else if (rv.state === 'confirmado' && (rv.record?.legacyRule === 'L6' || rv.record?.legacyRule === 'L7')) {
-            qualityWarnings.push({ id: req.id, message: 'dato heredado: confírmalo' });
+            qualityWarnings.push({ id: req.id, message: 'dato heredado: confírmalo', uiTarget: req.uiTarget });
         }
-        for (const w of outcome.warnings ?? []) qualityWarnings.push({ id: req.id, message: w });
-        for (const s of rv.shadowed) qualityWarnings.push({ id: req.id, message: `otra fuente (${s.storage ?? s.origin}) dice otra cosa; manda el campo confirmado` });
+        for (const w of outcome.warnings ?? []) qualityWarnings.push({ id: req.id, message: w, uiTarget: req.uiTarget });
+        for (const s of rv.shadowed) qualityWarnings.push({ id: req.id, message: `otra fuente (${s.storage ?? s.origin}) dice otra cosa; manda el campo confirmado`, uiTarget: req.uiTarget });
         requirements.push(ev);
     }
 
@@ -169,10 +173,13 @@ export function evaluate(spec: CompiledSpec, snap: TenantSnapshot, now?: Date): 
         },
         requirements,
         blockingGaps,
+        necessaryGaps: necessaryFailing.filter(id => !blockingGaps.includes(id)),
+        recommendedGaps: recommendedFailing.filter(id => !blockingGaps.includes(id) && !necessaryFailing.includes(id)),
         platformGaps,
         qualityWarnings,
         coverage: { byArea, r5Pct },
         limitedIntents,
     };
-    return { ...result, resultHash: hashOf(result) };
+    const { asOf: _asOf, snapshotHash: _snapshotHash, ...content } = result;
+    return { ...result, resultHash: hashOf(content) };
 }

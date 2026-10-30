@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:49:02.877Z",
+  "capturedAt": "2026-10-30T11:53:15.209Z",
   "tenant": {
     "ref": "salon-qa-citas",
     "name": "Salón QA Citas",

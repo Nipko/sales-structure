@@ -2,7 +2,7 @@
 
 > **Generado** por `node packages/business-spec/bin/business-spec.cjs docs --write` desde `packages/business-spec/spec/*.yaml`.
 > No editar a mano: la CI (`verify-artifacts`) falla si este archivo no coincide con la especificación.
-> Formato: [business-requirements-format.md](business-requirements-format.md). Versión de la especificación: `1.0.0-rc.1`.
+> Formato: [business-requirements-format.md](business-requirements-format.md). Versión de la especificación: `1.1.0-rc.1`.
 
 **95 requisitos** (51 del núcleo, 6 de plantilla de objeto instanciados 80 veces, 10 extras de objeto, 13 de perfil y 15 de dominio), 15 objetos, 29 perfiles, 9 dominios y 271 intenciones.
 

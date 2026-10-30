@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:49:06.484Z",
+  "capturedAt": "2026-10-30T11:53:18.436Z",
   "tenant": {
     "ref": "spark-qa-comida-04",
     "name": "Spark QA Comida 04",
@@ -71,7 +71,7 @@
       "created_at": "2026-10-18T11:08:48.932417",
       "updated_at": "2026-10-18T19:10:37.754176",
       "category_id": null,
-      "description": "Plato sintetico exclusivo para QA, no vender.",
+      "description": "Plato de la casa: pechuga de pollo a la plancha con arroz, ensalada fresca y papas criollas.",
       "is_available": true
     }
   ],

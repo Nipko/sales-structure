@@ -40,6 +40,30 @@ describe('SnapshotReader (solo lectura)', () => {
         expect(SnapshotReader.buildSql(SCHEMA, [])).toContain("'faqs', '[]'::json");
     });
 
+    it('R1.1: lee los datos que el agente ya ve (dirección y financiación del listado, stock, idiomas del tour, campos de la reserva, agenda)', () => {
+        expect(TENANT_TABLE_COLUMNS.real_estate_listings).toMatch(/\baddress\b/);
+        expect(TENANT_TABLE_COLUMNS.real_estate_listings).toMatch(/\bfinancing_available\b/);
+        // de metadata solo sale la privacidad declarada, nunca el JSON completo
+        expect(TENANT_TABLE_COLUMNS.real_estate_listings).toContain("metadata->>'address_privacy' AS address_privacy");
+        expect(TENANT_TABLE_COLUMNS.real_estate_listings).not.toMatch(/(^|,\s*)metadata\s*(,|$)/);
+        expect(TENANT_TABLE_COLUMNS.products).toMatch(/\bstock\b/);
+        expect(TENANT_TABLE_COLUMNS.tour_packages).toMatch(/\blanguages\b/);
+        expect(TENANT_TABLE_COLUMNS.services).toMatch(/\brequired_fields\b/);
+        expect(TENANT_TABLE_COLUMNS.availability_slots).toMatch(/day_of_week, start_time, end_time/);
+    });
+
+    it('R1.1: las filas nuevas llegan a la foto (horario desde la agenda, dirección y financiación por listado)', async () => {
+        const rows = await new SnapshotReader(fakeRunner({
+            ...raw,
+            availability_slots: [{ id: 'a1', user_id: 'u1', day_of_week: 1, start_time: '08:00:00', end_time: '18:00:00', is_active: true, created_at: '2026-10-18 09:22:34' }],
+            real_estate_listings: [{ id: 'l1', transaction_type: 'sale', address: 'Calle 9 # 1-2', address_privacy: null, financing_available: false, is_active: true, created_at: '2026-10-20 10:00:00', updated_at: '2026-10-21 10:00:00' }],
+        }), () => new Date('2026-10-30T12:00:00Z')).readRows(SCHEMA);
+        const snap = fromLegacyRows(rows);
+        expect(snap.values['CORE.HOURS.REGULAR'][0]).toMatchObject({ status: 'seeded', legacyRule: 'L3', storage: expect.stringMatching(/^availability_slots/) });
+        expect(snap.items.real_estate[0].fields).toMatchObject({ address: 'Calle 9 # 1-2', address_privacy: null });
+        expect(snap.values['CORE.PAYMENT.FINANCING'][0]).toMatchObject({ scopeKey: 'item:l1', status: 'seeded', legacyRule: 'L4' });
+    });
+
     it('entrega filas que el paquete convierte en una foto evaluable (subtipo canónico, pack de país)', async () => {
         const runner = fakeRunner(raw);
         const reader = new SnapshotReader(runner, () => new Date('2026-10-30T12:00:00Z'));

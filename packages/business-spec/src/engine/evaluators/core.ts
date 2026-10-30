@@ -1,5 +1,5 @@
 /** Evaluadores `custom` del núcleo (core.yaml). La prosa de cada predicado está en el YAML. */
-import { extractFigures, isTextWithoutData } from '../../status';
+import { extractFigures, isTextWithoutData, textEvidenceFor } from '../../status';
 import {
     OBJECT_NOUNS, activeItems, asList, asObject, catalogObjects, confirmed, cval, exists, fail, itemConfirmed, nonEmptyList,
     ok, olderThanDays, ratioOutcome, refOk, type EvalContext, type Evaluator,
@@ -225,7 +225,11 @@ const cancellation: Evaluator = ctx => {
 };
 
 const warranty: Evaluator = ctx => {
-    if (!confirmed(ctx.value)) return fail(ctx.value);
+    if (!confirmed(ctx.value)) {
+        // R1.1 F2: una FAQ confirmada, publicada y con dato que cubre la garantía cumple (accepts_text_evidence)
+        const t = ctx.req.sources.acceptsTextEvidence ? textEvidenceFor(ctx.snap.texts, ctx.req.id) : null;
+        return t ? ok(`cubierto por texto confirmado «${t.title}»`) : fail(ctx.value);
+    }
     const v = cval(ctx.value);
     const byCategory = asObject(v.by_category);
     const cats = Object.keys(byCategory);

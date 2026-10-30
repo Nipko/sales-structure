@@ -148,6 +148,12 @@ export interface ItemRecord {
     legacyRule?: LegacyRule | null;
     /** Estado por campo cuando difiere del ítem (p. ej. `allergens` = valor por defecto de columna, L4). */
     fieldStatus?: Record<string, StoredStatus>;
+    /**
+     * La fila lleva un marcador explícito del estado del precio (L1: `price_status`). El marcador dice qué parte de la
+     * ficha es de ejemplo: en la verdad QA solo el precio queda «por confirmar» y el resto de los campos sigue su
+     * `fieldStatus` o se afirma (R1.1 F6). La preparación sigue leyendo `contentStatus`.
+     */
+    priceMarker?: boolean;
     createdAt?: string | null;
     updatedAt?: string | null;
 }

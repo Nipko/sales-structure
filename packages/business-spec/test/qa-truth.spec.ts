@@ -1,11 +1,13 @@
 /** qaTruth (schema §10) y compose(perfil, subtipo). */
 import { composeFor } from '../src/compose';
-import { qaTruth } from '../src/qa/truth';
+import { qaTruth, requirementsForIntent } from '../src/qa/truth';
 import { NOW, base, fixtureSnapshot, item, region, spec, val } from './helpers';
 
 describe('qaTruth', () => {
     it('dato ausente → when_missing del requisito (C14 medios de pago en el dental: NC+AV)', () => {
-        const t = qaTruth(spec, fixtureSnapshot('spark-qa-dental-03'), { intent: 'C14' });
+        const dental = fixtureSnapshot('spark-qa-dental-03');
+        expect(requirementsForIntent(spec, dental, 'C14')).toContain('CORE.PAYMENT.METHODS');
+        const t = qaTruth(spec, dental, { intent: 'C14', requirementId: 'CORE.PAYMENT.METHODS' });
         expect(t.expected).toBe('NC+AV');
         const methods = t.cases.find(c => c.requirementId === 'CORE.PAYMENT.METHODS');
         expect(methods).toMatchObject({ valueState: 'ausente', expected: 'NC+AV' });
@@ -21,11 +23,12 @@ describe('qaTruth', () => {
         expect(qaTruth(spec, s, { requirementId: 'CORE.OFFER.PROMOTIONS' }, NOW).expected).toBe('NIEGA');
     });
 
-    it('precio de ejemplo de un ítem sembrado → no se afirma; a_cotizar → COTIZA; desde → AFIRMA con calificador', () => {
+    it('precio de ejemplo → el precio no se afirma (F6); a_cotizar → COTIZA; desde → AFIRMA con calificador', () => {
         const dental = fixtureSnapshot('spark-qa-dental-03');
         const seeded = dental.items.appointment[0];
         const t = qaTruth(spec, dental, { requirementId: 'OBJ.APPOINTMENT.CATALOG', itemId: seeded.id });
-        expect(t.cases[0].expected).toBe('NC+AV');
+        expect(t.cases[0].fields?.price).toBe('ejemplo');
+        expect(t.cases[0].affirm).not.toHaveProperty('price');
         expect(t.cases[0].never.join(' ')).toMatch(/precio de ejemplo/);
         const s = base('salud/dental');
         item(s, 'appointment', { name: 'Implante' }, { priceType: 'a_cotizar', priceStatus: 'confirmed' });
@@ -43,11 +46,13 @@ describe('qaTruth', () => {
         expect(c.never.filter(n => n.startsWith('el valor en conflicto'))).toHaveLength(2);
     });
 
-    it('intención de cuenta → CUENTA; emergencia de salud → EXT; transversal sin requisito → CONVERSACIONAL', () => {
+    it('requisito de cuenta → CUENTA; emergencia de salud → EXT; transversal sin requisito → CONVERSACIONAL', () => {
         const s = base('salud/dental');
         region(s);
-        expect(qaTruth(spec, s, { intent: 'C19' }, NOW).expected).toBe('CUENTA');
-        expect(qaTruth(spec, s, { intent: 'P08-7' }, NOW).expected).toBe('EXT');
+        const account = requirementsForIntent(spec, s, 'C19', NOW).find(id => spec.requirements[id].exposure === 'account_read') as string;
+        expect(qaTruth(spec, s, { intent: 'C19', requirementId: account }, NOW).expected).toBe('CUENTA');
+        const emergency = requirementsForIntent(spec, s, 'P08-7', NOW).find(id => spec.requirements[id].whenMissing.code === 'EXT') as string;
+        expect(qaTruth(spec, s, { intent: 'P08-7', requirementId: emergency }, NOW).expected).toBe('EXT');
         expect(qaTruth(spec, s, { intent: 'T02' }, NOW).expected).toBe('CONVERSACIONAL');
     });
 

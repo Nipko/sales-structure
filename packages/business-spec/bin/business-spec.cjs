@@ -8,7 +8,8 @@
  *   business-spec docs --write               regenera docs/domain/business-requirements.md
  *   business-spec compile --out dist/spec.json
  *   business-spec report --snapshot f.json [--now ISO] [--format md|json]
- *   business-spec qa-truth --snapshot f.json (--intent C14 | --requirement ID) [--item ID] [--now ISO]
+ *   business-spec qa-truth --snapshot f.json --requirement ID [--item ID] [--intent C14] [--now ISO]
+ *   business-spec qa-truth --snapshot f.json --intent C14     lista los requisitos que la responden (R1.1 F10)
  *
  * `--snapshot` acepta una foto (business-spec/tenant-snapshot@1) o filas heredadas (business-spec/legacy-rows@1).
  */

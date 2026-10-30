@@ -216,6 +216,8 @@ De mayor a menor. Una fuente de mayor nivel **gana sin contradicción**; la dife
 
 Algunos requisitos (p. ej. preparación para un procedimiento, manejo del miedo al dentista, instrucciones de seguridad de fumigación) son conocimiento narrativo y se cubren con una FAQ o documento **confirmado y con dato**. Los requisitos con cifras, horas, plazos o cargos **no** aceptan texto: exigen campos. Una FAQ «sin dato» (patrón de desvío: «cuéntame…», «te confirmamos…», «con gusto te compartimos…») nunca cubre nada y se marca como hueco.
 
+**Excepción (R1.1, spec 1.1.0-rc.1):** `CORE.POLICY.WARRANTY` y `CORE.POLICY.REFUND_RETURNS` aceptan texto mientras no exista el formulario de políticas estructuradas. Cuenta una FAQ **publicada, confirmada (no sembrada, D5) y con dato** cuyo `covers` incluye el requisito; en los datos heredados `covers` se infiere del título (`FAQ_COVERS_RULES`). La verdad QA afirma el texto tal cual, sin añadir plazos ni condiciones.
+
 ### 7.5 Estado de los datos heredados (v0.2)
 
 Mientras no exista `{status, origin, confirmed_at}` por valor, el motor decide el estado con estas reglas deterministas. Se aplican en orden y gana la primera:
@@ -332,6 +334,31 @@ La v0.2 se trajo al repositorio como `1.0.0-rc.1`. Para que cada predicado sea e
 - Con `predicate_by_level`, el umbral `bloqueante` falla en el nivel del requisito y el umbral `necesario` falla como R4.
 - Los extras de perfil se activan por su `applies_when` (p. ej. `PROF.P09.PREPARATIONS` aplica a P08, P09 y P17).
 - `CORE.HANDOFF.TEAM`: sin asignación explícita, cuenta el administrador activo con correo verificado y aviso de traspaso (D-09).
-- `qaTruth` de una intención: si algún requisito aplicable es EXT, la esperada es EXT; si no, manda el requisito de mayor criticidad (y, a igual criticidad, el más específico: dominio > perfil > objeto > núcleo). Las transversales T01–T11 dan `CONVERSACIONAL`. Para un subcaso concreto, el arnés pasa el `requirement_id` (y el ítem).
+- ~~`qaTruth` de una intención~~ (reemplazado en R1.1, §14): la consulta es siempre por `requirement_id` (+ ítem).
 
 **Datos heredados (§7.5) en R1:** L5 es aproximada (la plantilla de la persona vive en código, así que toda configuración de persona con `template_id` se trata como sembrada) y L4 se extiende a valores por defecto de columna equivalentes (`companies.country 'CO'`, `properties.check_in_time/check_out_time`, `products.requires_prescription`, listas `jsonb` vacías).
+
+## 14. Adiciones de R1.1 (spec 1.1.0-rc.1)
+
+Medición del criterio 6 (qaTruth contra la revisión humana) y sus arreglos F1–F7 y F10. Cambio menor de la especificación: solo `sources.accepts_text_evidence` (§7.4); la estructura del dato no cambia.
+
+**Consulta (F10).** `qaTruth(spec, foto, {requirementId, itemId?, intent?})` devuelve **un** caso: el del requisito pedido. Una intención sola solo se acepta si es conversacional (T01–T11 → `CONVERSACIONAL`); para las demás, `requirementsForIntent()` da los candidatos y el generador elige uno. Si se pasa la intención, el requisito tiene que responderla. Un ítem solo convierte el caso en la ficha cuando el requisito es `OBJ.*.CATALOG`; en `OBJ.*.AVAILABILITY_SOURCE` el caso afirma lo que la fuente tiene cargado para ese ítem (salidas, stock), y en el resto el ítem da el alcance del valor (`scopeKey = item:<id>`, p. ej. financiación por listado).
+
+**Estado por campo (F6, F7).** El caso de un ítem trae `fields` (estado de cada campo), `affirm` (solo los confirmados) y `unknown` (los que no constan):
+- el precio y la moneda siguen `price_status` (L1); si la fila trae ese marcador explícito, el resto de la ficha se afirma aunque la fila sea del alta (el marcador dice qué es de ejemplo); sin marcador, una fila sembrada sigue entera «por confirmar»;
+- un campo ausente o una lista vacía que nadie confirmó (default de columna) es «no consta» + AV y nunca habilita «no incluye»;
+- con `address_privacy ≠ publica` la dirección no se afirma: se da la zona y se dice que se comparte al confirmar.
+
+**Captura (F1–F5), con el estado de cada fila (§7.5):**
+
+| Requisito | Origen nuevo | Estado |
+|---|---|---|
+| `CORE.HOURS.REGULAR` | `availability_slots` (la agenda), solo si no hay `settings.businessHours` ni `config.hours` de la persona — la misma precedencia que el runtime | el de sus filas: la agenda que siembra la plantilla del alta es **sembrada (L3)** |
+| `CORE.POLICY.WARRANTY`, `CORE.POLICY.REFUND_RETURNS` | FAQ confirmada y con dato, `covers` inferido del título | confirmado (L6) |
+| `OBJ.REAL_ESTATE.CATALOG` | `real_estate_listings.address` y `metadata.address_privacy` | el de la fila |
+| `CORE.PAYMENT.FINANCING` (por listado) | `real_estate_listings.financing_available` | `true` → el de la fila; `false` es el default de la columna → **sembrado (L4)** |
+| `OBJ.CATALOG_ORDER.CATALOG` / `AVAILABILITY_SOURCE` | `products.stock` | el de la fila |
+| `OBJ.TOUR_BOOKING.CATALOG` / `AVAILABILITY_SOURCE` | `tour_packages.languages` → `guide_languages`; salidas futuras de `tour_inventory` → `departures` | lista vacía = no consta |
+| `OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS` (por servicio) | `services.required_fields` | contrato del motor de reservas: la verdad QA es lo que pedirá (ver `when_missing`), aunque sea el default (L4 sigue valiendo para la preparación) |
+
+El contenido que siembra la plantilla del alta (agenda, FAQs) y los defaults de columna no son verdad QA (D5; ADR 0006 propuesto).

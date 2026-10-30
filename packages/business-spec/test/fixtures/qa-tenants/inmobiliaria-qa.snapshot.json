@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:48:59.479Z",
+  "capturedAt": "2026-10-30T11:53:11.837Z",
   "tenant": {
     "ref": "inmobiliaria-qa",
     "name": "Inmobiliaria QA",
@@ -140,6 +140,7 @@
       "name": "Spark QA Inmueble 20261018T2220Z",
       "price": 250000,
       "status": "available",
+      "address": "Calle Sintetica QA 123",
       "area_m2": 80,
       "country": "CO",
       "deposit": null,
@@ -153,7 +154,9 @@
       "description": null,
       "neighborhood": null,
       "property_kind": "apartment",
-      "transaction_type": "sale"
+      "address_privacy": null,
+      "transaction_type": "sale",
+      "financing_available": false
     }
   ],
   "faqs": [

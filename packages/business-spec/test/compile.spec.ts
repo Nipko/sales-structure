@@ -19,7 +19,7 @@ describe('compile: la especificación del repo', () => {
         expect(errors).toEqual([]);
         expect(spec.order).toHaveLength(169);
         expect(new Set(spec.order.map(id => spec.requirements[id].templateId ?? id)).size).toBe(95);
-        expect(spec.specVersion).toBe('1.0.0-rc.1');
+        expect(spec.specVersion).toBe('1.1.0-rc.1');
     });
 
     it('business-spec check pasa en el repo (subtipos, ui_target y docs generados)', () => {

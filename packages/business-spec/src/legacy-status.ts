@@ -96,6 +96,53 @@ export function normalizeHours(raw: unknown): Row | null {
     return Object.keys(days).length ? { always_open: false, timezone: h.timezone ?? null, days } : null;
 }
 
+const AGENDA_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const hhmm = (v: unknown): string | null => { const m = String(v ?? '').match(/^(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null; };
+
+/**
+ * Horario semanal a partir de la agenda (`availability_slots`, 0 = domingo), el tercer origen que el runtime usa para
+ * contestar «¿a qué hora abren?» cuando no hay horario del negocio ni de la persona (informational-hours.ts). La agenda
+ * es una grilla semanal completa: un día sin franjas activas es un día cerrado (lista vacía). Las franjas de varios
+ * profesionales se unen por día.
+ */
+export function hoursFromAgenda(slots: readonly Row[]): Row | null {
+    const active = slots.filter(s => s.is_active !== false);
+    if (!active.length) return null;
+    const days: Record<string, { open: string; close: string }[]> = Object.fromEntries(AGENDA_DAYS.map(d => [d, []]));
+    for (const s of active) {
+        const day = AGENDA_DAYS[Number(s.day_of_week)];
+        const open = hhmm(s.start_time);
+        const close = hhmm(s.end_time);
+        if (day && open && close) days[day].push({ open, close });
+    }
+    for (const d of AGENDA_DAYS) {
+        const merged: { open: string; close: string }[] = [];
+        for (const span of days[d].sort((a, b) => a.open.localeCompare(b.open))) {
+            const last = merged[merged.length - 1];
+            if (last && span.open <= last.close) last.close = span.close > last.close ? span.close : last.close;
+            else merged.push({ ...span });
+        }
+        days[d] = merged;
+    }
+    return { always_open: false, timezone: null, days };
+}
+
+/**
+ * Temas que cubre una FAQ (R1.1 F2), inferidos de su título con reglas deterministas. Solo cuentan para requisitos con
+ * `accepts_text_evidence: true`, y solo si la FAQ está publicada, confirmada y tiene dato (`textEvidenceFor`).
+ */
+export const FAQ_COVERS_RULES: ReadonlyArray<{ requirementId: string; pattern: RegExp }> = [
+    { requirementId: 'CORE.POLICY.WARRANTY', pattern: /garant[ií]a|warrant|garantie/i },
+    { requirementId: 'CORE.POLICY.REFUND_RETURNS', pattern: /devoluci[oó]n|devolver|reembols|refund|\breturns?\b|rembours|devolu[çc][ãa]o/i },
+];
+
+export function inferCovers(title: string): string[] {
+    return FAQ_COVERS_RULES.filter(r => r.pattern.test(title)).map(r => r.requirementId);
+}
+
+/** `address_privacy` del listado (CORE.LOCATIONS.LIST): solo valores del enum; sin valor declarado → null. */
+const ADDRESS_PRIVACY = new Set(['publica', 'solo_barrio', 'tras_confirmar']);
+
 export interface LegacyContext { windowStart: number; windowEnd: number }
 
 /** L3: creada en la ventana de aprovisionamiento y nunca editada → sembrada; si no, L6 confirmada. */
@@ -124,7 +171,9 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     const ctx: LegacyContext = { windowStart: toMs(t.created_at), windowEnd: Number.isFinite(toMs(completedAt)) ? toMs(completedAt) : toMs(t.created_at) + 60_000 };
     snap.source = { kind: 'legacy', notes: [
         'L5 aproximada: la plantilla de persona vive en código; toda configuración de persona con template_id se trata como sembrada.',
-        'L4 extendida a valores por defecto de columna equivalentes (companies.country, properties.check_in/out, products.requires_prescription, listas jsonb vacías).',
+        'L4 extendida a valores por defecto de columna equivalentes (companies.country, properties.check_in/out, products.requires_prescription, real_estate_listings.financing_available = false, listas jsonb vacías).',
+        'Horario: sin settings.businessHours ni config.hours de la persona se lee la agenda (availability_slots) con el estado de sus filas (R1.1).',
+        'covers de las FAQs inferido del título (FAQ_COVERS_RULES, R1.1).',
     ] };
     const add = (id: string, rec: ValueRecord) => { (snap.values[id] ??= []).push(rec); };
     const legacyRec = (value: unknown, st: { status: StoredStatus; rule: LegacyRule }, storage: string, row?: Row): ValueRecord => ({
@@ -177,10 +226,19 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     const bh = normalizeHours(settings.businessHours);
     if (bh) add('CORE.HOURS.REGULAR', { ...legacyRec(bh, { status: 'confirmed', rule: 'L6' }, 'settings.businessHours'), confirmedAt: null });
     const persona = rows.agent_personas.find(p => p.is_active && p.is_default) ?? rows.agent_personas.find(p => p.is_active) ?? rows.agent_personas[0];
+    const ph = persona ? normalizeHours((persona.config_json ?? {}).hours) : null;
+    // R1.1 F1: tercer origen, la agenda (como el runtime), solo si ni el negocio ni la persona tienen horario. Su estado
+    // es el de sus filas: la agenda que siembra la plantilla del alta (L3) queda sembrada, nunca confirmada (ADR 0006).
+    const agendaHours = !bh && !ph ? hoursFromAgenda(rows.availability_slots) : null;
+    if (agendaHours) {
+        const active = rows.availability_slots.filter(s => s.is_active !== false);
+        const seeded = active.every(s => rowStatus(s, ctx).status === 'seeded');
+        const newest = active.reduce((a, b) => (toMs(b.created_at) > toMs(a.created_at) ? b : a));
+        add('CORE.HOURS.REGULAR', legacyRec(agendaHours, seeded ? { status: 'seeded', rule: 'L3' } : { status: 'confirmed', rule: 'L6' }, 'availability_slots (agenda; horario informativo)', newest));
+    }
     if (persona) {
         const cfg = persona.config_json ?? {};
         const personaStatus = persona.template_id ? L5 : rowStatus(persona, ctx);
-        const ph = normalizeHours(cfg.hours);
         if (ph) add('CORE.HOURS.REGULAR', legacyRec(ph, personaStatus, 'agent_personas.config_json.hours', persona));
         const b = cfg.behavior ?? {};
         const triggers = jsonList(b.handoffTriggers).map(String);
@@ -257,8 +315,14 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             duration: num(r.duration_minutes) ? { min: num(r.duration_minutes), unit: 'min' } : null,
             price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null, currency: r.currency,
             preparation_ref: r.metadata?.preparation_ref ?? null, staff_ids: staffByService.get(String(r.id)) ?? [],
+            // R1.1 F5: datos que el motor de reservas exige para este servicio (WRITE_MODE.required_fields por ítem)
+            required_fields: jsonList(r.required_fields).map(String),
         });
-        return keepRule({ ...base, fieldStatus: { staff_ids: base.contentStatus } }, priceOf(r, num(r.price), true));
+        return keepRule({
+            ...base,
+            fieldStatus: { staff_ids: base.contentStatus, required_fields: listStatus(r.required_fields, base.contentStatus) },
+            ...(str(r.price_status) ? { priceMarker: true } : {}),
+        }, priceOf(r, num(r.price), true));
     });
     const categories = new Map(rows.menu_categories.map(c => [String(c.id), c.name]));
     if (rows.menu_items.length) snap.items.food_order = rows.menu_items.map(r => {
@@ -274,6 +338,8 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             const base = item({ ...r, is_active: r.is_available !== false }, {
                 name: r.name, category: str(r.category), price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null,
                 active: r.is_available !== false, description: str(r.description), requires_prescription: r.requires_prescription,
+                // R1.1 F4: unidades en existencia (dato de disponibilidad del ítem; resource_model = stock)
+                stock: num(r.stock),
             });
             return keepRule({ ...base, fieldStatus: { requires_prescription: r.requires_prescription === true ? base.contentStatus : 'seeded' } }, priceOf(r, num(r.price), false));
         }),
@@ -299,24 +365,48 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             { check_in_from: String(p.check_in_time ?? '').slice(0, 5) || null, check_out_until: String(p.check_out_time ?? '').slice(0, 5) || null },
             isDefault ? { status: 'seeded', rule: 'L4' } : rowStatus(p, ctx), 'properties.check_in_time/check_out_time', p));
     }
+    const departuresByPackage = new Map<string, Row[]>();
+    for (const d of rows.tour_inventory.filter(x => x.is_active !== false && toMs(x.departure_date) >= toMs(String(rows.capturedAt).slice(0, 10)))) {
+        departuresByPackage.set(String(d.package_id), [...(departuresByPackage.get(String(d.package_id)) ?? []), d]);
+    }
     if (rows.tour_packages.length) snap.items.tour_booking = rows.tour_packages.map(r => {
         const base = item(r, {
             name: r.name, destination: str(r.destination), description: str(r.description),
             duration: num(r.duration_value) ? { min: num(r.duration_value), unit: r.duration_type } : null,
             price_per_passenger_type: num(r.price) && num(r.price)! > 0 ? { adulto: num(r.price) } : null,
             includes: jsonList(r.includes), excludes: jsonList(r.excludes), meeting_point: str(r.departure_location),
+            // R1.1 F4: idiomas del guía (campo opcional guide_languages del objeto)
+            guide_languages: jsonList(r.languages).map(String),
+            // R1.1 F4: salidas futuras activas del paquete (dato de disponibilidad: availability_data.departures[])
+            departures: (departuresByPackage.get(String(r.id)) ?? []).map(d => ({ date: String(d.departure_date).slice(0, 10), seats_left: num(d.available_seats) })),
         });
-        return keepRule({ ...base, fieldStatus: { includes: listStatus(r.includes, base.contentStatus), excludes: listStatus(r.excludes, base.contentStatus) } }, priceOf(r, num(r.price), false));
+        const deps = departuresByPackage.get(String(r.id)) ?? [];
+        return keepRule({
+            ...base,
+            fieldStatus: {
+                includes: listStatus(r.includes, base.contentStatus), excludes: listStatus(r.excludes, base.contentStatus),
+                guide_languages: listStatus(r.languages, base.contentStatus),
+                ...(deps.length ? { departures: deps.every(d => rowStatus(d, ctx).status === 'seeded') ? 'seeded' as const : 'confirmed' as const } : {}),
+            },
+        }, priceOf(r, num(r.price), false));
     });
     if (rows.real_estate_listings.length) snap.items.real_estate = rows.real_estate_listings.map(r => {
         const base = item(r, {
             operation: str(r.transaction_type), property_type: str(r.property_kind), price: num(r.price), currency: r.currency,
             zone: str(r.neighborhood), city: str(r.city), country: r.country && r.country !== 'CO' ? r.country : t.operating_country,
             bedrooms: num(r.bedrooms), bathrooms: num(r.bathrooms), area_m2: num(r.area_m2), status: str(r.status),
-            address_privacy: null, admin_fee: num(r.hoa_fee), description: str(r.description),
+            // R1.1 F3: dirección del listado; la verdad QA la afirma solo si address_privacy es publica o no está declarada
+            address: str(r.address),
+            address_privacy: ADDRESS_PRIVACY.has(String(r.address_privacy ?? '')) ? String(r.address_privacy) : null,
+            admin_fee: num(r.hoa_fee), description: str(r.description),
         });
         return keepRule(base, priceOf(r, num(r.price), false));
     });
+    // R1.1 F3: financiación por listado. `false` es el valor por defecto de la columna (L4): no es un «no» confirmado.
+    for (const r of rows.real_estate_listings.filter(x => typeof x.financing_available === 'boolean')) {
+        const st = r.financing_available === true ? rowStatus(r, ctx) : { status: 'seeded' as const, rule: 'L4' as const };
+        add('CORE.PAYMENT.FINANCING', { ...legacyRec({ installments: { enabled: r.financing_available } }, st, 'real_estate_listings.financing_available', r), scopeKey: `item:${r.id}` });
+    }
 
     // disponibilidad (datos para cuando se declare la fuente)
     const slots = rows.availability_slots.filter(s => s.is_active !== false);
@@ -337,7 +427,11 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     const texts: TextRecord[] = [
         ...rows.faqs.map(f => {
             const st = rowStatus(f, ctx);
-            return { id: String(f.id), kind: 'faq' as const, title: String(f.question ?? ''), body: String(f.answer ?? ''), published: f.is_published !== false, status: st.status, origin: st.status === 'seeded' ? 'platform_seed' : 'legacy', legacyRule: st.rule };
+            const covers = inferCovers(String(f.question ?? ''));
+            return {
+                id: String(f.id), kind: 'faq' as const, title: String(f.question ?? ''), body: String(f.answer ?? ''), published: f.is_published !== false,
+                status: st.status, origin: st.status === 'seeded' ? 'platform_seed' : 'legacy', legacyRule: st.rule, ...(covers.length ? { covers } : {}),
+            };
         }),
         ...rows.knowledge_documents.map(d => {
             const st = rowStatus(d, ctx);

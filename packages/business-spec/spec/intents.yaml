@@ -1,7 +1,7 @@
 # Banco de intenciones (B1 en formato máquina). R1: IDs, capa o perfil y código «si falta»; aún sin frases.
 # Fuente: B1-preguntas-por-perfil.md §B (núcleo C01–C33, transversales T01–T11) y §C (Pnn-k).
 # Las frases de ejemplo en ES/EN/PT/FR se agregan en la rebanada R7 (C0 §1.4).
-spec_version: 1.0.0-rc.1
+spec_version: 1.1.0-rc.1
 intents:
   - {id: C01, layer: "core", block: "B.1 Información del negocio", title: "Qué es o qué hace el negocio", if_missing: [NC+AV]}
   - {id: C02, layer: "core", block: "B.1 Información del negocio", title: "Ubicación y cómo llegar", if_missing: [NC+AV, PREG]}

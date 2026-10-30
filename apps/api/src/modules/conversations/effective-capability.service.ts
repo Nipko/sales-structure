@@ -1,5 +1,5 @@
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
     CAPABILITY_EXCLUSION_TEXT,
     CATALOG_READ_TOOLS_WHEN_EMPTY,
@@ -29,7 +29,7 @@ import { isNonCommittalTool, toolOrigin } from './tool-policy-registry';
 import { SystemOfRecordBoundaryService } from '../integrations/system-of-record-boundary.service';
 import { buildVerticalOperationContract } from '../verticals/vertical-operation-contract';
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
-import { ReadinessService } from '../readiness/readiness.service';
+import { BUSINESS_READINESS, type BusinessReadinessPort } from './business-readiness.port';
 import { FeatureFlagsService, WRITE_MODE_CAPABILITY_FLAG } from '../throttle/feature-flags.service';
 import { writeModeDecision, type WriteModeDecision } from './write-mode-capability';
 
@@ -203,7 +203,7 @@ export class EffectiveCapabilityService {
         @Optional() private readonly regionalProfile?: RegionalProfileService,
         @Optional() private readonly systemOfRecord?: SystemOfRecordBoundaryService,
         /** R4: la evaluación del motor (WRITE_MODE y precondiciones por objeto). Ausente en specs a mano: sin decisión nueva. */
-        @Optional() private readonly businessReadiness?: ReadinessService,
+        @Optional() @Inject(BUSINESS_READINESS) private readonly businessReadiness?: BusinessReadinessPort,
         @Optional() private readonly featureFlags?: FeatureFlagsService,
     ) {}
 

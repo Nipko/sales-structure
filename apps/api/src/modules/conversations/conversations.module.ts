@@ -77,6 +77,8 @@ import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-me
 import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
 import { VerticalTurnContextService } from './vertical-turn-context.service';
 import { ReadinessModule } from '../readiness/readiness.module';
+import { ReadinessService } from '../readiness/readiness.service';
+import { BUSINESS_READINESS } from './business-readiness.port';
 import { TurnCapabilityComposerService } from './turn-capability-composer.service';
 
 @Module({
@@ -132,6 +134,8 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         }),
     ],
     providers: [
+        // R4: EffectiveCapabilityService lee la evaluación del motor por un token (business-readiness.port.ts)
+        { provide: BUSINESS_READINESS, useExisting: ReadinessService },
         { provide: IsolatedEvalNamespace, useFactory: isolatedEvalNamespaceForPrisma, inject: [PrismaService] },
         ExpiredHoldSweeperService,
         ConversationsService,

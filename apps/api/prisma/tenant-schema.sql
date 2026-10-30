@@ -6701,3 +6701,73 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."pending_question_waiters" (
 CREATE INDEX IF NOT EXISTS idx_pending_question_waiters_contact
         ON "{{SCHEMA_NAME}}"."pending_question_waiters" (contact_id);
 -- END PENDING QUESTIONS
+
+-- BEGIN REHEARSAL
+-- Ensayo antes de salir (C0 §1.4 C4, rebanada R7, ADR 0013). `rehearsal_runs`: una ejecución del ensayo con su banco
+-- congelado (`bank`, `bank_hash`: el mismo banco repetido k veces da pass^k), el progreso, el resumen (tasa de aciertos)
+-- y el costo (modelos y tokens del agente y del juez). `rehearsal_results`: un caso calificado por ejecución
+-- (`case_key` estable dentro del banco), con lo que respondió el agente, los chequeos deterministas y, si hizo falta, el
+-- juez de paráfrasis. Solo escribe RehearsalService (modules/rehearsal); el ensayo corre por Agent Test sin efectos y
+-- nunca pasa por el control de salida. La migración 20261030200000_add_rehearsal_runs crea lo mismo en los tenants que
+-- ya existen, y rehearsal-schema.spec.ts exige que las dos definiciones coincidan.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."rehearsal_runs" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        agent_id UUID,
+        status TEXT NOT NULL DEFAULT 'running',
+        seed TEXT NOT NULL,
+        spec_version TEXT NOT NULL,
+        snapshot_hash TEXT NOT NULL,
+        bank_hash TEXT NOT NULL,
+        bank JSONB NOT NULL,
+        repeat_of UUID,
+        attempt INTEGER NOT NULL DEFAULT 1,
+        case_count INTEGER NOT NULL DEFAULT 0,
+        completed_count INTEGER NOT NULL DEFAULT 0,
+        summary JSONB,
+        pass_rate NUMERIC(5,4),
+        models TEXT[] NOT NULL DEFAULT '{}',
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        judge_calls INTEGER NOT NULL DEFAULT 0,
+        judge_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+        error TEXT,
+        requested_by UUID,
+        started_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        completed_at TIMESTAMPTZ,
+        CONSTRAINT rehearsal_runs_status CHECK (status IN ('running','completed','stopped','failed','interrupted'))
+    );
+CREATE INDEX IF NOT EXISTS idx_rehearsal_runs_started
+        ON "{{SCHEMA_NAME}}"."rehearsal_runs" (started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_rehearsal_runs_bank
+        ON "{{SCHEMA_NAME}}"."rehearsal_runs" (bank_hash);
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."rehearsal_results" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        run_id UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."rehearsal_runs" (id) ON DELETE CASCADE,
+        case_key TEXT NOT NULL,
+        intent_id TEXT NOT NULL,
+        requirement_ids TEXT[] NOT NULL,
+        item_id TEXT,
+        language TEXT NOT NULL,
+        expected TEXT NOT NULL,
+        value_state TEXT,
+        outcome TEXT NOT NULL,
+        miss_class TEXT,
+        decided_by TEXT,
+        reason TEXT,
+        turns JSONB NOT NULL DEFAULT '[]'::jsonb,
+        tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+        checks JSONB NOT NULL DEFAULT '[]'::jsonb,
+        judge JSONB,
+        model TEXT,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        latency_ms INTEGER,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT rehearsal_results_outcome CHECK (outcome IN ('answered','missing_data','wrong','inconclusive','error')),
+        CONSTRAINT rehearsal_results_miss_class CHECK (miss_class IS NULL OR miss_class IN ('dato','producto')),
+        CONSTRAINT rehearsal_results_once UNIQUE (run_id, case_key)
+    );
+CREATE INDEX IF NOT EXISTS idx_rehearsal_results_case
+        ON "{{SCHEMA_NAME}}"."rehearsal_results" (case_key, created_at DESC);
+-- END REHEARSAL

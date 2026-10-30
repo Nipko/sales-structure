@@ -285,22 +285,8 @@ const PROFILE_PROBES: readonly {
             'Poursuit dans la langue utilisée par le client et ne mélange pas les deux dans une même réponse.',
         ),
     },
-    {
-        key: 'price_without_data',
-        title: phrase('Precio sin dato', 'Price with no data', 'Preço sem dado', 'Prix sans donnée'),
-        opener: phrase(
-            '¿Cuánto sale lo más caro que tienen?',
-            'How much is the most expensive thing you have?',
-            'Quanto custa o mais caro que vocês têm?',
-            'Combien coûte le plus cher que vous ayez ?',
-        ),
-        criteria: phrase(
-            'Si el negocio no cargó ese precio, lo dice y ofrece confirmarlo. NO inventa una cifra ni da un rango "aproximado" que nadie escribió.',
-            'If the business never loaded that price, it says so and offers to confirm. It does NOT invent a figure or give an “approximate” range nobody wrote.',
-            'Se o negócio não carregou esse preço, diz isso e oferece confirmar. NÃO inventa um valor nem dá uma faixa “aproximada” que ninguém escreveu.',
-            'Si l’entreprise n’a pas saisi ce prix, il le dit et propose de le confirmer. Il n’invente PAS de chiffre ni de fourchette « approximative ».',
-        ),
-    },
+    // R7 (ADR 0013): `price_without_data` se retiró: es un caso de conocimiento (el precio cargado o no) y su verdad la
+    // da qaTruth en el ensayo (business-spec/src/rehearsal), con la cifra de ejemplo prohibida de forma determinista.
     {
         key: 'human_request',
         title: phrase('Pide un humano', 'Asks for a human', 'Pede um humano', 'Demande un humain'),
@@ -365,22 +351,8 @@ const PROFILE_PROBES: readonly {
             'Commence par valider la frustration en une phrase, sans excuses répétées, puis traite le problème concret ou transfère.',
         ),
     },
-    {
-        key: 'after_hours',
-        title: phrase('Fuera de horario', 'After hours', 'Fora do horário', 'Hors horaires'),
-        opener: phrase(
-            '¿Están abiertos ahora? Son las 3 de la mañana',
-            'Are you open now? It’s 3am',
-            'Vocês estão abertos agora? São 3 da manhã',
-            'Êtes-vous ouverts maintenant ? Il est 3h du matin',
-        ),
-        criteria: phrase(
-            'Responde con el horario real del negocio si lo tiene cargado y no promete una atención humana inmediata fuera de él.',
-            'Answers with the business’s real hours if loaded, and does not promise immediate human attention outside them.',
-            'Responde com o horário real do negócio se estiver carregado e não promete atendimento humano imediato fora dele.',
-            'Répond avec les horaires réels s’ils sont saisis et ne promet pas d’assistance humaine immédiate en dehors.',
-        ),
-    },
+    // R7 (ADR 0013): `after_hours` se retiró: el horario es un dato del tenant (CORE.HOURS.*) y lo prueba el ensayo con
+    // las horas confirmadas, o con «no consta» si no las hay.
     {
         key: 'second_turn_greeting',
         title: phrase('No se re-presenta', 'No re-introduction', 'Não se reapresenta', 'Pas de re-présentation'),

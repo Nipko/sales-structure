@@ -15879,6 +15879,7 @@
   "readinessPanel": {
     "pendingLink": "Pending knowledge",
     "pendingLinkCount": "Pending knowledge ({count})",
+    "rehearsalLink": "Rehearsal",
     "goLive": {
       "title": "Serving real customers",
       "state": {
@@ -16323,6 +16324,60 @@
       "failed": "{count} failed",
       "waiting": "{count} pending retry",
       "unavailable": "{count} with no outbound available"
+    }
+  },
+  "readinessRehearsal": {
+    "title": "Rehearsal before going live",
+    "subtitle": "Simulated customer questions against your agent, with what your business knows today: what it answers well, what it does not know and why.",
+    "consultative": "The rehearsal writes nothing, sends no messages and does not block going live: it shows how your agent would answer today.",
+    "back": "Back to readiness",
+    "loading": "Loading…",
+    "tenantRequired": "Choose a business.",
+    "error": "The rehearsal could not be loaded.",
+    "empty": "No rehearsals yet. Run one to see how your agent answers.",
+    "readOnly": "Only a business administrator can run the rehearsal.",
+    "run": "Run rehearsal",
+    "repeat": "Repeat the same rehearsal",
+    "runs": "Rehearsal",
+    "runLabel": "{date} · {total} questions · {status}",
+    "running": "Rehearsing… {done} of {total} questions",
+    "progress": "Rehearsal progress",
+    "passRate": "Your agent did the right thing in {rate}% of the questions",
+    "noRate": "No graded questions yet",
+    "counts": "{answered} answered well · {missing} did not know because data is missing · {wrong} answered wrongly{inconclusive, plural, =0 {} one { · # without verdict} other { · # without verdict}}",
+    "passHatK": "Repeated {k} times: {rate}% of the questions pass every time",
+    "cost": "Model: {models} · {tokens} tokens · US$ {cost} · checker used {judge} times",
+    "notRun": "{count, plural, one {# question was not tried} other {# questions were not tried}}",
+    "byIntent": "Results by topic",
+    "expected": "Expected: {code}",
+    "customer": "Customer",
+    "agent": "Agent",
+    "reason": "Why: {reason}",
+    "judged": "decided by the paraphrase checker",
+    "fixData": "Fill in the data: {requirement}",
+    "productMiss": "This is an agent failure, not your data: the platform team reviews it.",
+    "status": {
+      "running": "running",
+      "completed": "finished",
+      "stopped": "stopped",
+      "failed": "failed",
+      "interrupted": "interrupted"
+    },
+    "outcome": {
+      "answered": "Answers well",
+      "missing_data": "Does not know: data missing",
+      "wrong": "Answered wrongly",
+      "inconclusive": "No verdict",
+      "error": "Could not be tried"
+    },
+    "errors": {
+      "rehearsal_running": "A rehearsal is already running.",
+      "rehearsal_quota_exceeded": "You reached today’s rehearsal limit.",
+      "rehearsal_no_agent": "There is no active agent to rehearse.",
+      "rehearsal_no_cases": "There are no questions to rehearse with the current data.",
+      "ai_message_quota_exceeded": "The AI message quota ran out: the rehearsal stopped.",
+      "rehearsal_deadline": "The rehearsal reached its time limit and stopped.",
+      "process_restarted": "The rehearsal was interrupted by a service restart."
     }
   }
 }

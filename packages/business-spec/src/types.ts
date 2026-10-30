@@ -110,7 +110,13 @@ export interface ProfileDef {
     operatingFactsDefaults: { modality: string[] | null; delivery_offered: boolean | null; has_prepayment: boolean | null };
 }
 
-export interface IntentDef { id: string; layer: string; block: string; title: string; ifMissing: string[]; conversational: boolean }
+export interface IntentDef {
+    id: string; layer: string; block: string; title: string; ifMissing: string[]; conversational: boolean;
+    /** R7: frases de ejemplo por idioma (`es`, `en`, `pt`, `fr`); `{item}` es el hueco de entidad. */
+    phrases: Record<string, string[]>;
+    /** R7: conversaciones de la campaña QA 4300 con esta intención (B1 §D.2); 0 = sin evidencia. */
+    demand: number;
+}
 
 export interface CompiledSpec {
     specVersion: string;

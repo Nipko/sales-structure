@@ -54,6 +54,8 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
     'kb_retrieval_log', 'kb_unanswered_queries', 'kb_feedback', 'kb_health_issues',
     // The pending-knowledge queue (R5) is demand and owner bookkeeping; the agent reads its answers through requirement_values.
     'pending_questions', 'pending_question_waiters',
+    // The rehearsal (R7) stores its own results while it runs on a frozen agent snapshot: counting them would invalidate it.
+    'rehearsal_runs', 'rehearsal_results',
     'knowledge_conflict_scans',
     'quality_sampling_runs', 'quality_sampling_items',
     // Active cases remain dependencies: a newly approved case must invalidate an older evaluation.

@@ -7,6 +7,7 @@ import { fromLegacyRows, type LegacyTenantRows } from '../src/legacy-status';
 import { readSpecDocs } from '../src/load';
 import { qaTruth, requirementsForIntent } from '../src/qa/truth';
 import { renderReportMarkdown } from '../src/report';
+import { generateRehearsal } from '../src/rehearsal/generate';
 import type { CompiledSpec, TenantSnapshot } from '../src/types';
 
 const REPO = path.resolve(__dirname, '..', '..', '..');
@@ -97,6 +98,17 @@ export function main(argv: string[]): number {
                 return 0;
             }
             process.stdout.write(`${JSON.stringify(qaTruth(spec, snap, query, now), null, 2)}\n`);
+            return 0;
+        }
+        if (cmd === 'rehearsal') {
+            // R7 (ADR 0013): el banco del ensayo de un tenant; el arnés QA (fase E) lo consume en lugar de generar casos propios
+            const langs = arg(argv, '--languages');
+            const bank = generateRehearsal(spec, snap, {
+                seed: arg(argv, '--seed'), maxCases: arg(argv, '--max') ? Number(arg(argv, '--max')) : undefined,
+                languages: langs ? langs.split(',').map(l => l.trim()).filter(Boolean) : undefined, now,
+            });
+            process.stdout.write(`${JSON.stringify(bank, null, 2)}
+`);
             return 0;
         }
         throw new Error(`comando desconocido: ${cmd}`);

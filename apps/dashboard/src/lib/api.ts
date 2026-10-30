@@ -12,6 +12,7 @@ import type {
     BusinessFactDefault, BusinessFactVersion, BusinessFactWriteResponse, RequirementDetailResponse,
 } from "@/lib/readiness-forms";
 import type { NotifySummary, PendingFilter, PendingList, PendingQuestion, PendingStoreResponse } from "@/lib/pending-knowledge";
+import type { RehearsalRun, RehearsalRunDetail } from "@/lib/rehearsal";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
@@ -1738,6 +1739,13 @@ export const api = {
         apiPost<PendingQuestion>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/close`, {}),
     renotifyPendingQuestion: (tenantId: string, id: string) =>
         apiPost<NotifySummary>(`/readiness/${tenantId}/pending/${encodeURIComponent(id)}/notify`, {}),
+    /** Ensayo antes de salir (R7): lanza una ejecución (o repite el banco congelado de otra con `repeatOf`). */
+    startRehearsal: (tenantId: string, body: { repeatOf?: string; maxCases?: number; languages?: string[] } = {}) =>
+        apiPost<RehearsalRun>(`/readiness/${tenantId}/rehearsal/runs`, body),
+    getRehearsalRuns: (tenantId: string) =>
+        apiGet<RehearsalRun[]>(`/readiness/${tenantId}/rehearsal/runs`),
+    getRehearsalRun: (tenantId: string, runId: string) =>
+        apiGet<RehearsalRunDetail>(`/readiness/${tenantId}/rehearsal/runs/${encodeURIComponent(runId)}`),
     getAgentAssessment: (tenantId: string, agentId?: string) =>
         apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>

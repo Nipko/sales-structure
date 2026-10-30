@@ -18,8 +18,17 @@ describe('subtype eval pack', () => {
     const keysOf = (input: Parameters<typeof composeSubtypeEvalPack>[0]) =>
         composeSubtypeEvalPack(input).map((scenario) => scenario.key);
 
-    it('always keeps the four universal scenarios', () => {
-        expect(keysOf({})).toEqual(['greeting', 'price_question', 'booking_intent', 'off_topic']);
+    it('always keeps the three universal scenarios', () => {
+        // R7 (ADR 0013): `price_question` is a knowledge case; the rehearsal grades it against qaTruth.
+        expect(keysOf({})).toEqual(['greeting', 'booking_intent', 'off_topic']);
+    });
+
+    it('carries no knowledge cases: their expected answer depends on tenant data and comes from qaTruth (R7)', () => {
+        for (const id of ['salud/dental', 'restaurantes/dark_kitchen', 'retail/tienda_electronica', 'turismo/hotel']) {
+            const [industry, subtype] = id.split('/');
+            const keys = keysOf({ industry, subtype });
+            for (const retired of ['price_question', 'profile_price_without_data', 'profile_after_hours']) expect(keys).not.toContain(retired);
+        }
     });
 
     it('adds a no-pitch scenario exactly where the rubro starts with a problem', () => {

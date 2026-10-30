@@ -87,6 +87,8 @@ export const readinessPanelRoutes = (tenantId = TENANT): ApiRoutes => ({
   [`readiness/${tenantId}/business-facts/defaults`]: ok({ specVersion: "1.0.0-rc.1", items: [] }),
   // R5: the pending-knowledge link counter on the panel and the inbox (`/admin/readiness/pending`), empty.
   [`readiness/${tenantId}/pending`]: ok({ items: [], counts: { gap: 0, open: 0, answered: 0, stored: 0, closed: 0, dismissed: 0, overdue: 0 } }),
+  // R7: the rehearsal page (`/admin/readiness/rehearsal`) lists the runs; none yet. The panel only links to it.
+  [`readiness/${tenantId}/rehearsal/runs`]: ok([]),
   // R4: the go-live card under the verdict (not published, gate in shadow mode, nothing recorded yet).
   [`readiness/${tenantId}/go-live`]: ok({
     state: "off", at: null, by: null, specVersion: null, ack: null, mode: "shadow",

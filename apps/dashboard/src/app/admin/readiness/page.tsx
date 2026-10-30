@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, ClipboardCheck, History, Inbox, ListChecks, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, History, Inbox, ListChecks, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
@@ -154,6 +154,11 @@ export default function ReadinessPage() {
         <Link href="/admin/readiness/pending"
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
             <Inbox size={14} />{pendingCount > 0 ? t("pendingLinkCount", { count: pendingCount }) : t("pendingLink")}
+        </Link>
+        {/* R7: el ensayo antes de salir (consultivo: no bloquea la salida) */}
+        <Link href="/admin/readiness/rehearsal"
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
+            <FlaskConical size={14} />{t("rehearsalLink")}
         </Link>
         <Link href="/admin/readiness/defaults"
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">

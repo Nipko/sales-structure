@@ -5,12 +5,12 @@ Generado por `docs/audits/2026-09-09/generate-certification-manifest.cjs`. **Nin
 `requiredScenarios` que exige el reporte de certificación, y cuyas tarifas salen del catálogo del propio
 router. La cifra que se pide autorizar y la que se factura no pueden ser dos listas de precios distintas.
 
-Revisión: `40167250eb17247bf5af77eef64167251653c809`. **Este documento no contiene ni requiere ningún secreto**: las variables se
+Revisión: `f1e9626cd0dd7c91896040301619c417ff7c72de`. **Este documento no contiene ni requiere ningún secreto**: las variables se
 nombran, no se leen.
 
 ## Qué se pide
 
-Autorización para ejecutar la matriz generativa: **93.520 casos**
+Autorización para ejecutar la matriz generativa: **88.720 casos**
 por modelo (80 perfiles × 4 idiomas ×
 5 canales × k=1), con una credencial de proveedor y un techo de gasto.
 
@@ -18,15 +18,15 @@ por modelo (80 perfiles × 4 idiomas ×
 
 | Modelo | Proveedor | Tier | Variable | Llamadas | Techo de costo | Horas de modelo |
 |---|---|---|---|---:|---:|---:|
-| `gpt-4o-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 267.180 | US$460.60 | 445 |
-| `grok-4-1-fast-non-reasoning` | xai | tier_2_standard | `XAI_API_KEY` | 267.180 | US$512.60 | 445 |
-| `deepseek-chat` | deepseek | tier_4_budget | `DEEPSEEK_API_KEY` | 267.180 | US$714.20 | 445 |
-| `gpt-4.1-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 267.180 | US$982.60 | 445 |
-| `gpt-4o` | openai | tier_1_premium | `OPENAI_API_KEY` | 267.180 | US$5354.40 | 445 |
-| `claude-sonnet-4-6` | anthropic | tier_1_premium | `ANTHROPIC_API_KEY` | 267.180 | US$6917.00 | 445 |
+| `gpt-4o-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 255.980 | US$442.60 | 427 |
+| `grok-4-1-fast-non-reasoning` | xai | tier_2_standard | `XAI_API_KEY` | 255.980 | US$493.40 | 427 |
+| `deepseek-chat` | deepseek | tier_4_budget | `DEEPSEEK_API_KEY` | 255.980 | US$685.40 | 427 |
+| `gpt-4.1-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 255.980 | US$944.80 | 427 |
+| `gpt-4o` | openai | tier_1_premium | `OPENAI_API_KEY` | 255.980 | US$5160.20 | 427 |
+| `claude-sonnet-4-6` | anthropic | tier_1_premium | `ANTHROPIC_API_KEY` | 255.980 | US$6661.00 | 427 |
 
 Del más barato al más caro hay un factor de **15.0×**
-(US$460.60 contra US$6917.00) por el mismo trabajo. El techo sale de un
+(US$442.60 contra US$6661.00) por el mismo trabajo. El techo sale de un
 límite declarado de 8000 tokens de entrada y 1000
 de salida por turno, redondeado hacia arriba: un presupuesto que redondea hacia abajo es un presupuesto que se pasa.
 
@@ -94,7 +94,7 @@ SELECT served_model, count(*)::int FROM agent_certification_cases
 
 ## Evidencia esperada al terminar
 
-- 93.520 casos con estado distinto de `pending`;
+- 88.720 casos con estado distinto de `pending`;
 - un `AgentReleaseRunEvidence` sellado por canal, con `models` nombrando el modelo servido;
 - un `CertificationReport` con `evidenceKind: executed_runs` y un estado por perfil;
 - el gasto real por debajo del techo autorizado, verificable con la primera consulta.

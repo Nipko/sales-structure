@@ -15879,6 +15879,7 @@
   "readinessPanel": {
     "pendingLink": "Connaissances en attente",
     "pendingLinkCount": "Connaissances en attente ({count})",
+    "rehearsalLink": "Répétition",
     "goLive": {
       "title": "Service aux vrais clients",
       "state": {
@@ -16323,6 +16324,60 @@
       "failed": "{count} en erreur",
       "waiting": "{count} en attente de relance",
       "unavailable": "{count} sans sortie disponible"
+    }
+  },
+  "readinessRehearsal": {
+    "title": "Répétition avant la mise en ligne",
+    "subtitle": "Des questions de clients simulées face à votre agent, avec ce que votre entreprise sait aujourd’hui : ce qu’il répond bien, ce qu’il ne sait pas et pourquoi.",
+    "consultative": "La répétition n’écrit rien, n’envoie aucun message et ne bloque pas la mise en ligne : elle montre comment votre agent répondrait aujourd’hui.",
+    "back": "Retour à la préparation",
+    "loading": "Chargement…",
+    "tenantRequired": "Choisissez une entreprise.",
+    "error": "Impossible de charger la répétition.",
+    "empty": "Aucune répétition pour l’instant. Lancez-en une pour voir comment répond votre agent.",
+    "readOnly": "Seul un administrateur de l’entreprise peut lancer la répétition.",
+    "run": "Lancer la répétition",
+    "repeat": "Répéter la même répétition",
+    "runs": "Répétition",
+    "runLabel": "{date} · {total} questions · {status}",
+    "running": "Répétition en cours… {done} sur {total} questions",
+    "progress": "Progression de la répétition",
+    "passRate": "Votre agent a fait ce qu’il fallait dans {rate} % des questions",
+    "noRate": "Aucune question évaluée pour l’instant",
+    "counts": "{answered} bien répondues · {missing} sans réponse faute de donnée · {wrong} mal répondues{inconclusive, plural, =0 {} one { · # sans verdict} other { · # sans verdict}}",
+    "passHatK": "Répétée {k} fois : {rate} % des questions réussissent à chaque fois",
+    "cost": "Modèle : {models} · {tokens} jetons · US$ {cost} · vérificateur utilisé {judge} fois",
+    "notRun": "{count, plural, one {# question n’a pas été testée} other {# questions n’ont pas été testées}}",
+    "byIntent": "Résultats par thème",
+    "expected": "Attendu : {code}",
+    "customer": "Client",
+    "agent": "Agent",
+    "reason": "Pourquoi : {reason}",
+    "judged": "décidé par le vérificateur de paraphrase",
+    "fixData": "Compléter la donnée : {requirement}",
+    "productMiss": "C’est une erreur de l’agent, pas de vos données : l’équipe de la plateforme la traite.",
+    "status": {
+      "running": "en cours",
+      "completed": "terminée",
+      "stopped": "arrêtée",
+      "failed": "échouée",
+      "interrupted": "interrompue"
+    },
+    "outcome": {
+      "answered": "Répond bien",
+      "missing_data": "Ne sait pas : donnée manquante",
+      "wrong": "Mal répondu",
+      "inconclusive": "Sans verdict",
+      "error": "Test impossible"
+    },
+    "errors": {
+      "rehearsal_running": "Une répétition est déjà en cours.",
+      "rehearsal_quota_exceeded": "Vous avez atteint le maximum de répétitions pour aujourd’hui.",
+      "rehearsal_no_agent": "Aucun agent actif à tester.",
+      "rehearsal_no_cases": "Avec les données actuelles, il n’y a aucune question à répéter.",
+      "ai_message_quota_exceeded": "Le quota de messages IA est épuisé : la répétition s’est arrêtée.",
+      "rehearsal_deadline": "La répétition a atteint sa durée maximale et s’est arrêtée.",
+      "process_restarted": "La répétition a été interrompue par un redémarrage du service."
     }
   }
 }

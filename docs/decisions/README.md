@@ -15,6 +15,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0009](0009-unificacion-horario-politicas-identidad-r3b.md) | Unificación de horario, políticas, not_offered e identidad: lo que C0 no fijaba (R3b) | aprobada | 2026-10-30 |
 | [0010](0010-control-de-salida-y-contrato-del-turno-r4.md) | Control de salida, contrato del turno y `WRITE_MODE` como autoridad de escritura (R4) | aprobada | 2026-10-30 |
 | [0011](0011-bucle-de-conocimiento-pendiente-r5.md) | Bucle de conocimiento pendiente: «lo averiguo» como herramienta, bandeja del dueño y aviso al cliente por la salida durable (R5) | aprobada | 2026-10-30 |
+| [0013](0013-ensayo-antes-de-salir-r7.md) | Ensayo antes de salir: banco determinista desde la especificación, verdad de `qaTruth`, Agent Test sin efectos y calificación determinista primero (R7) | aprobada | 2026-10-30 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

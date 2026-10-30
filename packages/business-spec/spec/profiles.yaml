@@ -800,17 +800,17 @@ profiles:
 # ═══════════════════════════ SUBTIPO → PERFIL (R1) ═══════════════════════════
 # Cada subtipo canónico (packages/shared/src/subtype-experience-profile.ts,
 # listCanonicalSubtypeExperienceProfileIds) en exactamente un perfil. La CI lo comprueba
-# (business-spec check). Mapeo según B1 §A; los marcados [decisión] no estaban en B1 y
+# (business-spec check). Mapeo según B1 §A; los subtipos fuera de B1 se asignaron en el ADR 0003 y
 # esperan la confirmación del dueño.
 subtypes:
-  P00: [otro/__none__, event_planning/weddings]   # [decisión] event_planning: B1 §A pone «eventos» en P00
+  P00: [otro/__none__, event_planning/weddings]
   P01: [restaurantes/casual_dining, restaurantes/cafeteria]
   P02: [restaurantes/comida_rapida, restaurantes/dark_kitchen]
-  P03: [retail/electronica, retail/hogar, retail/moda, retail/marketplace, technology/hardware, automotriz/repuestos]   # [decisión] retail/marketplace
+  P03: [retail/electronica, retail/hogar, retail/moda, retail/marketplace, technology/hardware, automotriz/repuestos]
   P04: [salud/farmacia]
   P05: [turismo/hotel, turismo/alquiler_vacacional]
   P06: [turismo/tours, turismo/agencia_viajes]
-  P07: [inmobiliaria/venta, inmobiliaria/arriendo, inmobiliaria/comercial, inmobiliaria/promotora]   # [decisión] promotora
+  P07: [inmobiliaria/venta, inmobiliaria/arriendo, inmobiliaria/comercial, inmobiliaria/promotora]
   P08: [salud/dental]
   P09: [salud/medica_general, salud/dermatologia]
   P10: [salud/psicologia]
@@ -819,16 +819,16 @@ subtypes:
   P13: [gimnasios/gimnasio_general, gimnasios/crossfit, gimnasios/yoga_pilates, gimnasios/cycling, gimnasios/martial_arts]
   P14: [education/idiomas, education/academia_baile, education/academia_musica, education/clases_particulares, education/autoescuela, education/online, education/capacitacion]
   P15: [education/universitaria]
-  P16: [servicios_hogar/plomeria, servicios_hogar/electricidad, servicios_hogar/fumigacion, servicios_hogar/limpieza, servicios_hogar/jardineria, servicios_hogar/cerrajeria, servicios_hogar/pintura, construccion/contratista_general]   # [decisión] contratista_general
+  P16: [servicios_hogar/plomeria, servicios_hogar/electricidad, servicios_hogar/fumigacion, servicios_hogar/limpieza, servicios_hogar/jardineria, servicios_hogar/cerrajeria, servicios_hogar/pintura, construccion/contratista_general]
   P17: [veterinaria/clinica_general, veterinaria/hospital_24h, veterinaria/exoticos]
   P18: [pet_services/peluqueria, pet_services/paseos, pet_services/adiestramiento]
   P19: [pet_services/hotel, pet_services/guarderia]
   P20: [fotografia/estudio, fotografia/bodas, fotografia/eventos, fotografia/producto]
-  P21: [seguros/broker, seguros/aseguradora, seguros/vida, seguros/auto, seguros/salud]   # [decisión] aseguradora
+  P21: [seguros/broker, seguros/aseguradora, seguros/vida, seguros/auto, seguros/salud]
   P22: [servicios_profesionales/abogados, servicios_profesionales/contadores]
   P23: [servicios_profesionales/arquitectos, servicios_profesionales/consultores, technology/desarrollo]
-  P24: [technology/saas, technology/soporte_ti_msp]   # [decisión] soporte_ti_msp
-  P25: [finanzas/asesoria, finanzas/creditos, finanzas/pagos_recaudos]   # [decisión] pagos_recaudos
+  P24: [technology/saas, technology/soporte_ti_msp]
+  P25: [finanzas/asesoria, finanzas/creditos, finanzas/pagos_recaudos]
   P26: [automotriz/concesionario]
   P27: [automotriz/taller]
   P28: [automotriz/alquiler]

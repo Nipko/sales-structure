@@ -113,6 +113,21 @@ export function rowProvenanceStatement(row: PlannedRow): { sql: string; params: 
     };
 }
 
+/**
+ * Procedencia confirmada de una fila de ítem o texto que aprobó una persona (R6, ADR 0012): `content_status=confirmed`,
+ * `origin`, `confirmed_by`, `confirmed_at=now()` y `source_ref` con la marca `row_updated_at` (como la migración: si una
+ * pantalla vieja edita la fila después, la lectura vuelve a las reglas L). Nunca cambia `updated_at`.
+ */
+export function confirmedRowProvenanceStatement(row: { table: string; id: string; origin: string; confirmedBy: string; sourceRef: Record<string, unknown> }): { sql: string; params: unknown[] } {
+    if (!PROVENANCE_TABLES[row.table]) throw new Error(`tabla sin columnas de procedencia: ${row.table}`);
+    return {
+        sql: `UPDATE ${quoteIdent(row.table)} SET content_status = 'confirmed', origin = $2, confirmed_by = $3::uuid, confirmed_at = now(),
+       source_ref = $4::jsonb || jsonb_build_object('row_updated_at', to_jsonb(updated_at))
+ WHERE id = $1::uuid RETURNING id::text AS id`,
+        params: [row.id, row.origin, row.confirmedBy, JSON.stringify(row.sourceRef ?? {})],
+    };
+}
+
 export const toIso = (v: unknown): string | null => (v === null || v === undefined ? null : new Date(v as string).toISOString());
 
 export function toView(r: Record<string, any>): BusinessFactView {

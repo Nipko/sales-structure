@@ -22,11 +22,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BusinessFactsReader } from './business-facts.reader';
 import { ReadinessService } from './readiness.service';
 import {
-    VIEW_COLUMNS, legacyPatchStatements, requirementValueWriteStatement, toIso, toView,
+    VIEW_COLUMNS, confirmedRowProvenanceStatement, legacyPatchStatements, requirementValueWriteStatement, toIso, toView,
     type BusinessFactActor, type BusinessFactView, type BusinessFactVersionView,
 } from './business-facts.statements';
 
-export { requirementValueWriteStatement, rowProvenanceStatement } from './business-facts.statements';
+export { confirmedRowProvenanceStatement, requirementValueWriteStatement, rowProvenanceStatement } from './business-facts.statements';
 export type { BusinessFactActor, BusinessFactView, BusinessFactVersionView, RequirementValueStatementInput } from './business-facts.statements';
 
 /** Un valor por defecto de la plataforma que el dueño puede aceptar (pantalla `/admin/readiness/defaults`, C0 §1.6). */
@@ -60,6 +60,8 @@ export interface BusinessFactWrite {
 
 /** Evento que invalida la caché de la preparación (C0 §4.1). */
 export const BUSINESS_FACT_WRITTEN = 'business_fact.written';
+/** Una fila de ítem o texto recibió procedencia confirmada (R6): invalida la caché de la preparación como un valor. */
+export const BUSINESS_ROW_PROVENANCE_WRITTEN = 'business_fact.row_provenance_written';
 export interface BusinessFactWrittenEvent {
     tenantId: string;
     requirementId: string;
@@ -107,6 +109,11 @@ export class BusinessFactsService {
         if (MIGRATION_ORIGINS.has(origin) && actor.kind !== 'script') {
             throw new BadRequestException(`el origen ${origin} solo lo escribe la migración de procedencia`);
         }
+        // R6 (C0 §1.3.4, ADR 0012): un valor del copiloto existe solo confirmado por una persona. La base lo exige también
+        // (CHECK requirement_values_copilot_confirmed); aquí se rechaza antes, con un mensaje que se entiende.
+        if (origin === 'copilot' && (status !== 'confirmed' || actor.kind !== 'user' || !actor.userId)) {
+            throw new BadRequestException('un valor del copiloto lo confirma una persona (origin=copilot exige confirmed_by)');
+        }
         // R4 (ADR 0010): WRITE_MODE.required_fields es una lista cerrada; un campo libre ya guardado sigue valiendo
         const previous = this.spec.requirements[requirementId]?.templateId === 'OBJ.*.WRITE_MODE'
             ? (await this.get(tenantId, requirementId, scopeKey).catch(() => null))?.fact?.value : undefined;
@@ -145,6 +152,19 @@ export class BusinessFactsService {
         const view = toView(rows[0]);
         this.emitWritten(tenantId, view, projection?.storage);
         return view;
+    }
+
+    /**
+     * Procedencia de una fila de ítem o texto creada con la aprobación de una persona (R6, ADR 0012): `content_status =
+     * confirmed`, el origen (`copilot`), `confirmed_by` y `source_ref` con la propuesta. La usa Assist al aplicar una FAQ
+     * (el documento que se ingiere de ella). Solo tablas con el juego estándar de columnas (PROVENANCE_TABLES).
+     */
+    async stampRowProvenance(tenantId: string, row: { table: string; id: string; origin: 'copilot'; sourceRef: Record<string, unknown> }, actor: BusinessFactActor): Promise<boolean> {
+        if (actor.kind !== 'user' || !actor.userId) throw new BadRequestException('la procedencia copilot exige una persona (confirmed_by)');
+        const { sql, params } = confirmedRowProvenanceStatement({ table: row.table, id: row.id, origin: row.origin, confirmedBy: actor.userId, sourceRef: row.sourceRef });
+        const rows = await this.run<Record<string, any>[]>(tenantId, sql, params);
+        if (rows[0]) this.events?.emit(BUSINESS_ROW_PROVENANCE_WRITTEN, { tenantId, table: row.table, id: row.id, origin: row.origin });
+        return Boolean(rows[0]);
     }
 
     /** Proyección del valor a su almacenamiento de hoy, o null (sin almacenamiento viejo, alcance no global, no confirmado). */

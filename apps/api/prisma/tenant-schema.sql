@@ -5212,6 +5212,31 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."agent_content_proposals" (
 );
 CREATE INDEX IF NOT EXISTS "idx_agent_content_proposals_status"
     ON "{{SCHEMA_NAME}}"."agent_content_proposals" ("status", "expires_at");
+-- BEGIN COPILOT PROPOSALS
+-- Copiloto de onboarding (C0 §1.3 y §2.8, rebanada R6, ADR 0012): el mismo ledger guarda las propuestas de extracción.
+-- `requirement_id` (requisito), `target_ref` ('' = valor global, `faqs:<id>`, `knowledge_documents:<id>`…), `evidence`
+-- (citas verificadas), `extraction_run_id`, y la decisión de una persona (`decided_by`, `decided_at`, `decision_note`).
+-- Estados nuevos `rejected` y `superseded`. La migración 20261030200000_extend_agent_content_proposals_copilot aplica lo
+-- mismo en los tenants que ya existen; copilot-proposals-schema.spec.ts exige que coincidan.
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "requirement_id" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "target_ref" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "evidence" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "extraction_run_id" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "decided_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "decided_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD COLUMN IF NOT EXISTS "decision_note" TEXT;
+DO $copilot_proposal_status$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+                   WHERE n.nspname = '{{SCHEMA_NAME}}' AND c.conname = 'agent_content_proposals_status_r6') THEN
+        ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" DROP CONSTRAINT IF EXISTS "agent_content_proposals_status_check";
+        ALTER TABLE "{{SCHEMA_NAME}}"."agent_content_proposals" ADD CONSTRAINT "agent_content_proposals_status_r6" CHECK ("status" IN ('proposed','applied','expired','rejected','superseded'));
+    END IF;
+END
+$copilot_proposal_status$;
+CREATE INDEX IF NOT EXISTS "idx_agent_content_proposals_requirement"
+    ON "{{SCHEMA_NAME}}"."agent_content_proposals" ("requirement_id", "target_ref", "status");
+-- END COPILOT PROPOSALS
 -- BEGIN LEARNING TABLES
 -- Curated learning is opt-in. Sources are split before excerpts; published
 -- snapshots contain only approved examples and an independent frozen holdout.
@@ -6558,6 +6583,16 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."requirement_value_versions" (
     );
 CREATE INDEX IF NOT EXISTS idx_requirement_value_versions_requirement
         ON "{{SCHEMA_NAME}}"."requirement_value_versions" (requirement_id, scope_key, created_at DESC);
+-- R6 (C0 §1.3.4, ADR 0012): no hay valor `origin=copilot` sin un `confirmed_by` humano y confirmado. NOT VALID: vale
+-- para toda escritura nueva; la migración 20261030200000 lo agrega en los tenants que ya existen.
+DO $requirement_values_copilot$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+                   WHERE n.nspname = '{{SCHEMA_NAME}}' AND c.conname = 'requirement_values_copilot_confirmed') THEN
+        ALTER TABLE "{{SCHEMA_NAME}}"."requirement_values" ADD CONSTRAINT "requirement_values_copilot_confirmed" CHECK ("origin" <> 'copilot' OR ("status" = 'confirmed' AND "confirmed_by" IS NOT NULL)) NOT VALID;
+    END IF;
+END
+$requirement_values_copilot$;
 -- END BUSINESS FACTS
 
 -- BEGIN PROVENANCE COLUMNS

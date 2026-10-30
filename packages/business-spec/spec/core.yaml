@@ -868,7 +868,7 @@ requirements:
   criticality: {level: necesario, rule: R4}
   when_missing: {code: HUM, behavior: "Sin esto el agente NO ofrece «lo averiguo»: ofrece una persona (HUM) o el contacto. Nunca ofrece algo sin efecto."}
   sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: nuevo, storage_today: "kb_unanswered_queries (registro sin flujo al dueño ni aviso al cliente)", storage_status: parcial}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "requirement_values (formulario del dueño); las consultas viven en pending_questions + pending_question_waiters (R5, ADR 0011)", storage_status: parcial}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: ["channel[]", sla]}, predicate: "canal verificado y sla confirmado (o default aceptado)", gap_message: "¿Dónde quieres recibir las preguntas que el agente no supo responder?"}
   qa_truth: "Tras NC+AV aceptado: se crea la consulta y la respuesta cita el SLA; sin este requisito, la oferta esperada es HUM."
   owner_decision: E11

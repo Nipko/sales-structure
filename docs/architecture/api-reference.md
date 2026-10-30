@@ -62,6 +62,7 @@
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
 | Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
 | Readiness | `modules/readiness/` | 10 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA; valores del negocio con procedencia (`business-facts`, R3) |
+| Pending knowledge | `modules/pending-knowledge/` | 6 | Conocimiento pendiente (R5): cola `pending_questions`, «lo averiguo» del agente, bandeja del dueño y aviso al cliente |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -202,7 +203,7 @@ Sus estados son evidencia operativa, no una certificación ni una orden de autoe
 
 ### Preparación del negocio (`/api/v1/readiness`)
 
-El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Detalle: `docs/domain/business-readiness-runtime.md`.
+El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Desde R5, la bandeja de conocimiento pendiente (`modules/pending-knowledge`, ADR 0011). Detalle: `docs/domain/business-readiness-runtime.md`.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
@@ -219,6 +220,10 @@ El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la 
 | GET | `/readiness/:tenantId/go-live` | Super admin/Admin/Supervisor | Control de salida (R4): publicado o no, modo (sombra/aplicado), decisión de hoy, última registrada e informe de sombra (`?days=7`) |
 | POST | `/readiness/:tenantId/go-live` | Super admin (suplantando)/Admin | `{ack?}`: publica; 409 si `no_listo`, o si `limitado` sin reconocer todas las `limitedIntents` |
 | POST | `/readiness/:tenantId/go-live/off` | Super admin (suplantando)/Admin | Despublica |
+| GET | `/readiness/:tenantId/pending` | Super admin/Admin/Supervisor | Conocimiento pendiente (R5): consultas que el agente no pudo responder, con demanda, esperas, SLA y contadores (`?status=active|answered|stored|dismissed|all`) |
+| GET | `/readiness/:tenantId/pending/:id` | Super admin/Admin/Supervisor | Una consulta con sus esperas y el estado del aviso de cada una |
+| POST | `/readiness/:tenantId/pending/:id/answer` | Super admin (suplantando)/Admin | `{mode:'once', text}` (respuesta puntual) o `{mode:'store', value, expectedVersion?, text?}` (guardar como dato por `BusinessFactsService`, reevalúa); avisa a los clientes que esperan |
+| POST | `/readiness/:tenantId/pending/:id/{dismiss|close|notify}` | Super admin (suplantando)/Admin | Descartar sin aviso, cerrar lo respondido, reintentar el aviso |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |
@@ -621,7 +626,7 @@ el enrutamiento y se registra un audit con hash, sin incluir la dirección ni te
 | Método | Ruta | Auth | Roles | Descripción |
 |--------|------|------|-------|-------------|
 | POST | `/knowledge/:tenantId/feedback` | JWT + TenantGuard | Admin/Supervisor/Agent | Enviar feedback KB |
-| GET | `/knowledge/:tenantId/gap-report` | JWT + TenantGuard | Admin/Supervisor | Reporte de brechas |
+| GET | `/knowledge/:tenantId/gap-report` | JWT + TenantGuard | Admin/Supervisor | Reporte de brechas (documentos con baja satisfacción, desactualizados y falsos positivos; las preguntas sin respuesta pasaron a `/readiness/:tenantId/pending` en R5) |
 
 ---
 

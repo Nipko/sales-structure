@@ -63,7 +63,7 @@ describe('catalogue over FAQ through the turn', () => {
         const h = fixture(true, ORTHO_FAQ, ORTHO_REPLY, true);
         const result = await h.turn(ORTHO_Q);
         expect(result.debug.runtimeError).toBeUndefined();
-        expect(result.reply).toContain('no está entre nuestros servicios');
+        expect(result.reply).toContain('No veo tratamiento de ortodoncia entre nuestros servicios');
         expect(result.reply).toContain('Consulta general, Consulta especializada y Control y seguimiento');
         expect(result.reply).not.toMatch(/s[ií], ofrecemos/i);
         expect(result.reply).not.toContain('12 y 24 meses');
@@ -113,7 +113,7 @@ describe('catalogue over FAQ through the turn', () => {
         // The tenant turns the flag off after the capture: the session keeps the sealed value.
         h.f.prisma.tenant.findUnique.mockResolvedValue({ settings: {} });
         const second = await h.turn(ORTHO_Q);
-        expect(second.reply).toContain('no está entre nuestros servicios');
+        expect(second.reply).toContain('No veo tratamiento de ortodoncia entre nuestros servicios');
         expect(h.f.prisma.tenant.findUnique.mock.calls.length).toBe(tenantReads);
     });
 });

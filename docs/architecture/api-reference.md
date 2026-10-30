@@ -63,6 +63,7 @@
 | Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
 | Readiness | `modules/readiness/` | 10 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA; valores del negocio con procedencia (`business-facts`, R3) |
 | Pending knowledge | `modules/pending-knowledge/` | 6 | Conocimiento pendiente (R5): cola `pending_questions`, «lo averiguo» del agente, bandeja del dueño y aviso al cliente |
+| Onboarding copilot | `modules/onboarding-copilot/` | 5 | Copiloto de onboarding (R6): propuestas de datos con cita verificada desde la web y los documentos del negocio; aprobar escribe por `BusinessFactsService` |
 | Rehearsal | `modules/rehearsal/` | 3 | Ensayo antes de salir (R7): banco de `@parallext/business-spec` corrido por Agent Test sin efectos y calificado contra `qaTruth` |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
@@ -204,7 +205,7 @@ Sus estados son evidencia operativa, no una certificación ni una orden de autoe
 
 ### Preparación del negocio (`/api/v1/readiness`)
 
-El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Desde R5, la bandeja de conocimiento pendiente (`modules/pending-knowledge`, ADR 0011). Desde R7, el ensayo antes de salir (`modules/rehearsal`, ADR 0013). Detalle: `docs/domain/business-readiness-runtime.md`.
+El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Desde R5, la bandeja de conocimiento pendiente (`modules/pending-knowledge`, ADR 0011). Desde R6, el copiloto de onboarding (`modules/onboarding-copilot`, ADR 0012). Desde R7, el ensayo antes de salir (`modules/rehearsal`, ADR 0013). Detalle: `docs/domain/business-readiness-runtime.md`.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
@@ -228,6 +229,10 @@ El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la 
 | POST | `/readiness/:tenantId/rehearsal/runs` | Super admin/Admin | Ensayo antes de salir (R7): `{agentId?, seed?, maxCases?, languages?, repeatOf?}`; crea la ejecución y la corre en segundo plano (409 si hay una en curso, 429 con la cuota diaria) |
 | GET | `/readiness/:tenantId/rehearsal/runs` | Super admin/Admin/Supervisor | Ejecuciones del ensayo: estado, progreso, tasa de aciertos, modelos, tokens y costo |
 | GET | `/readiness/:tenantId/rehearsal/runs/:runId` | Super admin/Admin/Supervisor | Informe: resultados por caso (conversación, esperado, chequeos, clase del fallo), cobertura y pass^k del mismo banco |
+| POST | `/readiness/:tenantId/copilot/run` | Super admin (suplantando)/Admin | Copiloto de onboarding (R6): analiza las fuentes ya ingeridas y guarda propuestas con cita verificada (10 por día y tenant; 429 al pasarse) |
+| GET | `/readiness/:tenantId/copilot/proposals` | Super admin/Admin/Supervisor | Propuestas del copiloto con su evidencia y contadores (`?status=open|applied|rejected|superseded|expired|all`) |
+| GET | `/readiness/:tenantId/copilot/proposals/:id` | Super admin/Admin/Supervisor | Una propuesta |
+| POST | `/readiness/:tenantId/copilot/proposals/:id/{approve|reject}` | Super admin (suplantando)/Admin | Aprobar (`{value?, expectedVersion?}`: escribe por `BusinessFactsService` con `origin=copilot`) o rechazar (`{note?}`) |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |

@@ -485,7 +485,9 @@ function priceFieldRank(fact: VerifiedFact): number {
 /** The customer's message asks about a price or an amount («how much», «what's the nightly rate», «cuánto pago»). */
 const PRICE_QUESTION = / (?:precio|precios|cuanto|cuesta|cuestan|vale|valen|costo|costos|coste|tarifa|tarifas|pago|pagar|total|price|prices|cost|costs|much|rate|rates|fee|fees|preco|precos|quanto|custa|custam|valor|prix|combien|coute|coutent|tarif|tarifs|payer) /;
 /** A sentence about a fee or an extra charge, not the item's price (cleaning, deposit, surcharge). */
-const FEE_SENTENCE = / (?:limpieza|limpeza|cleaning|menage|fee|fees|deposito|deposit|recargo|cargo extra|extra charge|surcharge|supplement|taxa|frais) /;
+// «…est de ⟦prix⟧, avec une tarification de NETTOYAGE de ⟦0⟧» (production QA 30-oct, hotel, French) fell back whole and the night price
+// was lost: French also says «nettoyage», Spanish «aseo».
+const FEE_SENTENCE = / (?:limpieza|aseo|limpeza|cleaning|menage|nettoyage|fee|fees|deposito|deposit|recargo|cargo extra|extra charge|surcharge|supplement|taxa|frais) /;
 /** A record field that is a fee, not the item's price (`cleaningFee`, `depositAmount`, `serviceFee`). */
 const FEE_FIELD = /fee|deposit|surcharge/i;
 /** A sentence about how long something takes. */

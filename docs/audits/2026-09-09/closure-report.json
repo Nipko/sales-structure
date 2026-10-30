@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "e4a2012a91adb079b0cdd5628b5c568ef2ace589",
-  "generatedAt": "2026-10-30T18:47:33.893Z",
+  "revision": "40167250eb17247bf5af77eef64167251653c809",
+  "generatedAt": "2026-10-30T20:27:56.437Z",
   "finished": false,
   "counts": {
     "aceptada": 26,
@@ -39,8 +39,8 @@
     "channelsCertified": 0,
     "routedOperations": 8,
     "resolutionDefects": [],
-    "egressCallSites": 32,
-    "chargeableCallSites": 29,
+    "egressCallSites": 33,
+    "chargeableCallSites": 30,
     "chargeableOutsideGate": 0,
     "chargeableOffDurableLane": 0,
     "chargeableOffDurableByLane": {},
@@ -54,7 +54,8 @@
       "nurturing_followup",
       "broadcast_message",
       "automation_rule_action",
-      "recall_reminder"
+      "recall_reminder",
+      "pending_answer_ready"
     ],
     "dispatchItemKinds": [
       "text",
@@ -275,7 +276,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "30 de 34 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.",
+      "evidence": "30 de 35 grupos son comerciales y 19 tienen su autoridad congelada entera. Las 11 restantes descansan únicamente en los 3 relojes aceptados con motivo escrito (wall_clock, CURRENT_DATE, readonly_channel_manager_ownership_projection), ninguno de los cuales se puede capturar: lo que los cierra es que el resultado viaje con el instante en que se tomó. La mitad concurrente la prueba `commercial-authority.postgres.spec.ts` contra PostgreSQL real, con dos tenants y dos workers.",
       "commits": [
         "33dd2487"
       ],
@@ -452,14 +453,14 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Censo derivado del árbol: 32 call sites, 29 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 72 productores y 18 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
+      "evidence": "Censo derivado del árbol: 33 call sites, 30 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 73 productores y 18 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído.",
       "commits": [],
       "deferral": null
     },
     {
       "id": "M1",
       "open": 0,
-      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin autoridad y 0 sin idempotencia, sobre 16 productores de esa clase",
+      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin autoridad y 0 sin idempotencia, sobre 17 productores de esa clase",
       "gates": [
         1,
         4
@@ -467,7 +468,7 @@
       "status": "bloqueada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 9 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.",
+      "evidence": "Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 10 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder, pending_answer_ready) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta.",
       "commits": [],
       "deferral": null
     },
@@ -514,7 +515,7 @@
     {
       "id": "M5",
       "open": 0,
-      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 16 de esa clase",
+      "openLabel": "0 productores de mensaje al cliente cobrables por Meta sin borrado alcanzable, sobre 17 de esa clase",
       "gates": [
         1,
         6
@@ -550,7 +551,7 @@
       "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
-      "evidence": "De 29 call sites cobrables, 0 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número no es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico. Lo que esta fila mide es la fila durable antes del POST; desde este HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al carril anterior.",
+      "evidence": "De 30 call sites cobrables, 0 usan un carril que no escribe fila antes del POST — Redis es el registro, o no hay registro. Un productor ahí no puede contestar \"¿esto salió?\" después de un reinicio. **Este número no es el criterio de R6**, que pregunta por la autorización aplicable y la mide con los productores fuera del gate económico. Lo que esta fila mide es la fila durable antes del POST; desde este HEAD todo productor cobrable la crea y ningún interruptor puede devolverlo al carril anterior.",
       "commits": [],
       "deferral": null
     },

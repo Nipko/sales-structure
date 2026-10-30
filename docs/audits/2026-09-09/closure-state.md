@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-closure-state.cjs`. **Ningún núm
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `e4a2012a91adb079b0cdd5628b5c568ef2ace589`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `40167250eb17247bf5af77eef64167251653c809`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -46,7 +46,7 @@ dicen como límite aceptado (`by_design`) con el motivo, no como pendiente.
 
 ## Lecturas que mueven plata
 
-30 de 34 grupos de lectura deciden un hecho comercial. **19 con autoridad congelada entera**; 11 descansan en algo que no se puede capturar, y cada uno de esos dice por qué.
+30 de 35 grupos de lectura deciden un hecho comercial. **19 con autoridad congelada entera**; 11 descansan en algo que no se puede capturar, y cada uno de esos dice por qué.
 
 | Dimensión | Lectores |
 |---|---:|

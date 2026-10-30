@@ -2,15 +2,15 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "e4a2012a91adb079b0cdd5628b5c568ef2ace589",
+  "sourceRevision": "40167250eb17247bf5af77eef64167251653c809",
   "summary": {
     "verticals": 20,
     "profiles": 80,
-    "staticTools": 123,
+    "staticTools": 124,
     "nativeFamilies": 26,
     "configurationFamilies": 27,
     "toolsByOrigin": {
-      "core": 38,
+      "core": 39,
       "vertical": 81,
       "provider": 4
     },
@@ -40,8 +40,8 @@
     "apps/api/src/modules/conversations/active-object-policy.ts": "9d647cdca8e7b55dfd11a0599817615071435fcbe057f82addeb1311fa2eacbf",
     "apps/api/src/modules/conversations/agent-test-tool-policy.ts": "853761eaec7980869ba07a6d7ecd36853b654dfa2cd3be88720a1732454912a9",
     "apps/api/src/modules/conversations/agent-tool-registry.ts": "eb0d07f5a197dc167a3b52aba549b60f47743f0244d7437921dbb22772f28c0a",
-    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "277d692fcc0371844d87a21e134f9985e3253fdf2964fe251894e7325ee466ef",
-    "apps/api/src/modules/conversations/tool-policy-registry.ts": "5cdc0a3e1c135aa8668e8c88c9ab33fe6de6ebf641526486598589661a625069",
+    "apps/api/src/modules/conversations/ai-tool-executor.service.ts": "421163860de18196d4c12331898a5fe298bf44837b30fcf7b55b591690fa41c5",
+    "apps/api/src/modules/conversations/tool-policy-registry.ts": "bf08506837f490500f7da88703949a5db8f3ae7844d1d0aea56bc83b2b7e41b0",
     "apps/api/src/modules/conversations/tool-task-dependencies.ts": "d44c6414a26f1b89367690b87114312ab831a57af3e84787074fe95b96c3f6b9",
     "apps/api/src/modules/conversations/tools/appointment-tools.ts": "8a8c64772ff57037722eb145d79d62c774a0acb8d01b01780fca95e5c2671612",
     "apps/api/src/modules/conversations/tools/catalog-tools.ts": "7ee231488cb5b255ad6a96f1a57cf5ac91799c4aedc35cf7194bf56142952bc6",
@@ -54,6 +54,7 @@
     "apps/api/src/modules/conversations/tools/knowledge-tools.ts": "de2e488825a326fc22ae926e719f10632d69e1c860c04e07ba06d09b111c2113",
     "apps/api/src/modules/conversations/tools/listings-tools.ts": "f3159264a9e98d0662be3a7bd0ef556f61845200294c8880549a9d637b791f64",
     "apps/api/src/modules/conversations/tools/payment-tools.ts": "271c9fc9e9a47cace92c7d349c3d707f6ba5c3f5db66474f589c790d682b815d",
+    "apps/api/src/modules/conversations/tools/pending-question-tools.ts": "12642ae70e13fe54056637c59d93b9beb95830c652fdfa897c1e705ed82c43d8",
     "apps/api/src/modules/conversations/tools/pets-tools.ts": "f5cfdd5a1e4d438c0fbae49af02c1978af8eb77c0cd7fcc00499c2823a5b3ed4",
     "apps/api/src/modules/conversations/tools/repair-order-tools.ts": "2f03bbc94d8d28ba3ade80b8554d50d06378b1a8f66f3d16cf9cccfa69e6511b",
     "apps/api/src/modules/conversations/tools/resource-rental-tools.ts": "e10eafea3f554347cf95153d063181863d6fcfc82a16c58294cec2e00dc12050",
@@ -64,13 +65,13 @@
     "apps/api/src/modules/conversations/tools/vacation-rental-tools.ts": "320bfa74829c4f4fe4aecb640fc3dd1dc7dab4e137055c5bbb9b3fca15891162",
     "apps/api/src/modules/conversations/tools/vehicle-tools.ts": "a7a54336bc3d85b2c01eac5413885ab433505e94f3d74140f0e6d42bbd37876e",
     "apps/api/src/modules/conversations/tools/vertical-integration-tools.ts": "3eb4ac82c4c0c24e40612670eddb70bacbd77e9101fe4af88baed40419f952fb",
-    "apps/api/src/modules/evaluation-revision/evaluation-revision.ts": "4f82025979c21da52ba4a594b0ca50bea12f89137761f4ca1194ed13bc58c39e",
+    "apps/api/src/modules/evaluation-revision/evaluation-revision.ts": "29b66954e5551f8b57e941437e3f3b19ee5f309cc39b1fe6882d30c62b058157",
     "apps/api/src/modules/intake/intake-i18n.ts": "dae4bf3cd2d0e9030e64fdce38680fea6ac129c025ad9d5291830830522f3436",
     "apps/api/src/modules/simulation/agent-certification.ts": "6cbd9e65b895e8c4247f5e37bc21155d7f5b06c9d268ed1a961520aabe8edad8",
     "apps/api/src/modules/simulation/agent-release-policy.ts": "5409d5a30bff70f541863848709b16daa0f6be24aea04ebe2eecf646ab2cdcde",
     "apps/api/src/modules/simulation/isolated-eval-namespace.ts": "4b43f8ec67e6246ff502130f546d7c86023bab8a3ef897e955566a8409bee672",
     "apps/api/src/modules/simulation/task-competence-matrix.ts": "225c9d64a8b9b63c0d5a7e4d73aa36b9e410628d22a1140e44b349a4f7fe355b",
-    "apps/dashboard/src/lib/navigation-contract.ts": "143623d48a22b06a4a37e1f6b6ff9990e40b353d9401ef5db1d2ae04671b6d44",
+    "apps/dashboard/src/lib/navigation-contract.ts": "9e77150bb8d765900044863fd77f9b29115a4c8f5b070111171f6d56fd14870d",
     "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "05899447bdc61a9cb7f68330731f4087142686cbd771614ad55e5d1eb6a6c15c",
     "docs/audits/2026-09-11/generate-tool-profile-audit.cjs": "1a774208f5e46b5a94e7eac9c1208d20f6a42daba7aa4e51ef52b3b938577099",
     "packages/shared/src/active-object-deep-link.ts": "738a7f5f1180bcfec4e8d9dc1cb424515419e4001dfbf1e82bd6a4802fd7003b",
@@ -16740,6 +16741,33 @@
       },
       "families": [],
       "asynchronous": true,
+      "declaredTasks": []
+    },
+    {
+      "name": "register_pending_question",
+      "definitionSources": [
+        "apps/api/src/modules/conversations/tools/pending-question-tools.ts"
+      ],
+      "executorBranch": true,
+      "policy": {
+        "effect": "conditional_write",
+        "dataClassification": "contact",
+        "assurance": "A1",
+        "assuranceEnforcement": "contact_context",
+        "ownership": "contact_scope",
+        "idempotency": "deterministic",
+        "externalEffect": "none",
+        "downstreamEffects": [
+          "notification"
+        ],
+        "confirmation": "not_required",
+        "humanApproval": "not_required",
+        "agentTestAllowed": true,
+        "commitsBusiness": false,
+        "origin": "core"
+      },
+      "families": [],
+      "asynchronous": false,
       "declaredTasks": []
     },
     {

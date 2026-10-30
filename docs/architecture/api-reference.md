@@ -63,6 +63,7 @@
 | Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
 | Readiness | `modules/readiness/` | 10 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA; valores del negocio con procedencia (`business-facts`, R3) |
 | Pending knowledge | `modules/pending-knowledge/` | 6 | Conocimiento pendiente (R5): cola `pending_questions`, «lo averiguo» del agente, bandeja del dueño y aviso al cliente |
+| Rehearsal | `modules/rehearsal/` | 3 | Ensayo antes de salir (R7): banco de `@parallext/business-spec` corrido por Agent Test sin efectos y calificado contra `qaTruth` |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -203,7 +204,7 @@ Sus estados son evidencia operativa, no una certificación ni una orden de autoe
 
 ### Preparación del negocio (`/api/v1/readiness`)
 
-El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Desde R5, la bandeja de conocimiento pendiente (`modules/pending-knowledge`, ADR 0011). Detalle: `docs/domain/business-readiness-runtime.md`.
+El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la API lee la foto en una transacción `READ ONLY`, guarda una fila de `readiness_evaluations` por resultado distinto y deja la última en Redis (10 min). Desde R3 escribe también los valores del negocio (`requirement_values`) con su procedencia, solo por `BusinessFactsService`. Desde R4 arma el contrato del turno (`<knowledge_status>`) y el control de salida (en modo sombra hasta la bandera `readiness.goLiveGate`). Desde R5, la bandeja de conocimiento pendiente (`modules/pending-knowledge`, ADR 0011). Desde R7, el ensayo antes de salir (`modules/rehearsal`, ADR 0013). Detalle: `docs/domain/business-readiness-runtime.md`.
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
@@ -224,6 +225,9 @@ El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la 
 | GET | `/readiness/:tenantId/pending/:id` | Super admin/Admin/Supervisor | Una consulta con sus esperas y el estado del aviso de cada una |
 | POST | `/readiness/:tenantId/pending/:id/answer` | Super admin (suplantando)/Admin | `{mode:'once', text}` (respuesta puntual) o `{mode:'store', value, expectedVersion?, text?}` (guardar como dato por `BusinessFactsService`, reevalúa); avisa a los clientes que esperan |
 | POST | `/readiness/:tenantId/pending/:id/{dismiss|close|notify}` | Super admin (suplantando)/Admin | Descartar sin aviso, cerrar lo respondido, reintentar el aviso |
+| POST | `/readiness/:tenantId/rehearsal/runs` | Super admin/Admin | Ensayo antes de salir (R7): `{agentId?, seed?, maxCases?, languages?, repeatOf?}`; crea la ejecución y la corre en segundo plano (409 si hay una en curso, 429 con la cuota diaria) |
+| GET | `/readiness/:tenantId/rehearsal/runs` | Super admin/Admin/Supervisor | Ejecuciones del ensayo: estado, progreso, tasa de aciertos, modelos, tokens y costo |
+| GET | `/readiness/:tenantId/rehearsal/runs/:runId` | Super admin/Admin/Supervisor | Informe: resultados por caso (conversación, esperado, chequeos, clase del fallo), cobertura y pass^k del mismo banco |
 
 ### Settings (`/api/v1/settings`)
 | Método | Ruta | Descripción |

@@ -77,3 +77,6 @@ apps/api/src/modules/recall/lane-entrance.generated.ts
 
 # grabación de 232 MB del onboarding real (14-sep-2026); vive fuera del repo
 /parallly_onboarding.mp4
+
+# Local Claude Code settings (per developer, never versioned)
+.claude/settings.local.json

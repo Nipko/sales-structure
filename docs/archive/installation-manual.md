@@ -120,7 +120,7 @@ This script:
 6. Initializes database (tables, admin user, extensions)
 7. Starts all 13+ Docker services
 
-**Default admin credentials**: `admin@parallext.com` / `Parallext2026!`
+**Default admin credentials**: `admin@parallext.com` / `(ADMIN_PASSWORD)`
 
 ---
 
@@ -632,7 +632,7 @@ cat apps/api/prisma/tenant-schema.sql | sed "s/{{SCHEMA_NAME}}/tenant_slug/g" | 
 
 | Service | User | Password |
 |---------|------|----------|
-| Dashboard | admin@parallext.com | Parallext2026! |
+| Dashboard | admin@parallext.com | (ADMIN_PASSWORD) |
 | Grafana | admin | (set during setup) |
 | PostgreSQL | parallext | (from .env DB_PASSWORD) |
 | Bull Board | token param | (from .env BULL_BOARD_TOKEN) |

@@ -528,7 +528,7 @@ Push a `main` > GitHub Actions > build 5 Docker images > push a GHCR > SSH al VP
 | Credencial | Donde esta | Proposito |
 |------------|-----------|-----------|
 | `.env` completo | Regenerado por GitHub Actions desde secrets | Todas las variables de entorno |
-| Admin login | `admin@parallext.com` / `Parallext2026!` | Super admin del dashboard |
+| Admin login | `admin@parallext.com` / la contraseña definida en `ADMIN_PASSWORD` (nunca en el repo) | Super admin del dashboard |
 | JWT_REFRESH_SECRET | GitHub Secrets + `.env` | Firma de refresh tokens (session management) |
 | BULL_BOARD_TOKEN | GitHub Secrets + `.env` | Acceso al dashboard de colas BullMQ |
 | GRAFANA_PASSWORD | GitHub Secrets + `.env` | Login de Grafana admin |

@@ -13,7 +13,11 @@ const prisma = new PrismaClient();
 
 async function main() {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@parallext.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Parallext2026!';
+    // No default: a known password in the repository is no password (security cleanup, 30-oct-2026).
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (!adminPassword || adminPassword.length < 12) {
+        throw new Error('ADMIN_PASSWORD (12+ characters) is required to seed the admin user.');
+    }
 
     // Check if admin already exists
     const existing = await prisma.user.findUnique({

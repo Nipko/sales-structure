@@ -1,0 +1,834 @@
+# B2 · Deltas por PERFIL EFECTIVO y extensiones de DOMINIO REGULADO
+# Solo lo que difiere del núcleo y de los objetos. Formato de requisito: schema.md.
+# Reglas: un override solo SUBE la criticidad (cita R2/R3/R4); los dominios no se pueden bajar.
+spec_version: 1.0.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1)
+
+# ═══════════════════════════ DOMINIOS REGULADOS ═══════════════════════════
+# Se activan por perfil (campo domains). Todos son R3 (bloqueantes) salvo indicación.
+# Muchos llegan con un valor por defecto de plataforma: el dueño debe ACEPTARLO (si no, queda sembrado-sin-editar y no cumple).
+domains:
+
+- domain: health
+  applies_to: [P04, P08, P09, P10, "P12 si ofrece procedimientos médico-estéticos"]
+  raises: {OBJ.APPOINTMENT.ACCOUNT_READ: "bloqueante (R3), identity_level ≥ otp", CORE.PRIVACY.CUSTOMER_MEMORY: "datos de salud solo con consentimiento explícito", OBJ.APPOINTMENT.WRITE_MODE: "consent_required = true"}
+  requirements:
+  - id: DOM.HEALTH.EMERGENCY_PROTOCOL
+    title: Urgencias clínicas (línea propia y externa) y señales de alarma
+    kind: procedure
+    applies_when: "domain(health)"
+    answers: [P08-7, P09-6, P04-4]
+    exposure: always_in_context
+    data:
+      name: safety.health_emergency
+      type: procedure_spec
+      structure: {own_urgent_line: "contact_point + horario (o vacío confirmado)", external: "ref pack de país (emergencias médicas)", urgent_slot: "bool: ofrece cita de urgencia", published_advice: "text_i18n? (solo consejos que el negocio publicó)", red_flags: "lista de plataforma (dolor intenso, sangrado, trauma, inflamación facial, dolor de pecho, falta de aire…)"}
+      validation: ["external resuelto desde el pack", "red_flags = default de plataforma aceptado (ampliable)"]
+      example: {own_urgent_line: {kind: phone, value: "+57 300 000 0000", hours: "24/7"}, urgent_slot: true}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Red flag detectada: primera frase con el número externo del pack; luego la línea propia si existe y HUM. Sin preguntas comerciales antes.", never: ["diagnosticar", "recomendar medicamentos o dosis", "demorar con preguntas de agenda"]}
+    sources: {allowed: [owner_form, country_pack]}
+    collection: {channels: [form, platform], ui_today: nuevo, storage_today: "safety triage en código (A2); línea propia: nuevo", storage_status: parcial}
+    readiness: {predicate_kind: custom, predicate: "external resuelto y own_urgent_line confirmada (valor o vacío) y red_flags aceptadas", gap_message: "Confirma tu línea de urgencias (o que no tienes) y el protocolo de alarma."}
+    qa_truth: "Caso con red flag → EXT primero (número del pack) y luego HUM; ningún consejo clínico salvo published_advice."
+    owner_decision: E16
+  - id: DOM.HEALTH.CLINICAL_SCOPE
+    title: Alcance clínico del agente y descargo
+    kind: policy
+    applies_when: "domain(health)"
+    answers: [P04-4, P09-4, P09-7, P12-2, P08-3]
+    exposure: always_in_context
+    data:
+      name: safety.clinical_scope
+      type: policy_terms
+      structure: {disclaimer: "text_i18n (plataforma, editable solo para ampliar)", requires_assessment: "lista de servicios cuyo precio/duración se definen en valoración", human_only: "[interpretar resultados, certificados, fórmulas, aptitud]"}
+      validation: ["disclaimer aceptado por el dueño"]
+      example: {requires_assessment: ["Ortodoncia", "Implantes"]}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Solicitudes clínicas → HUM con el descargo.", never: ["interpretar resultados", "decidir aptitud o contraindicaciones"]}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform, form], ui_today: nuevo, storage_today: "reglas de prompt (L1)", storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [disclaimer, requires_assessment]}, predicate: "disclaimer aceptado y requires_assessment revisado", gap_message: "Revisa y acepta el alcance clínico del agente."}
+    qa_truth: "Pedido clínico → descargo + HUM; servicio en requires_assessment → 'se define en la valoración' + ofrecer valoración."
+  - id: DOM.HEALTH.SENSITIVE_DATA
+    title: "Datos de salud: consentimiento, mínimo necesario y notificaciones discretas"
+    kind: policy
+    applies_when: "domain(health)"
+    answers: [C16, C28, P10-5]
+    exposure: platform_only
+    data:
+      name: privacy.health
+      type: config
+      structure: {consent_text: text_i18n, min_fields: "campos de salud permitidos en el chat (por defecto: motivo general)", discreet_notifications: "bool (no repetir el motivo en avisos)"}
+      validation: ["consent_text ligado a CORE.PRIVACY.NOTICE vigente"]
+      example: {min_fields: [motivo_general], discreet_notifications: true}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Sin consentimiento configurado no se recogen datos de salud: solo se agenda con datos de contacto o se deriva."}
+    sources: {allowed: [owner_form, country_pack]}
+    collection: {channels: [form], ui_today: /admin/compliance, storage_today: "consent_records (genérico: consent_scope, policy_type, legal_version; sin consent_text ni min_fields de salud)", storage_status: parcial}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [consent_text, discreet_notifications]}, predicate: "consent_text confirmado y discreet_notifications declarado", gap_message: "Configura el consentimiento para datos de salud."}
+    qa_truth: "El agente no pide más datos de salud que min_fields; con consentimiento pendiente, lo pide antes."
+
+- domain: mental_health
+  applies_to: [P10]
+  raises: {OBJ.APPOINTMENT.CHANGE_RULES: "ask_reason = false"}
+  requirements:
+  - id: DOM.MENTAL_HEALTH.CRISIS_PROTOCOL
+    title: Protocolo de crisis y líneas de ayuda
+    kind: procedure
+    applies_when: "domain(mental_health)"
+    answers: [P10-4]
+    exposure: always_in_context
+    data:
+      name: safety.crisis
+      type: procedure_spec
+      structure: {crisis_lines: "ref pack de país (línea de crisis/suicidio)", professional_alert: "usuarios a alertar + canal", message: "text_i18n empático (plataforma, aceptado por el dueño)"}
+      validation: ["crisis_lines resueltas", "professional_alert con canal verificado"]
+      example: {professional_alert: {users: ["coordinacion@…"], channel: push}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Señal de riesgo: mensaje empático + línea de crisis en la primera respuesta + alerta HUM al profesional. Nada comercial.", never: ["hacer terapia o evaluación", "preguntar datos de agenda antes de la línea"]}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform, form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "crisis_lines resueltas y professional_alert confirmado", gap_message: "Configura a quién alertar ante una crisis."}
+    qa_truth: "P10-4 → EXT con la línea del pack + alerta (evento) en el mismo turno."
+
+- domain: pharmacy
+  applies_to: [P04]
+  requirements:
+  - id: DOM.PHARMACY.PRESCRIPTION
+    title: Venta bajo fórmula y validación farmacéutica
+    kind: policy
+    applies_when: "domain(pharmacy)"
+    answers: [P04-2, P04-3, P04-4, P03-8]
+    exposure: read_on_intent
+    data:
+      name: offer.items[].requires_prescription
+      type: config
+      structure: {per_item: "requires_prescription: sí|no|según_presentación (requerido en todo ítem activo)", pharmacist_handoff: "ref CORE.HANDOFF.TEAM (rol farmacéutico)", prescription_intake: "recibir imagen + validación humana"}
+      validation: ["todos los ítems activos con requires_prescription declarado", "≥1 farmacéutico en el equipo de traspaso"]
+      example: {per_item: {"Losartán 50 mg": sí}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Sin dato: «puede requerir fórmula; se valida en la entrega» + HUM farmacéutico. Fórmulas recibidas → siempre HUM.", never: ["«no requiere fórmula» sin dato", "recomendar fármacos o dosis"]}
+    sources: {allowed: [owner_form, import, integration]}
+    collection: {channels: [import, form], ui_today: "/admin/catalog (campo nuevo)", storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "todos(ítems activos, requires_prescription confirmado) y farmacéutico asignado", gap_message: "Marca qué productos requieren fórmula."}
+    qa_truth: "P04-2: AFIRMA según el ítem; sin dato → 'puede requerir' + HUM."
+
+- domain: veterinary
+  applies_to: [P17]
+  requirements:
+  - id: DOM.VETERINARY.EMERGENCY
+    title: Emergencias veterinarias y alcance clínico
+    kind: procedure
+    applies_when: "domain(veterinary)"
+    answers: [P17-1, P17-7, P18-1]
+    exposure: always_in_context
+    data:
+      name: safety.vet_emergency
+      type: procedure_spec
+      structure: {line: "contact_point 24 h propia o externa + dirección", red_flags: "lista de plataforma (intoxicación, trauma, dificultad respiratoria, parto complicado)", published_first_aid: "text_i18n?"}
+      validation: ["line confirmada (propia o externa)"]
+      example: {line: {kind: phone, value: "+57 1 555 0000", label: "Urgencias 24 h Vet Norte"}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Red flag: línea y dirección de urgencias en la primera frase + HUM. Medicación: «no medicar sin el veterinario» + HUM; si ya lo ingirió: EXT.", never: ["diagnosticar", "dosificar", "remedios caseros no publicados"]}
+    sources: {allowed: [owner_form, country_pack]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: "safety triage mascotas en código (A2)", storage_status: parcial}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [line, red_flags]}, predicate: "line confirmada y red_flags aceptadas", gap_message: "Indica la línea de urgencias veterinarias (tuya o de referencia)."}
+    qa_truth: "P17-1 → EXT con la línea; P17-7 → negativa a medicar + HUM."
+
+- domain: insurance
+  applies_to: [P21]
+  raises: {OBJ.INSURANCE.ACCOUNT_READ: "bloqueante (R3), identity_level ≥ otp"}
+  requirements:
+  - id: DOM.INSURANCE.LICENSE_DISCLAIMER
+    title: Licencia del intermediario y descargo de cobertura
+    kind: policy
+    applies_when: "domain(insurance)"
+    answers: [P21-1, P21-2, P21-5]
+    exposure: always_in_context
+    data:
+      name: insurance.compliance
+      type: policy_terms
+      structure: {license_id: "registro del intermediario", disclaimer: "text_i18n ('la cobertura exacta está en la póliza')", human_only: "[interpretar póliza, prima final sin tarifador, ajuste de siniestros]"}
+      validation: ["license_id no vacío", "disclaimer aceptado"]
+      example: {license_id: "SFC-12345"}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Cobertura concreta o prima → descargo + HUM.", never: ["cobertura vinculante", "prometer aprobación"]}
+    sources: {allowed: [owner_form, country_pack]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [license_id, disclaimer]}, predicate: "license_id confirmado y disclaimer aceptado", gap_message: "Registra tu licencia de intermediario y acepta el descargo."}
+    qa_truth: "Toda respuesta de cobertura esperada contiene el descargo; P21-5 → HUM."
+  - id: DOM.INSURANCE.ASSISTANCE_LINES
+    title: Líneas de asistencia 24 h por aseguradora y primer aviso de siniestro
+    kind: procedure
+    applies_when: "domain(insurance)"
+    answers: [P21-3, P21-6]
+    exposure: read_on_intent
+    data:
+      name: insurance.assistance
+      type: list
+      structure: "lista de {insurer, line: contact_point, claim_steps: text_i18n}"
+      validation: ["cada aseguradora de OBJ.INSURANCE.CATALOG tiene línea"]
+      example: [{insurer: "Sura", line: {kind: phone, value: "#888"}}]
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Heridos o peligro: emergencias del pack primero; luego línea de la aseguradora o HUM.", never: ["ajustar o valorar el siniestro"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: "nuevo (verificado: insurance_plans no tiene aseguradoras ni líneas de asistencia; /admin/insurance tampoco)", storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "todas las aseguradoras activas con línea confirmada", gap_message: "Agrega la línea de asistencia de cada aseguradora."}
+    qa_truth: "P21-3 → (EXT si hay heridos) + línea de la aseguradora + HUM."
+
+- domain: finance
+  applies_to: [P25, "P26 si simula cuotas", "P07 si simula hipoteca"]
+  raises: {OBJ.LEAD.ACCOUNT_READ: "bloqueante (R3), identity_level ≥ otp"}
+  requirements:
+  - id: DOM.FINANCE.RATES_DISCLOSURE
+    title: Tasas, costos y descargo de simulación
+    kind: knowledge
+    applies_when: "domain(finance)"
+    answers: [P25-1, P25-2, P26-3, P07-8]
+    exposure: read_on_intent
+    data:
+      name: finance.rates
+      type: list
+      structure: "por producto {rate_ea, rate_type, terms_range, amount_range, fees, insurance_costs, valid_from, formula_ref} + simulation_disclaimer: text_i18n"
+      validation: ["rate_ea ≤ tope legal del pack (usura)", "valid_from ≤ 30 días o reconfirmado"]
+      example: [{product: "Libre inversión", rate_ea: "24,5%", terms_range: "12–60 meses", valid_from: "2026-10-01"}]
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: NC+AV, behavior: "Sin tasa vigente: no simula; NC+AV o HUM con asesor.", never: ["estimar tasas", "anticipar aprobación"]}
+    sources: {allowed: [owner_form], max_age: "30 días"}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "cada producto activo con rate_ea vigente y disclaimer aceptado", gap_message: "Publica tasas vigentes o desactiva la simulación."}
+    qa_truth: "P25-2: cuota por fórmula del oráculo con la tasa vigente + descargo; sin tasa → NC+AV."
+  - id: DOM.FINANCE.FRAUD_KYC
+    title: Prevención de fraude y verificación de identidad
+    kind: procedure
+    applies_when: "domain(finance)"
+    answers: [P25-5, P25-6, P25-8]
+    exposure: always_in_context
+    data:
+      name: safety.fraud
+      type: procedure_spec
+      structure: {fraud_line: contact_point, kyc_process: "ref proceso del negocio (fuera del chat)", never_request: "lista fija [claves, PIN, códigos OTP bancarios, CVV]"}
+      validation: ["fraud_line confirmada"]
+      example: {fraud_line: {kind: phone, value: "+57 1 800 000 000"}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Sospecha de fraude: línea antifraude en la primera frase + HUM inmediato.", never: ["pedir claves, PIN o códigos"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [fraud_line]}, predicate: "fraud_line confirmada", gap_message: "Indica tu línea oficial antifraude."}
+    qa_truth: "P25-8 → EXT + HUM; ninguna respuesta esperada pide credenciales."
+
+- domain: legal
+  applies_to: [P22]
+  raises: {OBJ.PROFESSIONAL_CASE.ACCOUNT_READ: "bloqueante (R3), identity_level ≥ otp"}
+  requirements:
+  - id: DOM.LEGAL.SCOPE_CONFIDENTIALITY
+    title: Sin asesoría concreta, confidencialidad y conflicto de interés
+    kind: policy
+    applies_when: "domain(legal)"
+    answers: [P22-1, P22-3, P22-4]
+    exposure: always_in_context
+    data:
+      name: legal.scope
+      type: policy_terms
+      structure: {disclaimer: text_i18n, max_detail_in_chat: "text_i18n (qué no contar por el chat)", conflict_check: "siempre humano antes de aceptar el caso"}
+      validation: ["disclaimer aceptado"]
+      example: {max_detail_in_chat: "resumen general del caso, sin documentos ni datos de terceros"}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Consejo concreto («¿voy a ganar?») → orientación general + HUM.", never: ["asesoría jurídica o contable concreta", "pedir detalles sensibles más allá de lo necesario"]}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform, form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [disclaimer]}, predicate: "disclaimer aceptado", gap_message: "Revisa el alcance del agente en temas legales."}
+    qa_truth: "P22-4 → orientación general + HUM, sin pronóstico."
+  - id: DOM.LEGAL.URGENT_DEADLINES
+    title: Ruta prioritaria para plazos legales o fiscales
+    kind: procedure
+    applies_when: "domain(legal)"
+    answers: [P22-6]
+    exposure: platform_only
+    data:
+      name: proc.urgent_legal
+      type: procedure_spec
+      structure: {priority_assignees: "usuarios", sla: duration, message: "text_i18n ('los plazos corren; te contactamos en {sla}')"}
+      validation: ["sla ≤ 4 h hábiles"]
+      example: {sla: {min: 2, unit: h}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "HUM prioritario con aviso de que los plazos corren."}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: ["priority_assignees[]", sla]}, predicate: "priority_assignees y sla confirmados", gap_message: "¿Quién atiende casos con plazo urgente?"}
+    qa_truth: "P22-6 → HUM prioritario (evento con prioridad) + aviso de plazos."
+
+- domain: minors
+  applies_to: ["P14 si min_age < 18", P15, "P20 si fotografía a menores", "P10 terapia infantil", "P13 si admite menores"]
+  requirements:
+  - id: DOM.MINORS.GUARDIAN_CONSENT
+    title: Datos y trámites de menores con consentimiento del acudiente
+    kind: policy
+    applies_when: "domain(minors)"
+    answers: [P14-6, P15-5, P20-8, C16]
+    exposure: platform_only
+    data:
+      name: privacy.minors
+      type: policy_terms
+      structure: {age_threshold: "del pack de país", guardian_fields: "nombre, documento, relación, contacto", consent_text: text_i18n}
+      validation: ["guardian_fields ⊆ WRITE_MODE.required_fields cuando el titular es menor"]
+      example: {age_threshold: 18, guardian_fields: [nombre, documento, relación, teléfono]}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Sin configuración: no recoge datos del menor; deriva a HUM."}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform, form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [consent_text, "guardian_fields[]"]}, predicate: "consent_text aceptado y guardian_fields configurados", gap_message: "Configura cómo se inscriben o atienden menores."}
+    qa_truth: "Inscripción de un menor → la esperada pide los datos del acudiente antes que los del menor."
+    owner_decision: E17
+
+- domain: home_safety
+  applies_to: [P16, "P27 (falla crítica de frenos/dirección)"]
+  requirements:
+  - id: DOM.HOME_SAFETY.HAZARD_PROTOCOL
+    title: "Riesgo de gas, electricidad o agua: instrucciones y números"
+    kind: procedure
+    applies_when: "domain(home_safety)"
+    answers: [P16-3, P16-7, P27-2]
+    exposure: always_in_context
+    data:
+      name: safety.home_hazards
+      type: procedure_spec
+      structure: {hazards: "lista de plataforma {gas, chispa/cortocircuito, inundación eléctrica, freno/dirección}", instructions: "text_i18n por riesgo (plataforma, aceptado)", numbers: "ref pack (bomberos, gas)", reentry_times: "solo publicados por el negocio (fumigación)"}
+      validation: ["instructions aceptadas por el dueño"]
+      example: {hazards: [gas], instructions: {gas: "Sal de casa, no enciendas luces, llama a {número}"}}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: EXT, behavior: "Riesgo detectado: instrucción de seguridad + número del pack primero; luego HUM.", never: ["improvisar tiempos de reingreso", "indicar que circule con una falla crítica"]}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform, form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "instructions aceptadas y numbers resueltos", gap_message: "Revisa las instrucciones de seguridad que dará el agente."}
+    qa_truth: "Caso con riesgo → EXT con instrucción y número en la primera frase."
+  - id: DOM.HOME_SAFETY.AUTHORITY_CHECK
+    title: Verificar autoridad sobre el inmueble (cerrajería)
+    kind: procedure
+    applies_when: "domain(home_safety) and subtype = cerrajeria"
+    answers: [P16-8]
+    exposure: platform_only
+    data:
+      name: proc.verify_authority
+      type: procedure_spec
+      structure: {documents: "documento con la dirección, escritura o contrato", verified_by: "técnico en sitio | humano antes de despachar"}
+      validation: ["verified_by declarado"]
+      example: {documents: ["cédula con dirección", "recibo de servicio"], verified_by: "técnico en sitio"}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "No despacha sin verificación; HUM.", never: ["despachar apertura sin verificación"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [documents, verified_by]}, predicate: "documents y verified_by confirmados", gap_message: "Define cómo verificas que quien pide abrir es el dueño o inquilino."}
+    qa_truth: "P16-8 → la esperada informa los documentos antes de confirmar la visita."
+
+# ═══════════════════════════ PERFILES (solo deltas) ═══════════════════════════
+# ═══════════════════════════ HECHOS DE OPERACIÓN POR DEFECTO (v0.2) ═══════════════════════════
+# Valores que usa applies_when (schema §4.1) mientras el tenant no declare CORE.IDENTITY.PROFILE.operating_facts.
+# No son datos que el agente afirme: solo deciden qué requisitos aplican. sells_goods y any_object_with_write se derivan de los objetos.
+# modality: null ⇒ desconocido: los requisitos que dependen de él APLICAN y PROFILE pide declararlo.
+# conditional_domain_facts: hecho → dominio que activa. Sin declarar es un hueco bloqueante de CORE.IDENTITY.PROFILE (una pregunta), no la activación del dominio.
+operating_facts_defaults:
+  P00: {modality: null, delivery_offered: false, has_prepayment: false}
+  P01: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P02: {modality: [presencial], delivery_offered: true, has_prepayment: false}
+  P03: {modality: [presencial, online], delivery_offered: true, has_prepayment: true}
+  P04: {modality: [presencial], delivery_offered: true, has_prepayment: false}
+  P05: {modality: [presencial], delivery_offered: false, has_prepayment: true}
+  P06: {modality: [presencial], delivery_offered: false, has_prepayment: true}
+  P07: {modality: [presencial], delivery_offered: false, has_prepayment: false, conditional_domain_facts: {simulates_financing: finance}}
+  P08: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P09: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P10: {modality: [presencial, online], delivery_offered: false, has_prepayment: false, conditional_domain_facts: {treats_minors: minors}}
+  P11: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P12: {modality: [presencial], delivery_offered: false, has_prepayment: false, conditional_domain_facts: {offers_medical_aesthetic: health}}
+  P13: {modality: [presencial], delivery_offered: false, has_prepayment: true, conditional_domain_facts: {admits_minors: minors}}
+  P14: {modality: [presencial, online], delivery_offered: false, has_prepayment: true, conditional_domain_facts: {min_age_under_18: minors}}
+  P15: {modality: [presencial], delivery_offered: false, has_prepayment: true}
+  P16: {modality: [a_domicilio], delivery_offered: false, has_prepayment: false}
+  P17: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P18: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P19: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P20: {modality: [presencial, a_domicilio], delivery_offered: false, has_prepayment: true, conditional_domain_facts: {photographs_minors: minors}}
+  P21: {modality: [online, presencial], delivery_offered: false, has_prepayment: false}
+  P22: {modality: [presencial, online], delivery_offered: false, has_prepayment: false}
+  P23: {modality: [online, presencial], delivery_offered: false, has_prepayment: false}
+  P24: {modality: [online], delivery_offered: false, has_prepayment: true}
+  P25: {modality: [online, presencial], delivery_offered: false, has_prepayment: false}
+  P26: {modality: [presencial], delivery_offered: false, has_prepayment: false, conditional_domain_facts: {simulates_financing: finance}}
+  P27: {modality: [presencial], delivery_offered: false, has_prepayment: false}
+  P28: {modality: [presencial], delivery_offered: false, has_prepayment: true}
+
+profiles:
+
+- profile: P00
+  name: Genérico / otros
+  objects_default: [lead]
+  domains: []
+  overrides: {CORE.OFFER.PRICE_MODEL: "se admite que todos los ítems sean a_cotizar", OBJ.LEAD.WRITE_MODE: "bloqueante (R2): sin él P00 no tiene acción"}
+  extra_requirements: []
+
+- profile: P01
+  name: Restaurante con servicio en sala
+  objects_default: [appointment(table), food_order]
+  domains: []
+  overrides: {CORE.OFFER.FEES: "necesario (R4): propina/servicio y descorche (P01-7)", CORE.POLICY.HOUSE_RULES: {level: necesario, rule: R4, params: {required_topics: [mascotas, menores]}, why: "P01-5 (la accesibilidad va en CORE.LOCATIONS.ACCESS)"}, CORE.HOURS.BY_SERVICE: "necesario (R4): horario de cocina"}
+  extra_requirements:
+  - id: PROF.P01.TABLE_RULES
+    title: Reglas de reserva de mesa
+    kind: policy
+    applies_when: "profile_in([P01]) and object_enabled(appointment)"
+    answers: [P01-1, P01-6]
+    exposure: read_on_intent
+    data:
+      name: table.rules
+      type: policy_terms
+      structure: {max_party_online: int, turns: "duración de la mesa", late_tolerance: duration, waitlist: "bool (en vivo o no)", large_groups: "≥N personas → HUM"}
+      validation: ["max_party_online ≥ 1"]
+      example: {max_party_online: 8, turns: {min: 120, unit: min}, late_tolerance: {min: 15, unit: min}, large_groups: 9}
+    criticality: {level: bloqueante, rule: R2, conditional: "si la reserva de mesa tiene WRITE_MODE ≠ none", when: [{if: "not writes(appointment)", level: necesario, rule: R4}]}
+    when_missing: {code: HUM, behavior: "Sin reglas: solicitud + HUM.", never: ["inventar tiempos de espera en vivo"]}
+    sources: {allowed: [owner_form, integration]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [max_party_online, late_tolerance]}, predicate: "max_party_online y late_tolerance confirmados", gap_message: "Define el tamaño máximo de grupo y la tolerancia de llegada."}
+    qa_truth: "Grupo > max_party_online → HUM; espera en vivo sin dato → 'no tengo el tiempo en vivo'."
+  - id: PROF.P01.EVENTS_GROUPS
+    title: Eventos, salones y menú de grupo
+    kind: knowledge
+    applies_when: "profile_in([P01])"
+    answers: [P01-2]
+    exposure: read_on_intent
+    data:
+      name: offer.event_packages
+      type: list
+      structure: "lista de {space, capacity, group_menu?, min_spend?, deposit?} o vacío confirmado"
+      validation: ["capacity > 0"]
+      example: [{space: "Salón terraza", capacity: 40}]
+    criticality: {level: recomendado, rule: R5}
+    when_missing: {code: HUM, behavior: "NC+AV + HUM para cotizar."}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Haces eventos o grupos grandes?"}
+    qa_truth: "Capacidad confirmada → AFIRMA; si no → HUM."
+
+- profile: P02
+  name: Comida rápida, domicilios y dark kitchen
+  objects_default: [food_order(delivery)]
+  domains: []
+  overrides: {CORE.DELIVERY.TERMS: "bloqueante (R2)", CORE.SERVICE_AREA: "bloqueante (R2)", CORE.OFFER.PROMOTIONS: "necesario (R4): 234 conversaciones QA", CORE.COMPLAINT.PROCEDURE: "necesario (R4) con reposición/reembolso de comida", CORE.HOURS.BY_SERVICE: "necesario (R4): horario de cocina y último pedido (fuera de él no se confirman pedidos)"}
+  extra_requirements: []
+
+- profile: P03
+  name: Retail de catálogo
+  objects_default: [catalog_order]
+  domains: []
+  overrides: {CORE.POLICY.WARRANTY: "bloqueante (R2)", CORE.POLICY.REFUND_RETURNS: "bloqueante (R2)", OBJ.CATALOG_ORDER.AVAILABILITY_SOURCE: "necesario (R4) aunque WRITE_MODE ≠ direct (stock: 362 conv.)", OBJ.CATALOG_ORDER.ACCOUNT_READ: "necesario (R4) con payment_status visible obligatorio"}
+  extra_requirements:
+  - id: PROF.P03.HOLD_SPECIAL_ORDER
+    title: Apartar productos y pedidos especiales
+    kind: procedure
+    applies_when: "profile_in([P03])"
+    answers: [P03-10]
+    exposure: read_on_intent
+    data:
+      name: proc.hold
+      type: procedure_spec
+      structure: {hold_allowed: bool, hold_duration: "duration?", special_order: "bool + plazo"}
+      validation: ["hold_allowed ⇒ hold_duration"]
+      example: {hold_allowed: true, hold_duration: {min: 24, unit: h}}
+    criticality: {level: recomendado, rule: R5}
+    when_missing: {code: HUM, behavior: "Solicitud + HUM."}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Apartas productos? ¿Por cuánto tiempo?"}
+    qa_truth: "P03-10: según hold_allowed; si no consta → HUM."
+
+- profile: P04
+  name: Farmacia o droguería
+  objects_default: [catalog_order(pharmacy)]
+  domains: [pharmacy, health]
+  overrides: {CORE.HOURS.REGULAR: "incluye turno/24 h (P04-5)"}
+  extra_requirements: []
+
+- profile: P05
+  name: Alojamiento
+  objects_default: [lodging_booking]
+  domains: []
+  overrides: {CORE.POLICY.HOUSE_RULES: {level: necesario, rule: R4, params: {required_topics: [mascotas, menores, fumar, fiestas]}, why: "P05-7"}, OBJ.LODGING_BOOKING.AVAILABILITY_SOURCE: "necesario (R4) incluso en request (disponibilidad por fechas: 46 % de fallo)", OBJ.LODGING_BOOKING.CUSTOMER_REQUIREMENTS: "necesario (R4): registro legal de huéspedes"}
+  extra_requirements:
+  - id: PROF.P05.NEARBY
+    title: Qué hay cerca y distancias
+    kind: knowledge
+    applies_when: "profile_in([P05])"
+    answers: [P05-8]
+    exposure: read_on_intent
+    data:
+      name: biz.locations[].nearby
+      type: list
+      structure: "lista de {place, kind, distance: '{valor, unidad, modo}'}"
+      validation: ["distance > 0"]
+      example: [{place: "Aeropuerto El Dorado", kind: aeropuerto, distance: "25 min en carro"}]
+    criticality: {level: recomendado, rule: R5}
+    when_missing: {code: NC+AV, behavior: "NC+AV.", never: ["inventar lugares cercanos"]}
+    sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
+    collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Qué hay cerca de tu alojamiento?"}
+    qa_truth: "Solo lugares listados; si no hay → NC+AV."
+
+- profile: P06
+  name: Tours y agencia de viajes
+  objects_default: [tour_booking, lead(quote)]
+  domains: []
+  overrides: {CORE.POLICY.CANCELLATION_CHANGES: "bloqueante (R2) aunque todo sea solicitud: 52 % de fallo en política", OBJ.TOUR_BOOKING.AVAILABILITY_SOURCE: "necesario (R4) en request (fecha específica: 45 % de fallo)"}
+  extra_requirements:
+  - id: PROF.P06.TRAVEL_DOCS
+    title: Documentos de viaje, visa y seguro (remisión a fuente oficial)
+    kind: knowledge
+    applies_when: "profile_in([P06])"
+    answers: [P06-10, P06-7]
+    exposure: read_on_intent
+    data:
+      name: requirements.travel_docs
+      type: list
+      structure: "por destino: {documents, official_source_url, insurance_required: bool?, insurance_options?}"
+      validation: ["official_source_url presente por destino internacional"]
+      example: [{destination: "México", documents: ["pasaporte vigente"], official_source_url: "https://…"}]
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "Remite a la fuente oficial (consulado) + NC+AV.", never: ["afirmar requisitos migratorios sin fuente"]}
+    sources: {allowed: [owner_form], accepts_text_evidence: true}
+    collection: {channels: [form], ui_today: nuevo, storage_today: "FAQs (genéricas)", storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "por cada destino internacional activo: official_source_url", gap_message: "Agrega la fuente oficial de requisitos por destino."}
+    qa_truth: "P06-10: documentos confirmados + fuente oficial; sin dato → remisión + NC+AV."
+
+- profile: P07
+  name: Inmobiliaria
+  objects_default: [real_estate, lead(owner_intake)]
+  domains: ["finance si simula hipoteca"]
+  overrides: {CORE.PAYMENT.FINANCING: "necesario (R4): financiación/hipoteca (40 conv., 30 % fallo)", OBJ.REAL_ESTATE.CUSTOMER_REQUIREMENTS: "necesario (R4): documentos (61 % de fallo)"}
+  extra_requirements:
+  - id: PROF.P07.FAIR_HOUSING
+    title: No discriminación, no avalúo y privacidad de la dirección
+    kind: policy
+    applies_when: "profile_in([P07])"
+    answers: [P07-1, P07-5, P07-12]
+    exposure: always_in_context
+    data:
+      name: real_estate.compliance
+      type: policy_terms
+      structure: {protected_filters_blocked: "lista de plataforma (no filtrar por características protegidas)", no_valuation: true, address_privacy_default: "ref OBJ.REAL_ESTATE.CATALOG.address_privacy"}
+      validation: ["default de plataforma aceptado"]
+      example: {no_valuation: true}
+    criticality: {level: bloqueante, rule: R3}
+    when_missing: {code: HUM, behavior: "Avalúo o filtro protegido → rechazo breve + HUM.", never: ["avaluar un inmueble", "filtrar por características protegidas", "prometer aprobación del estudio"]}
+    sources: {allowed: [country_pack, owner_form]}
+    collection: {channels: [platform], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: default_accepted, predicate: "default aceptado", gap_message: "Acepta las reglas de no discriminación y no avalúo."}
+    qa_truth: "Pedido de avalúo → HUM sin cifra."
+
+- profile: P08
+  name: Odontología
+  objects_default: [appointment]
+  domains: [health]
+  overrides: {CORE.PAYMENT.FINANCING: "necesario (R4): seguros/convenios (39 % de fallo)", OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS: "necesario (R4): datos obligatorios y qué llevar (P08-4/5)"}
+  extra_requirements: []
+
+- profile: P09
+  name: Medicina general y especialistas
+  objects_default: [appointment]
+  domains: [health]
+  overrides: {OBJ.APPOINTMENT.STAFF: "necesario (R4) siempre (especialidades)", OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS: "necesario (R4): órdenes y remisiones (P09-3)"}
+  extra_requirements:
+  - id: PROF.P09.PREPARATIONS
+    title: Preparación para procedimientos y exámenes
+    kind: knowledge
+    applies_when: "profile_in([P09, P08, P17])"
+    answers: [P09-8, P17-5]
+    exposure: read_on_intent
+    data:
+      name: knowledge.preparations
+      type: list
+      structure: "por servicio: {instructions: text_i18n (ayuno, suspender medicamentos solo si lo publicó el negocio)}"
+      validation: ["servicio existe"]
+      example: [{service: "Laboratorio en ayunas", instructions: "Ayuno de 8 horas."}]
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "NC+AV + HUM.", never: ["improvisar preparaciones"]}
+    sources: {allowed: [owner_form], accepts_text_evidence: true}
+    collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: "FAQs/documentos", storage_status: parcial}
+    readiness: {predicate_kind: custom, predicate: "todos(servicios activos, preparation_ref declarado o 'no requiere' confirmado) y cada preparation_ref con instrucción confirmada", gap_message: "Agrega las indicaciones de preparación de tus procedimientos."}
+    qa_truth: "Solo instrucciones publicadas; si no → NC+AV."
+
+- profile: P10
+  name: Salud mental
+  objects_default: [appointment]
+  domains: [health, mental_health]
+  overrides: {}
+  extra_requirements: []
+
+- profile: P11
+  name: Peluquería y barbería
+  objects_default: [appointment]
+  domains: []
+  overrides: {OBJ.APPOINTMENT.AVAILABILITY_SOURCE: "bloqueante (R2) siempre (hueco disponible: 66 % de fallo)", CORE.POLICY.HOUSE_RULES: {level: necesario, rule: R4, params: {required_topics: [walk_in]}, why: "P11-9"}, CORE.OFFER.RECOMMENDATION_RULES: "necesario (R4): 18 % de las conversaciones del salón"}
+  extra_requirements: []
+
+- profile: P12
+  name: Estética y spa
+  objects_default: [appointment]
+  domains: ["health si procedimientos médico-estéticos"]
+  overrides: {}
+  extra_requirements:
+  - id: PROF.P12.CONTRAINDICATIONS_AFTERCARE
+    title: Contraindicaciones publicadas y cuidados antes/después
+    kind: knowledge
+    applies_when: "profile_in([P12])"
+    answers: [P12-2, P12-3, P12-6]
+    exposure: read_on_intent
+    data:
+      name: requirements.contraindications
+      type: list
+      structure: "por tratamiento: {contraindications: lista, aftercare: text_i18n, requires_assessment: bool}"
+      validation: ["tratamientos con requires_assessment no tienen precio fijo"]
+      example: [{treatment: "Láser", contraindications: ["embarazo", "isotretinoína"], requires_assessment: true}]
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: HUM, behavior: "Aptitud personal → HUM o valoración.", never: ["decidir aptitud", "prometer resultados"]}
+    sources: {allowed: [owner_form], accepts_text_evidence: true}
+    collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "tratamientos activos con contraindicaciones confirmadas (valor o vacío)", gap_message: "Publica contraindicaciones y cuidados de tus tratamientos."}
+    qa_truth: "P12-2: lista publicada + 'lo decide la valoración'; nunca 'sí puedes'."
+
+- profile: P13
+  name: Gimnasio y estudio de clases
+  objects_default: [membership]
+  domains: ["minors si admite menores"]
+  overrides: {CORE.OFFER.PROMOTIONS: "necesario (R4): clase de prueba (P13-2)", CORE.POLICY.CONSUMER_RIGHTS: "bloqueante (R2): derecho a cancelar la membresía", CORE.HANDOFF.ALWAYS_HUMAN: "incluye condición de salud o lesión (P13-9)"}
+  extra_requirements: []
+
+- profile: P14
+  name: Academias y cursos libres
+  objects_default: [enrollment]
+  domains: ["minors si min_age < 18"]
+  overrides: {}
+  extra_requirements:
+  - id: PROF.P14.ATTENDANCE_POLICIES
+    title: Faltas, recuperación de clases y congelar
+    kind: policy
+    applies_when: "profile_in([P14])"
+    answers: [P14-8]
+    exposure: read_on_intent
+    data:
+      name: policies.attendance
+      type: policy_terms
+      structure: {makeup_allowed: bool, makeup_window: "duration?", freeze: "policy_terms?"}
+      validation: ["makeup_allowed ⇒ makeup_window"]
+      example: {makeup_allowed: true, makeup_window: {min: 30, unit: días}}
+    criticality: {level: recomendado, rule: R5}
+    when_missing: {code: NC+AV, behavior: "NC+AV."}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Se pueden recuperar clases perdidas?"}
+    qa_truth: "P14-8: AFIRMA según la política; si no → NC+AV."
+
+- profile: P15
+  name: Educación formal y admisiones
+  objects_default: [enrollment(admission)]
+  domains: [minors]
+  overrides: {OBJ.ENROLLMENT.WRITE_MODE: "mode = request_to_business obligatorio (decisión humana)"}
+  extra_requirements:
+  - id: PROF.P15.ADMISSIONS_CALENDAR
+    title: Calendario y pasos de admisión, becas
+    kind: knowledge
+    applies_when: "profile_in([P15])"
+    answers: [P15-2, P15-4]
+    exposure: read_on_intent
+    data:
+      name: admissions.calendar
+      type: list
+      structure: "por programa/periodo: {open_date, deadline, steps[], exam_or_interview, scholarships[]}"
+      validation: ["deadline ≥ open_date"]
+      example: [{period: "2027-1", open_date: "2026-09-01", deadline: "2026-11-30", steps: [formulario, entrevista]}]
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: NC+AV, behavior: "NC+AV.", never: ["decidir admisión o becas"]}
+    sources: {allowed: [owner_form], max_age: "por periodo"}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: custom, predicate: "periodo vigente con deadline confirmado", gap_message: "Publica las fechas de admisión del próximo periodo."}
+    qa_truth: "P15-2: AFIRMA fechas del periodo vigente."
+
+- profile: P16
+  name: Servicios del hogar
+  objects_default: [service_request(home_service)]
+  domains: [home_safety]
+  overrides: {CORE.SERVICE_AREA: "bloqueante (R2)", CORE.POLICY.WARRANTY: "necesario (R4): garantía de obra"}
+  extra_requirements: []
+
+- profile: P17
+  name: Veterinaria
+  objects_default: [appointment]
+  domains: [veterinary]
+  overrides: {OBJ.APPOINTMENT.WRITE_MODE: "required_fields incluye mascota (especie, raza, edad, peso)", CORE.HANDOFF.ALWAYS_HUMAN: "incluye estado de hospitalizados, eutanasia y duelo"}
+  extra_requirements: []
+
+- profile: P18
+  name: Servicios para mascotas
+  objects_default: [appointment]
+  domains: []
+  overrides: {OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS: "necesario (R4): vacunas y comportamiento", CORE.HANDOFF.ALWAYS_HUMAN: "heridas o parásitos detectados → derivar a veterinaria"}
+  extra_requirements: []
+
+- profile: P19
+  name: Hotel y guardería de mascotas
+  objects_default: [pet_boarding]
+  domains: []
+  overrides: {}
+  extra_requirements: []
+
+- profile: P20
+  name: Fotografía
+  objects_default: [photo_session, lead(quote)]
+  domains: ["minors si fotografía a menores"]
+  overrides: {CORE.SERVICE_AREA: "necesario (R4): desplazamientos y recargo (P20-5)"}
+  extra_requirements: []
+
+- profile: P21
+  name: Seguros
+  objects_default: [insurance]
+  domains: [insurance]
+  overrides: {}
+  extra_requirements: []
+
+- profile: P22
+  name: Servicios legales y contables
+  objects_default: [professional_case, appointment(consult)]
+  domains: [legal]
+  overrides: {}
+  extra_requirements: []
+
+- profile: P23
+  name: Consultoría y proyectos B2B
+  objects_default: [lead(quote), appointment(consult)]
+  domains: []
+  overrides: {CORE.OFFER.PRICE_MODEL: "se admite que todo sea a_cotizar"}
+  extra_requirements:
+  - id: PROF.P23.PRICING_PORTFOLIO
+    title: Modelo de precios, rangos, tiempos y portafolio
+    kind: knowledge
+    applies_when: "profile_in([P23])"
+    answers: [P23-1, P23-2, P23-4]
+    exposure: read_on_intent
+    data:
+      name: offer.pricing_model
+      type: list
+      structure: {model: "enum_list [por_proyecto, por_hora, retainer]", published_ranges: "lista {servicio, rango money, plazo típico}?", portfolio: "lista de {título, sector, url}"}
+      validation: ["rangos con mínimo ≤ máximo"]
+      example: {model: [por_proyecto], published_ranges: [{service: "App móvil", range: "desde 40M COP", typical: "3–5 meses"}]}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: PREG, behavior: "«Depende del alcance» + PREG del alcance + agenda reunión (lead).", never: ["comprometer precios o SLA fuera de propuesta escrita"]}
+    sources: {allowed: [owner_form, copilot_approved]}
+    collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: ["model[]"]}, predicate: "model confirmado", gap_message: "Cuenta cómo cobras (proyecto, hora, mensualidad)."}
+    qa_truth: "P23-2: modelo + rango si se publicó; si no, PREG de alcance."
+
+- profile: P24
+  name: SaaS y soporte de software
+  objects_default: [membership(saas_subscription), service_request(support_ticket)]
+  domains: []
+  overrides: {OBJ.MEMBERSHIP.ACCOUNT_READ: "identity_level ≥ otp para facturación"}
+  extra_requirements:
+  - id: PROF.P24.SELF_SERVICE
+    title: Página de estado, centro de ayuda y autoservicio de acceso
+    kind: knowledge
+    applies_when: "profile_in([P24])"
+    answers: [P24-2, P24-3, P24-6]
+    exposure: always_in_context
+    data:
+      name: support.self_service
+      type: list
+      structure: {status_page_url: "url?", help_center_url: "url?", password_reset_url: url}
+      validation: ["URLs válidas"]
+      example: {password_reset_url: "https://app.example.com/reset"}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: HUM, behavior: "Acceso: HUM. Nunca pide contraseña ni 2FA.", never: ["pedir contraseña o códigos 2FA"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [password_reset_url]}, predicate: "password_reset_url confirmada", gap_message: "Agrega el enlace para restablecer contraseña."}
+    qa_truth: "P24-2 → enlace de autoservicio o HUM; ninguna esperada pide credenciales."
+
+- profile: P25
+  name: "Finanzas: crédito y asesoría"
+  objects_default: [lead(credit_application), appointment(consult)]
+  domains: [finance]
+  overrides: {CORE.HANDOFF.ALWAYS_HUMAN: "incluye asesoría de inversión y decisión de crédito"}
+  extra_requirements: []
+
+- profile: P26
+  name: Concesionario
+  objects_default: [catalog_order(dealer_inventory), appointment(test_drive), lead(quote)]
+  domains: ["finance si simula cuotas"]
+  overrides: {}
+  extra_requirements:
+  - id: PROF.P26.TRADE_IN
+    title: Recepción de vehículo usado en parte de pago
+    kind: procedure
+    applies_when: "profile_in([P26])"
+    answers: [P26-4]
+    exposure: read_on_intent
+    data:
+      name: proc.trade_in
+      type: procedure_spec
+      structure: {accepted: bool, required_fields: "[marca, modelo, año, km, fotos]", confirms: human_always}
+      validation: ["accepted ⇒ required_fields"]
+      example: {accepted: true, required_fields: [marca, modelo, año, km, fotos], confirms: human_always}
+    criticality: {level: necesario, rule: R4}
+    when_missing: {code: HUM, behavior: "Solicitud + HUM.", never: ["tasar o prometer un valor de permuta"]}
+    sources: {allowed: [owner_form]}
+    collection: {channels: [form], ui_today: nuevo, storage_today: "customer_vehicles (vehículo del cliente) + vehicle_inquiries.inquiry_type (default 'info'); flujo de permuta: nuevo", storage_status: parcial}
+    readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [accepted]}, predicate: "accepted declarado", gap_message: "¿Recibes carros usados en parte de pago?"}
+    qa_truth: "P26-4 → registro de datos + HUM, sin valor."
+
+- profile: P27
+  name: Taller automotriz
+  objects_default: [service_request(repair_order)]
+  domains: [home_safety]
+  overrides: {CORE.POLICY.WARRANTY: "necesario (R4): garantía de la reparación (meses o km)"}
+  extra_requirements: []
+
+- profile: P28
+  name: Alquiler de vehículos
+  objects_default: [rental(vehicle)]
+  domains: []
+  overrides: {}
+  extra_requirements: []
+
+# ═══════════════════════════ SUBTIPO → PERFIL (R1) ═══════════════════════════
+# Cada subtipo canónico (packages/shared/src/subtype-experience-profile.ts,
+# listCanonicalSubtypeExperienceProfileIds) en exactamente un perfil. La CI lo comprueba
+# (business-spec check). Mapeo según B1 §A; los marcados [decisión] no estaban en B1 y
+# esperan la confirmación del dueño.
+subtypes:
+  P00: [otro/__none__, event_planning/weddings]   # [decisión] event_planning: B1 §A pone «eventos» en P00
+  P01: [restaurantes/casual_dining, restaurantes/cafeteria]
+  P02: [restaurantes/comida_rapida, restaurantes/dark_kitchen]
+  P03: [retail/electronica, retail/hogar, retail/moda, retail/marketplace, technology/hardware, automotriz/repuestos]   # [decisión] retail/marketplace
+  P04: [salud/farmacia]
+  P05: [turismo/hotel, turismo/alquiler_vacacional]
+  P06: [turismo/tours, turismo/agencia_viajes]
+  P07: [inmobiliaria/venta, inmobiliaria/arriendo, inmobiliaria/comercial, inmobiliaria/promotora]   # [decisión] promotora
+  P08: [salud/dental]
+  P09: [salud/medica_general, salud/dermatologia]
+  P10: [salud/psicologia]
+  P11: [moda_belleza/salon_belleza, moda_belleza/barberia]
+  P12: [moda_belleza/estetica, moda_belleza/spa]
+  P13: [gimnasios/gimnasio_general, gimnasios/crossfit, gimnasios/yoga_pilates, gimnasios/cycling, gimnasios/martial_arts]
+  P14: [education/idiomas, education/academia_baile, education/academia_musica, education/clases_particulares, education/autoescuela, education/online, education/capacitacion]
+  P15: [education/universitaria]
+  P16: [servicios_hogar/plomeria, servicios_hogar/electricidad, servicios_hogar/fumigacion, servicios_hogar/limpieza, servicios_hogar/jardineria, servicios_hogar/cerrajeria, servicios_hogar/pintura, construccion/contratista_general]   # [decisión] contratista_general
+  P17: [veterinaria/clinica_general, veterinaria/hospital_24h, veterinaria/exoticos]
+  P18: [pet_services/peluqueria, pet_services/paseos, pet_services/adiestramiento]
+  P19: [pet_services/hotel, pet_services/guarderia]
+  P20: [fotografia/estudio, fotografia/bodas, fotografia/eventos, fotografia/producto]
+  P21: [seguros/broker, seguros/aseguradora, seguros/vida, seguros/auto, seguros/salud]   # [decisión] aseguradora
+  P22: [servicios_profesionales/abogados, servicios_profesionales/contadores]
+  P23: [servicios_profesionales/arquitectos, servicios_profesionales/consultores, technology/desarrollo]
+  P24: [technology/saas, technology/soporte_ti_msp]   # [decisión] soporte_ti_msp
+  P25: [finanzas/asesoria, finanzas/creditos, finanzas/pagos_recaudos]   # [decisión] pagos_recaudos
+  P26: [automotriz/concesionario]
+  P27: [automotriz/taller]
+  P28: [automotriz/alquiler]

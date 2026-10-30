@@ -9,6 +9,8 @@ module.exports = {
   // source while the production boot path continues to use dist/index.js.
   moduleNameMapper: {
     "^@parallext/shared$": "<rootDir>/../../packages/shared/src/index.ts",
+    "^@parallext/business-spec$": "<rootDir>/../../packages/business-spec/src/index.ts",
+    "^@parallext/business-spec/(.*)$": "<rootDir>/../../packages/business-spec/$1",
   },
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],
   // One PostgreSQL database per worker, made fresh each run. Sharing one

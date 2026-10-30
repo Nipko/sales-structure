@@ -1,0 +1,198 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:49:13.377Z",
+  "tenant": {
+    "ref": "spark-qa-hotel-09",
+    "name": "Spark QA Hotel 09",
+    "slug": "spark-qa-hotel-09",
+    "industry": "turismo",
+    "language": "es-CO",
+    "settings": {
+      "subType": "hotel",
+      "customerTypes": [
+        "leisure"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-18T10:32:43.014Z"
+      },
+      "businessInfoDraft": {
+        "about": "Negocio ficticio de Turismo / Hotel / Hostal exclusivamente para pruebas funcionales, sin clientes reales."
+      }
+    },
+    "created_at": "2026-10-18T10:32:35.525+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "turismo/hotel"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "e0d128e3-1ebb-4d2d-8b9a-81c003a61013",
+      "city": null,
+      "name": "Spark QA Hotel 09",
+      "about": "Negocio ficticio de Turismo / Hotel / Hostal exclusivamente para pruebas funcionales, sin clientes reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-18T10:32:42.801609",
+      "is_primary": true,
+      "updated_at": "2026-10-18T10:32:42.801609",
+      "social_links": {}
+    }
+  ],
+  "services": [],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [
+    {
+      "id": "a04493f8-5b74-4f94-921e-9d73d1b189d7",
+      "city": "Ciudad QA",
+      "name": "Spark QA Habitacion 20261018T113247Z",
+      "bedrooms": 1,
+      "currency": "COP",
+      "amenities": [],
+      "bathrooms": 1,
+      "is_active": true,
+      "created_at": "2026-10-18T11:58:46.153551",
+      "max_guests": 2,
+      "min_nights": 1,
+      "updated_at": "2026-10-21T08:19:21.351285",
+      "description": "Habitacion sintetica para QA, no comercializar.",
+      "house_rules": null,
+      "night_price": 150000,
+      "cleaning_fee": 0,
+      "check_in_time": "15:00:00",
+      "check_out_time": "11:00:00",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null
+    }
+  ],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "2b3895d6-6e50-46c1-b86a-17a80a8f9f9c",
+      "answer": "Cuéntame a dónde te gustaría ir y te confirmo si trabajamos ese destino. Con eso armamos tu plan a medida.",
+      "category": "destinos",
+      "question": "¿Qué destinos manejan?",
+      "created_at": "2026-10-18T10:32:42.849164",
+      "updated_at": "2026-10-18T10:32:42.849164",
+      "is_published": true
+    },
+    {
+      "id": "f0394b69-8a11-4ebc-9377-cb2828a9dfed",
+      "answer": "Cada paquete es distinto. Cuéntame cuál te interesa y te detallo exactamente qué incluye antes de cotizar.",
+      "category": "paquetes",
+      "question": "¿Qué incluye el paquete?",
+      "created_at": "2026-10-18T10:32:42.849164",
+      "updated_at": "2026-10-18T10:32:42.849164",
+      "is_published": true
+    },
+    {
+      "id": "d598e4cb-684d-49b8-aa60-e051b9e6be7d",
+      "answer": "Depende del paquete y de los proveedores involucrados. Te confirmamos las condiciones exactas antes de que reserves.",
+      "category": "politicas",
+      "question": "¿Cuál es la política de cancelación?",
+      "created_at": "2026-10-18T10:32:42.849164",
+      "updated_at": "2026-10-18T10:32:42.849164",
+      "is_published": true
+    },
+    {
+      "id": "4cab1244-f7c2-4ae7-bccc-2eda3b60a59d",
+      "answer": "Siempre recomendamos viajar con seguro. Pregúntanos y te contamos qué opciones podemos incluir en tu plan.",
+      "category": "seguros",
+      "question": "¿Necesito seguro de viaje?",
+      "created_at": "2026-10-18T10:32:42.849164",
+      "updated_at": "2026-10-18T10:32:42.849164",
+      "is_published": true
+    },
+    {
+      "id": "b5094484-4a68-4364-9079-527e8f48b175",
+      "answer": "Depende del destino: en viajes nacionales suele bastar tu documento de identidad y en internacionales se pide pasaporte vigente, a veces con visa. Dinos el destino y te orientamos con lo que exige.",
+      "category": "documentos",
+      "question": "¿Qué documentos necesito para viajar?",
+      "created_at": "2026-10-18T10:32:42.849164",
+      "updated_at": "2026-10-18T10:32:42.849164",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "c1c2011d-03c0-40cc-aab1-5578d4e82359",
+      "is_active": true,
+      "created_at": "2026-10-18T10:32:42.770616",
+      "is_default": true,
+      "updated_at": "2026-10-18T14:04:27.051473",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Busca primero: con lo que el viajero ya dijo (destino, fechas, viajeros) usa search_packages y muestra paquetes reales, o di que no hay y ofrece ajustar; nombre y teléfono solo al reservar.",
+            "Si la fecha ya pasó, dilo primero.",
+            "Cotiza paquetes.",
+            "Para grupos >10, escala.",
+            "Inspira al viajero con opciones de destino",
+            "Cotiza paquetes con detalles claros: itinerario, precio, incluye/no incluye",
+            "Para grupos mayores a 10 personas, escala al equipo"
+          ],
+          "requiredFields": {},
+          "forbiddenTopics": [
+            "Información migratoria oficial",
+            "Vacunas requeridas",
+            "Garantizar clima"
+          ],
+          "handoffTriggers": [
+            "grupo mayor a 10",
+            "viaje corporativo",
+            "reclamación de seguro",
+            "grupo >10",
+            "reclamacion de seguro",
+            "emergencia en destino"
+          ]
+        }
+      },
+      "template_id": "tpl_turismo_ventas",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

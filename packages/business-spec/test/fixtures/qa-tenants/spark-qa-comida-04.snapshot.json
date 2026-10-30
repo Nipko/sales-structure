@@ -1,0 +1,194 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:49:06.484Z",
+  "tenant": {
+    "ref": "spark-qa-comida-04",
+    "name": "Spark QA Comida 04",
+    "slug": "spark-qa-comida-04",
+    "industry": "restaurantes",
+    "language": "es-CO",
+    "settings": {
+      "subType": "comida_rapida",
+      "customerTypes": [
+        "b2c"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-18T09:45:03.977Z"
+      },
+      "businessInfoDraft": {
+        "about": "Negocio ficticio de Restaurantes / Gastronomía / Comida rápida exclusivamente para pruebas funcionales, sin clientes reales."
+      }
+    },
+    "created_at": "2026-10-18T09:44:54.974+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "restaurantes/comida_rapida"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "aa8e79f8-bb22-498e-a353-8686ef0b5171",
+      "city": null,
+      "name": "Spark QA Comida 04",
+      "about": "Negocio ficticio de Restaurantes / Gastronomía / Comida rápida exclusivamente para pruebas funcionales, sin clientes reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-18T09:45:03.315137",
+      "is_primary": true,
+      "updated_at": "2026-10-18T09:45:03.315137",
+      "social_links": {}
+    }
+  ],
+  "services": [],
+  "service_staff": [],
+  "menu_items": [
+    {
+      "id": "c3e22da5-71bf-421b-967a-74f690091bb5",
+      "name": "Spark QA Plato 20261018T110518Z",
+      "tags": [],
+      "price": 13500,
+      "currency": "COP",
+      "allergens": [],
+      "is_active": true,
+      "created_at": "2026-10-18T11:08:48.932417",
+      "updated_at": "2026-10-18T19:10:37.754176",
+      "category_id": null,
+      "description": "Plato sintetico exclusivo para QA, no vender.",
+      "is_available": true
+    }
+  ],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "5f225bad-3b9d-493d-a1ad-a98c18404116",
+      "answer": "Cuéntame qué día tienes en mente y te confirmo el horario. También puedo reservarte mesa ahora mismo.",
+      "category": "general",
+      "question": "¿Cuál es el horario del restaurante?",
+      "created_at": "2026-10-18T09:45:03.480055",
+      "updated_at": "2026-10-18T09:45:03.480055",
+      "is_published": true
+    },
+    {
+      "id": "d33140fb-e8f5-43ab-9621-c822beda0706",
+      "answer": "Indícanos tus restricciones al reservar y te confirmamos qué opciones tenemos disponibles ese día; la cocina las tiene en cuenta.",
+      "category": "menu",
+      "question": "¿Tienen opciones vegetarianas o para alergias?",
+      "created_at": "2026-10-18T09:45:03.480055",
+      "updated_at": "2026-10-18T09:45:03.480055",
+      "is_published": true
+    },
+    {
+      "id": "780cfc52-e36d-46ad-81bf-cd4281aacd00",
+      "answer": "Dime tu dirección y te confirmo si llegamos a tu zona. Para ver el menú y hacer tu pedido, escribe \"quiero pedir\".",
+      "category": "delivery",
+      "question": "¿Hacen domicilios?",
+      "created_at": "2026-10-18T09:45:03.480055",
+      "updated_at": "2026-10-18T09:45:03.480055",
+      "is_published": true
+    },
+    {
+      "id": "8bcac285-0ea8-4d17-8cb0-3118ad00616d",
+      "answer": "Puedo reservar tu mesa ahora. Dime para cuántas personas y la fecha y hora que prefieras.",
+      "category": "reservas",
+      "question": "¿Cómo hago una reserva?",
+      "created_at": "2026-10-18T09:45:03.480055",
+      "updated_at": "2026-10-18T09:45:03.480055",
+      "is_published": true
+    },
+    {
+      "id": "2300f1d2-7503-4b21-8411-b5b6435e1140",
+      "answer": "Depende de lo que pidas. Escribe \"menú\" y te muestro la carta con los precios vigentes.",
+      "category": "precios",
+      "question": "¿Cuál es el precio promedio por persona?",
+      "created_at": "2026-10-18T09:45:03.480055",
+      "updated_at": "2026-10-18T09:45:03.480055",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "634fd947-1daf-409a-be2b-59f3ad84c0a5",
+      "is_active": true,
+      "created_at": "2026-10-18T09:45:03.026707",
+      "is_default": true,
+      "updated_at": "2026-10-18T13:38:17.16825",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Ofrece el menú del día y promociones.",
+            "Confirma alergias alimentarias.",
+            "Para grupos mayores a 8 personas, escala al equipo.",
+            "Toma el pedido completo antes de confirmar",
+            "Verifica dirección de entrega",
+            "Ofrece promociones vigentes",
+            "Confirma tiempo estimado de entrega"
+          ],
+          "requiredFields": {},
+          "forbiddenTopics": [
+            "Precios de proveedores",
+            "Recetas de cocina",
+            "Información nutricional médica",
+            "Garantizar alérgenos al 100%"
+          ],
+          "handoffTriggers": [
+            "pedido mayor a 10 unidades",
+            "queja de entrega",
+            "intoxicación",
+            "grupo mayor a 8",
+            "evento privado",
+            "queja alimentaria",
+            "intoxicacion",
+            "alergia",
+            "alergico",
+            "facturacion especial"
+          ]
+        }
+      },
+      "template_id": "tpl_restaurante_delivery",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

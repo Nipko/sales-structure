@@ -1,0 +1,303 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:49:02.877Z",
+  "tenant": {
+    "ref": "salon-qa-citas",
+    "name": "Salón QA Citas",
+    "slug": "salon-qa-citas",
+    "industry": "moda_belleza",
+    "language": "es-CO",
+    "settings": {
+      "subType": "salon_belleza",
+      "customerTypes": [
+        "b2c"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-02T21:13:14.386Z"
+      },
+      "businessInfoDraft": {
+        "about": "Salón ficticio de prueba que ofrece cortes de cabello y peinados mediante citas simuladas. Horarios, precios y disponibilidad serán datos de prueba. No procesa pagos reales."
+      }
+    },
+    "created_at": "2026-10-02T21:13:05.043+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "moda_belleza/salon_belleza"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "72fe41f9-a0bc-4033-ba24-d64d96744832",
+      "city": null,
+      "name": "Salón QA Citas",
+      "about": "Salón ficticio de prueba que ofrece cortes de cabello y peinados mediante citas simuladas. Horarios, precios y disponibilidad serán datos de prueba. No procesa pagos reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-02T21:13:14.089429",
+      "is_primary": true,
+      "updated_at": "2026-10-02T21:13:14.089429",
+      "social_links": {}
+    }
+  ],
+  "services": [
+    {
+      "id": "45dc6771-ae2e-4984-bc2c-63b808e52942",
+      "name": "Color y tratamiento",
+      "price": 120000,
+      "category": "cabello",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "description": "Coloración completa con tratamiento hidratante",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 120
+    },
+    {
+      "id": "d419891e-9ca4-4276-9dc8-95cdfecaa01a",
+      "name": "Manicure y pedicure",
+      "price": 50000,
+      "category": "unas",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "description": "Servicio completo de manos y pies",
+      "price_status": "example",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 60
+    },
+    {
+      "id": "189e44f7-b821-48e0-a203-1f45d0c2f679",
+      "name": "Corte y estilo",
+      "price": 40000,
+      "category": "cabello",
+      "currency": "COP",
+      "metadata": {},
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-14T06:44:26.817997",
+      "description": "Corte de cabello con lavado y secado",
+      "price_status": "confirmed",
+      "location_type": "in_person",
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "required_fields": [
+        "name",
+        "phone"
+      ],
+      "duration_minutes": 45
+    }
+  ],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "0c1ff7d9-12cd-4f4e-8667-ba11bf60e92e",
+      "answer": "Escribe \"servicios\" y te muestro el catálogo completo con los precios vigentes. Si buscas algo puntual, dime qué necesitas y lo verifico.",
+      "category": "servicios",
+      "question": "¿Qué servicios ofrecen y cuánto cuestan?",
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "is_published": true
+    },
+    {
+      "id": "c55dd64f-89ab-487d-a883-fbb1166e9291",
+      "answer": "Puedes agendar tu cita ahora mismo. Solo dime qué servicio te interesa y te muestro la disponibilidad.",
+      "category": "citas",
+      "question": "¿Cómo agendo una cita?",
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "is_published": true
+    },
+    {
+      "id": "b08d8087-080f-4b03-ac89-0527072d106e",
+      "answer": "Pregúntame por las ofertas vigentes o escribe \"promociones\" y te cuento qué hay disponible en este momento.",
+      "category": "promociones",
+      "question": "¿Tienen promociones?",
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "is_published": true
+    },
+    {
+      "id": "cee74988-f098-4b4b-9bae-5fbf2fefff93",
+      "answer": "Avísanos con la mayor anticipación posible si no puedes venir. Te confirmo las condiciones de cancelación antes de reprogramar tu cita.",
+      "category": "politicas",
+      "question": "¿Cuál es la política de cancelación?",
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "is_published": true
+    },
+    {
+      "id": "fff94b44-3480-4725-b3c4-c9fe744583d9",
+      "answer": "Cuéntanos si tienes alguna alergia o preferencia y lo tenemos en cuenta. Si quieres saber qué marcas usamos para tu servicio, te lo confirmo.",
+      "category": "productos",
+      "question": "¿Qué productos usan?",
+      "created_at": "2026-10-02T21:13:14.141521",
+      "updated_at": "2026-10-02T21:13:14.141521",
+      "is_published": true
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [
+    {
+      "id": "efe3c6ae-9284-4386-a577-6af3a71612c9",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 1
+    },
+    {
+      "id": "e8a62e99-e46b-496d-bb4b-286964d94f73",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 2
+    },
+    {
+      "id": "40f921dd-70e9-4923-a248-1c7fc15070c3",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 3
+    },
+    {
+      "id": "eba5d17f-b6b6-465c-8592-8dfd9ea2710b",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 4
+    },
+    {
+      "id": "7100b24e-8a95-4bd6-bf45-4a81f53f9ef8",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 5
+    },
+    {
+      "id": "ca071786-fba9-4016-86c3-6073ac28cfde",
+      "user_id": "user-1",
+      "end_time": "19:00:00",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.141521",
+      "start_time": "09:00:00",
+      "day_of_week": 6
+    }
+  ],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "d9ca55e4-e7ee-4d1a-a6b5-bdfb0b9ab84f",
+      "is_active": true,
+      "created_at": "2026-10-02T21:13:14.053682",
+      "is_default": true,
+      "updated_at": "2026-10-14T06:40:07.0064",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Sugiere servicios complementarios de forma natural.",
+            "Ofrece promociones vigentes.",
+            "Sugiere servicios complementarios naturalmente",
+            "Ofrece promociones vigentes",
+            "Confirma disponibilidad antes de agendar"
+          ],
+          "requiredFields": {},
+          "forbiddenTopics": [
+            "Diagnóstico dermatológico",
+            "Garantizar resultados estéticos",
+            "Productos no autorizados"
+          ],
+          "handoffTriggers": [
+            "reacción adversa",
+            "queja de servicio",
+            "evento nupcial",
+            "reaccion adversa",
+            "alergia",
+            "queja",
+            "reclamo",
+            "boda",
+            "novia",
+            "matrimonio",
+            "quince",
+            "somos varias",
+            "somos 4",
+            "somos 5",
+            "somos 6"
+          ]
+        }
+      },
+      "template_id": "tpl_belleza_reservas",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

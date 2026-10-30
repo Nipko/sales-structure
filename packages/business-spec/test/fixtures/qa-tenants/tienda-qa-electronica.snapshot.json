@@ -1,0 +1,233 @@
+{
+  "schema": "business-spec/legacy-rows@1",
+  "capturedAt": "2026-10-30T08:49:16.778Z",
+  "tenant": {
+    "ref": "tienda-qa-electronica",
+    "name": "Tienda QA Electrónica",
+    "slug": "tienda-qa-electronica",
+    "industry": "retail",
+    "language": "es-CO",
+    "settings": {
+      "subType": "electronica",
+      "customerTypes": [
+        "b2c",
+        "online"
+      ],
+      "verticalProvisioning": {
+        "completedAt": "2026-10-02T20:52:26.489Z"
+      },
+      "businessInfoDraft": {
+        "about": "Tienda ficticia de prueba de accesorios electrónicos. Ofrece audífonos, cargadores y teclados simulados; atiende preguntas sobre stock, precio, envío y devoluciones. No procesa pagos reales."
+      }
+    },
+    "created_at": "2026-10-02T20:52:14.983+00:00",
+    "default_locale": null,
+    "country_pack_id": null,
+    "operating_country": null,
+    "operating_currency": null,
+    "operating_timezone": null,
+    "regional_provenance": {},
+    "country_pack_version": null,
+    "subtype": "retail/electronica"
+  },
+  "users": [
+    {
+      "id": "user-1",
+      "role": "tenant_admin",
+      "is_active": true,
+      "email_verified": true,
+      "handoff_notifications": true
+    }
+  ],
+  "payment_provider_configured": false,
+  "country_pack": null,
+  "companies": [
+    {
+      "id": "43059558-cd51-443d-98b1-424da375d5ee",
+      "city": null,
+      "name": "Tienda QA Electrónica",
+      "about": "Tienda ficticia de prueba de accesorios electrónicos. Ofrece audífonos, cargadores y teclados simulados; atiende preguntas sobre stock, precio, envío y devoluciones. No procesa pagos reales.",
+      "email": null,
+      "phone": null,
+      "address": null,
+      "country": null,
+      "website": null,
+      "created_at": "2026-10-02T20:52:26.074173",
+      "is_primary": true,
+      "updated_at": "2026-10-02T20:52:26.074173",
+      "social_links": {}
+    }
+  ],
+  "services": [],
+  "service_staff": [],
+  "menu_items": [],
+  "menu_categories": [],
+  "products": [
+    {
+      "id": "09cddfe4-1421-4ad8-82dd-a252d45fe0ac",
+      "name": "Audífono QA Aurora",
+      "price": 119900,
+      "stock": 2,
+      "category": null,
+      "currency": "COP",
+      "created_at": "2026-10-02T21:52:50.869224",
+      "updated_at": "2026-10-10T02:26:56.335346",
+      "description": "Producto ficticio de prueba: audífono inalámbrico QA Aurora, color azul. Precio 119900 COP, dos unidades iniciales. No corresponde a inventario real.",
+      "is_available": true,
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "requires_prescription": false
+    },
+    {
+      "id": "e6ef6f14-7125-4bcf-99f5-72bf10b7abc3",
+      "name": "QA Agente Stock 20261020T1737Z",
+      "price": 18777,
+      "stock": 0,
+      "category": null,
+      "currency": "COP",
+      "created_at": "2026-10-20T18:05:34.662314",
+      "updated_at": "2026-10-20T18:10:55.022112",
+      "description": "Producto sintético exclusivo de QA para verificar cambios del catálogo a través del agente.",
+      "is_available": false,
+      "deposit_amount": null,
+      "payment_policy": "none",
+      "deposit_percent": null,
+      "requires_prescription": false
+    }
+  ],
+  "ecommerce_products": [],
+  "properties": [],
+  "tour_packages": [],
+  "tour_inventory": [],
+  "real_estate_listings": [],
+  "faqs": [
+    {
+      "id": "42a637f5-60c3-4a0f-b1e5-5d2d6b0e07a2",
+      "answer": "Cuéntame qué día te sirve y te confirmo nuestro horario de atención. Escríbenos y te respondemos.",
+      "category": "general",
+      "question": "¿Cuál es el horario de atención?",
+      "created_at": "2026-10-02T20:52:26.160716",
+      "updated_at": "2026-10-02T20:52:26.160716",
+      "is_published": true
+    },
+    {
+      "id": "6a7a3a81-eae1-4201-8960-00dbd8b2ecfc",
+      "answer": "Te confirmamos los medios de pago disponibles según lo que necesites. Pregúntanos y lo verificamos.",
+      "category": "pagos",
+      "question": "¿Cuáles son los métodos de pago?",
+      "created_at": "2026-10-02T20:52:26.160716",
+      "updated_at": "2026-10-02T20:52:26.160716",
+      "is_published": true
+    },
+    {
+      "id": "12d74217-7dbc-4d8e-b1c2-c50e535cf675",
+      "answer": "Puedes escribirnos aquí, llamarnos o visitarnos. Estamos para ayudarte.",
+      "category": "contacto",
+      "question": "¿Cómo puedo contactarlos?",
+      "created_at": "2026-10-02T20:52:26.160716",
+      "updated_at": "2026-10-02T20:52:26.160716",
+      "is_published": true
+    },
+    {
+      "id": "7eb3e632-d8a8-43d4-b2bc-8b7332289c84",
+      "answer": "Con gusto te compartimos nuestra dirección y cómo llegar. Escríbenos y te la confirmamos.",
+      "category": "ubicacion",
+      "question": "¿Dónde están ubicados?",
+      "created_at": "2026-10-02T20:52:26.160716",
+      "updated_at": "2026-10-02T20:52:26.160716",
+      "is_published": true
+    },
+    {
+      "id": "a14a5c11-9911-4468-96a9-f39a969afb9f",
+      "answer": "Cuéntanos tu caso y te confirmamos qué condiciones de cambio o devolución aplican.",
+      "category": "politicas",
+      "question": "¿Tienen política de devolución?",
+      "created_at": "2026-10-02T20:52:26.160716",
+      "updated_at": "2026-10-02T20:52:26.160716",
+      "is_published": true
+    },
+    {
+      "id": "b9d0b3f3-1e50-4704-b771-674726dff2ff",
+      "answer": "Para este piloto ficticio, el audífono QA tiene garantía de 72 días calendario desde la entrega. Código QA-GARANTIA-72. No corresponde a productos reales.",
+      "category": "Pruebas QA",
+      "question": "¿Cuál es el plazo de garantía QA del audífono de prueba?",
+      "created_at": "2026-10-02T21:48:05.872291",
+      "updated_at": "2026-10-02T21:48:05.872291",
+      "is_published": true
+    },
+    {
+      "id": "eb2b2170-b86d-43eb-9d47-cafa8dbc3dcf",
+      "answer": "El kit contiene 47 fichas turquesas. Referencia privada de borrador QA-BRUMA-6130-CAMBIO.",
+      "category": "qa_draft_visibility",
+      "question": "Según la regla sintética QA BRUMA-6130 de este negocio, ¿cuántas fichas turquesas incluye el kit de demostración?",
+      "created_at": "2026-10-20T14:50:32.371182",
+      "updated_at": "2026-10-20T15:00:04.966362",
+      "is_published": false
+    }
+  ],
+  "policies": [],
+  "legal_text_versions": [],
+  "knowledge_documents": [],
+  "menu_promotions": [],
+  "commercial_offers": [],
+  "availability_slots": [],
+  "staff_members": [],
+  "agent_personas": [
+    {
+      "id": "7572d471-31ff-4f16-8c88-fc78621ea305",
+      "is_active": true,
+      "created_at": "2026-10-02T20:52:25.993146",
+      "is_default": true,
+      "updated_at": "2026-10-02T21:04:24.303411",
+      "config_json": {
+        "llm": {
+          "memory": {
+            "longTerm": false,
+            "shortTerm": 20,
+            "summaryAfter": 30
+          }
+        },
+        "hours": {
+          "schedule": {},
+          "timezone": "America/Bogota",
+          "afterHoursMessage": ""
+        },
+        "behavior": {
+          "rules": [
+            "Sugiere productos según las necesidades del cliente.",
+            "Informa disponibilidad y tiempos de entrega.",
+            "Ofrece opciones dentro del presupuesto.",
+            "USA search_products para mostrar productos REALES con precio y disponibilidad",
+            "Pregunta talla, color, preferencias antes de recomendar (si aplica)",
+            "Confirma stock con check_stock antes de prometer entrega",
+            "Comparte fotos del producto cuando ayude a la decisión",
+            "Para envíos a otra ciudad, valida costo de envío antes de cerrar",
+            "Si el producto está agotado, sugiere alternativas similares"
+          ],
+          "requiredFields": {},
+          "forbiddenTopics": [
+            "Descuentos no autorizados",
+            "Promesas de entrega exactas sin verificar",
+            "Información de competencia",
+            "Precios de costo",
+            "Comparaciones con competencia",
+            "Garantías no autorizadas"
+          ],
+          "handoffTriggers": [
+            "compra mayor a USD 500",
+            "pedido B2B",
+            "reclamo de producto",
+            "devolución",
+            "devolucion compleja",
+            "pedido mayorista",
+            "queja de calidad",
+            "cambio masivo"
+          ]
+        }
+      },
+      "template_id": "tpl_retail_ventas",
+      "schedule_mode": "24_7"
+    }
+  ]
+}

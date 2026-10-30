@@ -337,6 +337,11 @@ jobs:
       - name: Generated artefacts match their sources
         run: node docs/audits/2026-09-09/verify-artifacts.cjs
 
+      - name: Business spec suite
+        run: |
+          npx tsc -p packages/business-spec/tsconfig.json --noEmit --pretty false
+          npx jest --config packages/business-spec/jest.config.cjs --ci --runInBand
+
       - name: TypeScript check (all apps)
         run: |
           (cd apps/api && npx tsc --noEmit)

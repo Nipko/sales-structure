@@ -40,6 +40,10 @@ const GENERATORS = [
     // registries. Seven documents had each counted them differently; this one
     // is generated, so its count can only be wrong while this check is red.
     '../../apps/api/scripts/business-types-catalog.cjs',
+    // The business requirements specification (C0 R1): YAML + JSON Schema, IDs,
+    // references, evaluable predicates, ID <-> evaluator parity, canonical
+    // subtypes, dashboard targets and the generated docs/domain/business-requirements.md.
+    '../../packages/business-spec/bin/business-spec.cjs',
 ];
 
 function verify() {

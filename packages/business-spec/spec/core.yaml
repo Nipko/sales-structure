@@ -1,0 +1,1074 @@
+# B2 · Requisitos del NÚCLEO (aplican a todo negocio)
+# Formato: ver schema.md. Intenciones: B1 §B (C01–C33, T01–T11) y §C (Pnn-k).
+# storage_today se leyó del worktree lang-ubicado-4300 (6f79b0db); en v0.2 los «verificar» se resolvieron contra la BD y el commit 97bc0dcb: ver schema.md §12 y validacion-dental-comida.md §4.
+spec_version: 1.0.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1)
+layer: core
+requirements:
+
+# ─────────────────────────── IDENTIDAD ───────────────────────────
+- id: CORE.IDENTITY.NAME
+  title: Nombre comercial del negocio
+  kind: knowledge
+  applies_when: always
+  answers: [C01, T11]
+  exposure: always_in_context
+  data:
+    name: biz.profile.name
+    type: text_i18n
+    structure: {display_name: requerido, legal_name: opcional}
+    validation: ["1–120 caracteres", "no igual al slug técnico ni a 'Mi negocio'"]
+    example: {display_name: "Clínica Dental Sonrisa"}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: GAP, behavior: "No aplica en operación: sin nombre el agente no se publica."}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form], ui_today: /onboarding, storage_today: "Tenant.name (= companies.name de la fila is_primary)", storage_status: existe}
+  readiness:
+    predicate_kind: custom
+    predicate: "existe(display_name) y estado = confirmado y display_name ≠ slug técnico y ≠ 'Mi negocio' (valores por defecto del alta)"
+    gap_message: "Falta el nombre con el que el agente presenta tu negocio."
+  qa_truth: "Pregunta por el nombre o saludo: el agente usa display_name exacto."
+
+- id: CORE.IDENTITY.DESCRIPTION
+  title: Qué es y qué hace el negocio
+  kind: knowledge
+  applies_when: always
+  answers: [C01, C06, T09]
+  exposure: always_in_context
+  data:
+    name: biz.profile.description
+    type: text_i18n
+    structure: {short: "1–2 frases (≤300 car.)", audience: "enum_list [B2C, B2B]", category_label: "texto visible (p. ej. 'consultorio odontológico')"}
+    validation: ["short ≥ 40 caracteres", "sin patrones de plantilla ('somos un negocio dedicado a…' sin rubro)", "no contiene precios ni horarios (van en sus campos)"]
+    example: {short: "Consultorio odontológico en Chapinero: limpiezas, ortodoncia e implantes para adultos y niños.", audience: [B2C]}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Nunca debería ocurrir en producción (bloqueante). En modo ensayo: describe solo la categoría del perfil.", never: ["inventar especialidades o servicios"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: false}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/business-info, storage_today: "companies.about (fila is_primary del esquema del tenant; texto libre) + audience en settings.customerTypes", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "existe(short) y válido(short) y estado = confirmado y audience no vacío"
+    gap_message: "Describe en una o dos frases qué hace tu negocio y para quién."
+  qa_truth: "C01: la respuesta contiene la categoría y lo esencial de 'short'; no añade servicios que no estén en CORE.OFFER.ITEMS."
+
+- id: CORE.IDENTITY.PROFILE
+  title: Perfil efectivo, objetos habilitados y dominios
+  kind: config
+  applies_when: always
+  answers: []
+  exposure: platform_only
+  data:
+    name: biz.profile.effective_profile
+    type: enum
+    structure: {profile: "P00…P28 (B1 §A)", subtype: "subtipo canónico", objects_enabled: "enum_list de objects.yaml (por defecto: objects_default del perfil)", domains: "derivado del perfil, no editable", operating_facts: "hechos de schema §4.1 (modality, delivery_offered, has_prepayment, hours_always_open, conditional_domain_facts); cada uno declarado o tomado de operating_facts_defaults del perfil"}
+    validation: ["profile coherente con subtype", "objects_enabled ⊆ objetos permitidos del perfil", "al menos un objeto (P00 usa lead)", "todo dominio condicional del perfil ('si …') tiene su hecho declarado"]
+    example: {profile: P08, subtype: salud/dental, objects_enabled: [appointment], domains: [health]}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: GAP, behavior: "Sin perfil no se pueden calcular los demás requisitos; el agente no se publica."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: /onboarding, storage_today: "Tenant.industry + settings.subType (80 subtipos → 29 perfiles: el mapeo es nuevo); objetos hoy implícitos en settings.verticalConfig.effectiveCapabilities y bookingEnabled; operating_facts: nuevo", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "existe(subtype) confirmado y el mapeo subtipo→perfil resuelve y cuenta(objects_enabled, explícitos o default del perfil) ≥ 1 y todo hecho de dominio condicional del perfil declarado"
+    gap_message: {ausente: "Elige el tipo de negocio y qué quieres que el agente gestione (citas, pedidos, reservas…).", hecho_sin_declarar: "Cuéntanos {hecho} (p. ej. si atiendes a menores) para saber qué debe cumplir tu agente."}
+  qa_truth: "Define qué bancos QA aplican al tenant (núcleo + perfil + objetos)."
+
+- id: CORE.IDENTITY.REGION
+  title: País de operación, zona horaria, moneda e idioma base
+  kind: config
+  applies_when: always
+  answers: [C02, C03, C04, C12, T04]
+  exposure: always_in_context
+  data:
+    name: biz.profile.region
+    type: enum
+    structure: {operating_country: ISO-3166, timezone: IANA, currency: ISO-4217, default_locale: BCP-47, country_pack: "id+versión"}
+    validation: ["timezone pertenece al país (o declarada como excepción)", "currency válida", "country_pack existe para el país"]
+    example: {operating_country: CO, timezone: America/Bogota, currency: COP, default_locale: es-CO, country_pack: "CO@3"}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: GAP, behavior: "Bloqueante. Nunca se infiere el país, la ciudad ni la moneda (B1 C02).", never: ["inferir país o moneda por el idioma del cliente"]}
+  sources: {allowed: [owner_form, country_pack]}
+  collection: {channels: [form], ui_today: /admin/settings/localization, storage_today: "Tenant.operatingCountry, operatingTimezone, operatingCurrency, defaultLocale, countryPackId (+ regionalProvenance)", storage_status: existe}
+  readiness:
+    predicate_kind: custom
+    predicate: "operating_country, timezone y currency existen con origen declarado (no 'fallback') y country_pack resuelto"
+    gap_message: "Confirma país, zona horaria y moneda en que opera tu negocio."
+  qa_truth: "Fija la moneda esperada de todos los precios y la hora local para 'abierto ahora' (C04)."
+  notes: "v0.2: settings.timezone y Tenant.language NO son origen declarado; regional_provenance vacío o 'fallback' ⇒ ausente. Sin país tampoco se resuelven CORE.SAFETY.EMERGENCY_BASE ni DOM.*.EMERGENCY_PROTOCOL: esos fallos se atribuyen aquí (schema §9)."
+
+# ─────────────────────────── UBICACIÓN Y COBERTURA ───────────────────────────
+- id: CORE.LOCATIONS.LIST
+  title: Sedes y modalidad de atención
+  kind: knowledge
+  applies_when: always
+  answers: [C02, C05, P05-8, P07-5, P08-9, P09-5]
+  exposure: always_in_context
+  data:
+    name: biz.locations[]
+    type: list
+    structure:
+      modality: "ref CORE.IDENTITY.PROFILE.operating_facts.modality (fuente única; enum_list [presencial, online, a_domicilio])"
+      locations: "lista de {name, address: address, map_url?, is_main, modality_override?}; requerida si modality incluye presencial"
+      address_privacy: "enum [publica, solo_barrio, tras_confirmar] (por defecto publica)"
+    validation: ["si presencial: ≥1 sede con city y country", "country de cada sede = operating_country salvo excepción declarada", "exactamente una is_main si hay >1 sede"]
+    example: {modality: [presencial], locations: [{name: "Sede Chapinero", address: {line1: "Cra 13 #63-21", city: Bogotá, country: CO}, map_url: "https://maps.app.goo.gl/…", is_main: true}]}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Si hay varias sedes y el cliente no dijo zona: PREG (una pregunta). Si falta la dirección: «no tengo la dirección confirmada» + AV.", never: ["inferir ciudad o país", "inventar dirección o referencias"]}
+  sources: {allowed: [owner_form, copilot_approved, integration]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/business-info, storage_today: "companies.address/city/country (fila is_primary; una sola, texto) + Tenant.operatingCountry", storage_status: parcial, notes: "multi-sede y modalidad: nuevo"}
+  readiness:
+    predicate_kind: custom
+    predicate: "existe(modality) y (no incluye presencial o cuenta(locations con city y country válidos y confirmados) ≥ 1)"
+    gap_message: "Indica dónde atiendes (dirección, ciudad, país) o si atiendes solo online o a domicilio."
+  qa_truth: "C02: AFIRMA dirección y ciudad de la sede pedida o de la principal; con varias sedes y sin zona, la esperada es PREG; si address_privacy≠publica, dice que se comparte al confirmar."
+
+- id: CORE.LOCATIONS.ACCESS
+  title: Cómo llegar, parqueadero, accesibilidad y amenidades del lugar
+  kind: knowledge
+  applies_when: "modality_includes(presencial)"
+  answers: [C02, P01-5, P05-4, P13-7]
+  exposure: read_on_intent
+  data:
+    name: biz.locations[].access
+    type: list
+    structure: {directions: text_i18n, parking: "enum [propio, convenio, calle, no_hay] + nota", accessibility: "enum_list [rampa, ascensor, baño_adaptado, …] o vacío confirmado", amenities: "enum_list abierto (wifi, terraza, mascotas, duchas, lockers…)"}
+    validation: ["cada campo admite vacío confirmado", "parking = no_hay solo si lo confirmó el dueño"]
+    example: {parking: {value: convenio, note: "Parqueadero Calle 64, 1 h gratis"}, accessibility: [rampa, ascensor]}
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "«No tengo confirmado si hay parqueadero» + AV.", never: ["«no hay parqueadero» sin vacío confirmado"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness:
+    predicate_kind: confirmed_fields
+    predicate_params: {fields: [parking, accessibility]}
+    predicate: "por sede: parking y accessibility existen (valor o vacío confirmado)"
+    gap_message: "Cuenta si hay parqueadero y accesibilidad: los clientes lo preguntan."
+  qa_truth: "Confirmado → AFIRMA; vacío confirmado → NIEGA; ausente → NC+AV (nunca 'no hay')."
+
+- id: CORE.SERVICE_AREA
+  title: Zona de cobertura (domicilio, servicio en sitio)
+  kind: knowledge
+  applies_when: "modality_includes(a_domicilio) or delivery_offered"
+  answers: [C18, P02-6, P16-1, P17-8, P18-3, P20-5]
+  exposure: read_on_intent
+  data:
+    name: delivery.zones
+    type: list
+    structure: {zones: "lista de {name, kind: barrio|ciudad|radio_km|código_postal|polígono, value, surcharge?: money, eta?: duration}", outside_zone_policy: "enum [no_atiende, con_recargo, a_consultar]"}
+    validation: ["≥1 zona", "radio_km > 0", "zonas nombradas sin duplicados"]
+    example: {zones: [{name: Chapinero, kind: barrio, value: Chapinero, surcharge: {amount: 0, currency: COP}, eta: {min: 30, max: 45, unit: min}}], outside_zone_policy: a_consultar}
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) si el objeto que entrega (food_order, catalog_order, service_request) tiene write_mode = direct_commit", when: [{if: "direct_commit_any([food_order, catalog_order, service_request])", level: bloqueante, rule: R2}]}
+  when_missing: {code: PREG, behavior: "Si falta la zona del cliente: PREG (barrio o dirección). Si la zona del cliente no está cargada: NC+AV según outside_zone_policy; si ausente: «no tengo confirmada la cobertura en {zona}» + AV.", never: ["afirmar cobertura no listada", "pedir la dirección completa solo para cotizar (P02-1)"]}
+  sources: {allowed: [owner_form, import, integration]}
+  collection: {channels: [form, import], ui_today: nuevo, storage_today: "nuevo (verificado: /admin/menu no tiene zonas; food_orders.delivery_fee es por pedido)", storage_status: nuevo}
+  readiness:
+    predicate_kind: confirmed_fields
+    predicate_params: {fields: ["zones[]", outside_zone_policy]}
+    predicate: "cuenta(zones válidas y confirmadas) ≥ 1 y existe(outside_zone_policy)"
+    gap_message: "Define a qué zonas llegas y con qué recargo."
+  qa_truth: "Zona listada → AFIRMA cobertura, recargo y tiempo; zona no listada → según outside_zone_policy; sin dato → NC+AV."
+
+- id: CORE.DELIVERY.TERMS
+  title: Condiciones de entrega, envío o recogida
+  kind: policy
+  applies_when: "delivery_offered"
+  answers: [C10, C18, P02-1, P02-6, P03-7, P04-5]
+  exposure: read_on_intent
+  data:
+    name: delivery.terms
+    type: policy_terms
+    structure: {methods: "enum_list [domicilio_propio, transportadora, recogida_en_local, envío_nacional, envío_internacional]", cost: "money fijo | por zona (ref CORE.SERVICE_AREA) | tabla por peso", min_order: "money?", eta: duration, free_from: "money?", carriers: "lista?", tracking: bool}
+    validation: ["si methods incluye domicilio_propio ⇒ ref_cumple(CORE.SERVICE_AREA)", "eta.min > 0"]
+    example: {methods: [domicilio_propio, recogida_en_local], cost: "por zona", min_order: {amount: 20000, currency: COP}, eta: {min: 30, max: 60, unit: min}}
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) si food_order o catalog_order tienen write_mode = direct_commit", when: [{if: "direct_commit_any([food_order, catalog_order])", level: bloqueante, rule: R2}]}
+  when_missing: {code: NC+AV, behavior: "Para cotizar: da el subtotal y dice qué cargo falta (C10). Para la condición: «no tengo confirmado el costo de envío» + AV.", never: ["«envío gratis» sin free_from o costo 0 confirmado", "usar como costo el delivery_fee = 0 que el motor pone por defecto"]}
+  sources: {allowed: [owner_form, integration]}
+  collection: {channels: [form], ui_today: "/admin/settings/policies (tipo shipping, texto)", storage_today: "policies.type = shipping (texto libre)", storage_status: parcial}
+  readiness:
+    predicate_kind: confirmed_fields
+    predicate_params: {fields: ["methods[]", cost, eta]}
+    predicate: "existe(methods) y existe(cost) y existe(eta) y estado = confirmado"
+    gap_message: "Indica cómo entregas, cuánto cuesta y cuánto tarda."
+  qa_truth: "C10 con envío: total = subtotal (oráculo) + costo de la zona; si el costo no consta, la esperada es subtotal + «falta el envío»."
+
+# ─────────────────────────── HORARIO ÚNICO ───────────────────────────
+- id: CORE.HOURS.REGULAR
+  title: Horario habitual por día (fuente única)
+  kind: knowledge
+  applies_when: always
+  answers: [C03, C04, C15, P11-2, P04-5]
+  exposure: always_in_context
+  data:
+    name: biz.hours
+    type: weekly_hours
+    structure: {scope: "negocio | por sede", always_open: "bool (24/7)", by_appointment_only: bool, days: "7 días × tramos"}
+    validation: ["los 7 días declarados (cerrado es un valor)", "tramos sin solapes", "timezone = CORE.IDENTITY.REGION.timezone salvo sede en otra zona"]
+    example: {days: {mon: [["08:00","12:00"],["14:00","18:00"]], sat: [["09:00","13:00"]], sun: []}}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Solo en ensayo. Responde el día preguntado, no todo el horario.", never: ["asumir horario estándar"]}
+  sources: {allowed: [owner_form, copilot_approved, integration]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/business-hours, storage_today: "settings.businessHours (canónico propuesto); duplicados a unificar: persona config.hours y availability_slots/staff_schedules (agenda); agent_personas.schedule_mode es el horario DEL AGENTE, no del negocio", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "7 días declarados, válido(weekly_hours), estado = confirmado y sin_contradicción con config.hours ni con la agenda (§7.3)"
+    gap_message: {ausente: "Confirma tu horario de cada día.", sembrado: "El horario cargado es de ejemplo del alta: confírmalo o cámbialo.", contradictorio: "Confirma tu horario de cada día; hoy hay más de un horario cargado y no coinciden."}
+  qa_truth: "C03: AFIRMA los tramos del día pedido en la zona del negocio. 'Abierto ahora' se calcula con la hora local del caso (oráculo)."
+  notes: "La agenda de profesionales (OBJ.APPOINTMENT.AVAILABILITY_SOURCE) debe estar contenida en este horario o declarar su excepción."
+
+- id: CORE.HOURS.HOLIDAYS
+  title: Qué hace el negocio en festivos del país
+  kind: knowledge
+  applies_when: "not hours_always_open"
+  answers: [C04, P04-5]
+  exposure: always_in_context
+  data:
+    name: biz.hours_exceptions[holidays]
+    type: list
+    structure: {default_rule: "enum [cerrado, horario_habitual, horario_domingo, decidir_cada_uno]", per_holiday: "lista de date_exception para el año en curso (del pack de país)"}
+    validation: ["si default_rule = decidir_cada_uno: todos los festivos de los próximos 60 días tienen date_exception"]
+    example: {default_rule: cerrado, per_holiday: [{date: "2026-12-08", kind: horario_especial, hours: [["09:00","13:00"]], reason: "Inmaculada Concepción"}]}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "«Normalmente abrimos {horario del día}; para el festivo {fecha} no tengo el horario confirmado» + AV.", never: ["asumir en silencio el horario habitual en un festivo"]}
+  sources: {allowed: [owner_form, country_pack], max_age: "por año calendario"}
+  collection: {channels: [form, platform], ui_today: nuevo, storage_today: "blocked_dates (por profesional, solo agenda) — no sirve para el negocio; calendario de festivos en el pack de país: no existe (verificado)", storage_status: nuevo}
+  readiness:
+    predicate_kind: custom
+    predicate: "existe(default_rule) confirmado para el año en curso y no_caducado"
+    gap_message: "Dinos qué haces en festivos (cerrar, horario normal o especial)."
+  qa_truth: "C04 en festivo: per_holiday > default_rule; sin ninguno → NC+AV con el horario habitual como 'normalmente'."
+  owner_decision: E5
+
+- id: CORE.HOURS.EXCEPTIONS
+  title: Cierres y horarios especiales puntuales (vacaciones, temporada)
+  kind: knowledge
+  applies_when: always
+  answers: [C04, C15]
+  exposure: always_in_context
+  data:
+    name: biz.hours_exceptions[ad_hoc]
+    type: list
+    structure: "lista de date_exception (puede ser vacío confirmado)"
+    validation: ["fechas futuras o en curso", "sin solape entre excepciones"]
+    example: [{date_range: ["2026-12-24","2027-01-06"], kind: horario_especial, hours: [["10:00","14:00"]], reason: "temporada"}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "Se usa el horario habitual (no hay excepción que declarar)."}
+  sources: {allowed: [owner_form], max_age: "90 días sin revisar → aviso"}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness:
+    predicate_kind: value_or_empty
+    predicate_params: {max_age_days: 90}
+    predicate: "lista revisada (valor o vacío confirmado) en los últimos 90 días"
+    gap_message: "¿Tienes cierres o horarios especiales próximos?"
+  qa_truth: "Fecha dentro de una excepción → AFIRMA la excepción; si no, el horario habitual."
+
+- id: CORE.HOURS.BY_SERVICE
+  title: Horarios distintos por servicio o área (cocina, check-in, urgencias, atención humana)
+  kind: knowledge
+  applies_when: always
+  answers: [C03, P05-2, P08-7, P13-3]
+  exposure: read_on_intent
+  data:
+    name: biz.hours.by_service
+    type: list
+    structure: "lista de {scope: ref ítem/categoría/área, hours: weekly_hours}"
+    validation: ["contenido en CORE.HOURS.REGULAR o marcado como fuera de horario (p. ej. urgencias 24 h)"]
+    example: [{scope: "cocina", hours: {mon: [["12:00","22:00"]]}}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "Usa el horario general y lo dice («nuestro horario general es…»)."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "nuevo (hoy por vertical, p. ej. check-in en properties)", storage_status: nuevo}
+  readiness:
+    predicate_kind: value_or_empty
+    predicate: "vacío confirmado, o cuenta(entradas) ≥ 1 y todas válidas"
+    gap_message: "¿Algún servicio tiene un horario distinto al general?"
+  qa_truth: "Pregunta por un área con horario propio → AFIRMA ese horario; si no existe, el general con la aclaración."
+
+# ─────────────────────────── CONTACTO E IDIOMAS ───────────────────────────
+- id: CORE.CONTACT.CHANNELS
+  title: Teléfono, WhatsApp, correo, web y redes
+  kind: knowledge
+  applies_when: always
+  answers: [C05, C30]
+  exposure: always_in_context
+  data:
+    name: biz.contact
+    type: list
+    structure: "lista de contact_point (phone, whatsapp, email, web, social) con label y hours?"
+    validation: ["E.164 con phoneRegion", "URL y correo válidos", "≥1 punto distinto del canal actual o vacío confirmado ('solo por este canal')"]
+    example: [{kind: phone, value: "+5716011234"}, {kind: email, value: "citas@sonrisa.co"}]
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "«Puedes escribirnos por aquí»; no inventa otros canales."}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/business-info, storage_today: "companies.{phone,email,website,social_links} (fila is_primary)", storage_status: existe}
+  readiness:
+    predicate_kind: custom
+    predicate: "cuenta(contact_point válidos y confirmados) ≥ 1 o vacío confirmado"
+    gap_message: "Agrega al menos un teléfono o correo de contacto."
+  qa_truth: "C05: AFIRMA los puntos confirmados; sin ninguno, 'por este canal'."
+
+- id: CORE.CONTACT.SPECIAL
+  title: Reseñas, empleo, proveedores y portafolio
+  kind: knowledge
+  applies_when: always
+  answers: [C32, C33, P20-6, P23-1]
+  exposure: read_on_intent
+  data:
+    name: biz.contact.special
+    type: list
+    structure: "contact_point de kind review|jobs|suppliers|portfolio"
+    validation: ["URL o correo válidos"]
+    example: [{kind: review, value: "https://g.page/r/…"}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: HUM, behavior: "Empleo o proveedores: registra y deriva sin prometer respuesta. Reseña: agradece y registra.", never: ["confundir 'vagas' (empleo) con cupos"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "Comparte tu enlace de reseñas y el contacto para empleo y proveedores."}
+  qa_truth: "C33: esperado registro + derivación, o el contacto si existe."
+
+- id: CORE.LANGUAGES.SERVED
+  title: Idiomas de atención (agente y personas) y traducción del contenido
+  kind: config
+  applies_when: always
+  answers: [T04, C30, P06-6]
+  exposure: always_in_context
+  data:
+    name: biz.profile.languages
+    type: enum_list
+    structure: {agent_languages: "BCP-47 list (por defecto: idiomas oficiales de la plataforma)", human_languages: "idiomas en que atiende el equipo", content_source_language: BCP-47, translate_content: "bool (traducir fichas al idioma del cliente)"}
+    validation: ["content_source_language ∈ agent_languages", "human_languages no vacío"]
+    example: {agent_languages: [es, en, pt, fr], human_languages: [es], content_source_language: es, translate_content: true}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Responde siempre en el idioma del mensaje actual (T04). Al traspasar, si el idioma del cliente ∉ human_languages, lo avisa antes de traspasar."}
+  sources: {allowed: [owner_form, country_pack]}
+  collection: {channels: [form], ui_today: /admin/settings/localization, storage_today: "Tenant.language / defaultLocale (uno solo)", storage_status: parcial}
+  readiness:
+    predicate_kind: confirmed_fields
+    predicate_params: {fields: ["human_languages[]", content_source_language]}
+    predicate: "human_languages confirmado y existe(content_source_language)"
+    gap_message: "¿En qué idiomas atiende tu equipo cuando el agente pasa la conversación?"
+  qa_truth: "Toda respuesta esperada va en el idioma del mensaje; en HUM, si el idioma no está en human_languages, el aviso es obligatorio."
+  owner_decision: E3
+
+# ─────────────────────────── OFERTA Y PRECIO ───────────────────────────
+- id: CORE.OFFER.ITEMS
+  title: Catálogo activo (contrato común de ítem)
+  kind: knowledge
+  applies_when: always
+  answers: [C06, C07, C08, C11, P07-1, P08-1, P09-1]
+  exposure: read_on_intent
+  data:
+    name: offer.items[]
+    type: "item_list<objeto> (campos extra en objects.yaml)"
+    structure: {name: text_i18n, category: texto, description: text_i18n, active: bool, object: "ref objeto"}
+    validation: ["nombre único por objeto", "description sin precio ni horario (van en campos)", "categoría no vacía si hay >10 ítems", "no es ítem sembrado de otro perfil (p. ej. servicios de medicina general en odontología)"]
+    example: {name: "Limpieza dental", category: "Prevención", description: "Profilaxis con ultrasonido y pulido.", active: true, object: appointment}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Catálogo vacío: «no tengo el catálogo cargado» + AV o HUM. Con ítems: lista resumida por categoría y ofrece filtrar.", never: ["responder con una FAQ de desvío ('cuéntame qué buscas') cuando hay ítems", "listar ítems inactivos o de ejemplo como ofertas"]}
+  sources: {allowed: [owner_form, import, integration, copilot_approved]}
+  collection: {channels: [form, import, integration, copilot_extraction], ui_today: "según objeto: /admin/service-catalog, /admin/catalog, /admin/menu, /admin/properties, /admin/tours, /admin/listings, /admin/courses, /admin/memberships, /admin/insurance, /admin/vehicles", storage_today: "services, products/ecommerce_products, menu_items, properties, tour_packages, real_estate_listings, courses, membership_plans, insurance_plans, vehicles…", storage_status: parcial, notes: "estado/procedencia por ítem: nuevo salvo price_status"}
+  readiness:
+    predicate_kind: custom
+    predicate: "por cada objeto habilitado: cuenta(ítems activos, confirmados y no sembrados-sin-editar) ≥ 1"
+    gap_message: "Carga al menos un {servicio/producto/plato…} real; los ejemplos del alta no cuentan."
+  qa_truth: "C06: la respuesta menciona solo ítems activos confirmados (o 'por confirmar' si su precio es ejemplo); C07 sin coincidencia → «no lo veo en el catálogo» + alternativas (no niega salvo NOT_OFFERED)."
+
+- id: CORE.OFFER.PRICE_MODEL
+  title: Precio por ítem con tipo de precio y estado
+  kind: knowledge
+  applies_when: always
+  answers: [C09, C10, C11, C12, T07, P02-1, P05-1, P06-4, P08-2, P11-1]
+  exposure: read_on_intent
+  data:
+    name: offer.price
+    type: price
+    structure: {amount: "money?", unit: enum, price_type: "fijo|desde|a_cotizar|gratis", variants_pricing: "por variante/ocupación/temporada/tipo de pasajero (objeto)", tax_included: bool}
+    validation: ["todo ítem activo tiene price_type", "fijo/desde ⇒ amount", "currency = moneda de operación salvo excepción declarada"]
+    example: {amount: {amount: 120000, currency: COP, tax_included: true}, unit: sesión, price_type: desde}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Ítem con precio ejemplo o ausente: «el precio de {ítem} está por confirmar» + ofrece cotizar (si OBJ.LEAD habilitado) o AV. a_cotizar: explica que se cotiza y PREG por los datos de la cotización.", never: ["presentar un precio ejemplo como vigente", "calcular un total con un precio no confirmado sin decirlo", "omitir 'desde'"]}
+  sources: {allowed: [owner_form, import, integration, copilot_approved]}
+  collection: {channels: [form, import, integration], ui_today: "pantallas de catálogo de cada objeto", storage_today: "precio en cada tabla; price_status solo en services y membership_plans (confirmed|example|quote: mezcla estado y tipo)", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate_by_level:
+      bloqueante: "cuenta(ítems activos con precio confirmado o price_type = a_cotizar) ≥ 1"
+      necesario: "todos(ítems activos, existe(price_type)) y cuenta(ítems activos con precio de estado ejemplo) = 0"
+    gap_message: {ejemplo: "{n} precios siguen siendo de ejemplo. Confírmalos o márcalos 'a cotizar'.", ausente: "{n} ítems no tienen tipo de precio (fijo, desde, a cotizar o gratis)."}
+  qa_truth: "C09/C10: confirmado → AFIRMA (total por oráculo determinista: precio × cantidad + cargos); desde → con 'desde'; a_cotizar → sin cifra; ejemplo → 'por confirmar'."
+  owner_decision: E6
+
+- id: CORE.OFFER.ITEM_DETAILS
+  title: Atributos, incluye/excluye, duración, modalidad e imágenes por ítem
+  kind: knowledge
+  applies_when: always
+  answers: [C08, C11, T05, T06, T07, T10, P03-2, P05-3, P05-4, P06-1, P07-4, P11-1]
+  exposure: read_on_intent
+  data:
+    name: offer.items[].details
+    type: "campos del objeto (objects.yaml) + attributes{} libres"
+    structure: {attributes: "mapa clave→valor tipado por objeto", includes: "lista", excludes: "lista o vacío confirmado", duration: duration, modality: enum_list, images: "lista de URLs", restrictions: "lista (edad, receta, …)"}
+    validation: ["includes ∩ excludes = ∅", "atributos del diccionario del objeto con su tipo", "imágenes accesibles"]
+    example: {duration: {min: 45, unit: min}, includes: ["pulido"], excludes: [], modality: [presencial]}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Atributo ausente: «no consta en la ficha» + AV. Si el cliente preguntó varias cosas, responde las que constan y marca las que no (T06).", never: ["«no incluye», «no tiene» sin excludes confirmado", "traducir mal o dejar la ficha en otro idioma (T04)"]}
+  sources: {allowed: [owner_form, import, integration, copilot_approved], accepts_text_evidence: true}
+  collection: {channels: [form, import, copilot_extraction], ui_today: "pantallas de catálogo", storage_today: "columnas por tabla + descripción; products.description no llega al agente", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "por objeto: proporción de ítems activos con description confirmada y, si el objeto declara includes/excludes, ambas con valor o vacío confirmado = 100 % (parcial si < 100 %). Los campos required se evalúan solo en OBJ.<x>.CATALOG (un hueco, no dos)."
+    gap_message: "{n} ítems no tienen descripción o incluye/excluye; el agente dirá 'no consta'."
+  qa_truth: "C08: AFIRMA el atributo; en excludes → NIEGA; no listado → 'no consta' (nunca negación)."
+
+- id: CORE.OFFER.NOT_OFFERED
+  title: Lo que el negocio declara que NO hace
+  kind: knowledge
+  applies_when: always
+  answers: [C07, P08-1, P09-1, P22-1]
+  exposure: read_on_intent
+  data:
+    name: offer.not_offered[]
+    type: list
+    structure: "lista de {item: texto, alternative?: texto|ref, reason?: texto} o vacío confirmado"
+    validation: ["no contradice un ítem activo del catálogo"]
+    example: [{item: "ortodoncia invisible", alternative: "brackets estéticos"}]
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Si lo pedido no está ni en catálogo ni aquí: «no lo veo en nuestro catálogo» + alternativas cercanas + AV.", never: ["«no lo hacemos» sin entrada en not_offered"]}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: "verticalConfig.notOffered es de plataforma, no del negocio", storage_status: nuevo}
+  readiness:
+    predicate_kind: value_or_empty
+    predicate: "lista revisada: valor o vacío confirmado"
+    gap_message: "Cuéntanos qué NO haces, para que el agente pueda decir que no con seguridad."
+  qa_truth: "Es la única fuente válida para que la respuesta esperada sea NIEGA en C07."
+  owner_decision: E8
+
+- id: CORE.OFFER.FEES
+  title: Cargos adicionales e impuestos generales
+  kind: knowledge
+  applies_when: always
+  answers: [C10, P01-7, P05-6, P07-7, P20-5]
+  exposure: read_on_intent
+  data:
+    name: offer.fees[]
+    type: list
+    structure: "lista de {name, amount: money|porcentaje, applies_to: global|categoría|ítem|objeto, mandatory: bool, condition?} o vacío confirmado"
+    validation: ["porcentaje 0–100", "applies_to resuelve a algo existente"]
+    example: [{name: "servicio voluntario", amount: "10%", applies_to: global, mandatory: false}]
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) en lodging_booking y rental (el total confirmado depende de ellos)", when: [{if: "object_enabled(lodging_booking) or object_enabled(rental)", level: bloqueante, rule: R2}]}
+  when_missing: {code: NC+AV, behavior: "En un total: da el subtotal y aclara que pueden aplicar cargos no confirmados.", never: ["«no hay cargos extra» sin vacío confirmado"]}
+  sources: {allowed: [owner_form, import]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "properties.cleaning_fee, real_estate_listings.hoa_fee/deposit, food_orders.delivery_fee (por pedido); cargos generales del negocio: nuevo", storage_status: parcial}
+  readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Cobras algún cargo adicional (servicio, limpieza, envío…)? Si no, confírmalo."}
+  qa_truth: "Total esperado incluye cargos mandatory confirmados; vacío confirmado permite 'sin cargos extra'."
+
+- id: CORE.OFFER.PROMOTIONS
+  title: Promociones vigentes
+  kind: knowledge
+  applies_when: always
+  answers: [C13, P02-5, P04-6, P13-2]
+  exposure: read_on_intent
+  data:
+    name: promotions[]
+    type: list
+    structure: "lista de {title, conditions, applies_to, valid_from, valid_to, code?} o vacío confirmado"
+    validation: ["valid_to ≥ valid_from", "applies_to existe"]
+    example: [{title: "2x1 martes", applies_to: "categoría pizzas", valid_from: "2026-11-01", valid_to: "2026-11-30"}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "Sin promociones vigentes confirmadas: «hoy no hay promociones publicadas».", never: ["inventar promociones o gratuidad (clase de prueba gratis)"]}
+  sources: {allowed: [owner_form, integration], max_age: "vigencia de cada promoción; la lista vacía se reconfirma cada 30 días"}
+  collection: {channels: [form], ui_today: "/admin/coupons, /admin/catalog/offers, promociones de /admin/menu", storage_today: "menu_promotions (solo comida), commercial_offers, cupones", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "valor o vacío confirmado y no_caducado", gap_message: "¿Tienes promociones vigentes? Si no, confírmalo."}
+  qa_truth: "C13: solo promociones con fecha del caso dentro de la vigencia; si no hay → 'no hay promociones publicadas'."
+
+- id: CORE.OFFER.RECOMMENDATION_RULES
+  title: Criterios del negocio para recomendar
+  kind: policy
+  applies_when: always
+  answers: [C11, P11-7, T08]
+  exposure: read_on_intent
+  data:
+    name: offer.recommendation_rules
+    type: list
+    structure: "lista de {when: texto (necesidad/perfil), recommend: ref ítem, why: text_i18n} + allow_general_criteria: bool"
+    validation: ["recommend referencia ítems activos"]
+    example: [{when: "primera visita", recommend: "Valoración inicial", why: "define el plan"}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: PREG, behavior: "Compara hechos de los ítems y pregunta la preferencia del cliente.", never: ["«el más popular» sin dato"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado (vacío = sin criterio propio: el agente compara y pregunta)", gap_message: "¿Qué recomiendas a quien no sabe qué elegir?"}
+  qa_truth: "Con regla aplicable → la recomendación; sin regla → comparación + PREG."
+  owner_decision: E18
+
+- id: CORE.OFFER.CURRENCY_CONVERSION
+  title: Política de conversión de moneda
+  kind: config
+  applies_when: always
+  answers: [C12, P07-3]
+  exposure: always_in_context
+  data:
+    name: payment.currency_conversion
+    type: enum
+    structure: {mode: "enum [no_convertir, aproximada_plataforma, tasa_del_negocio]", "rate?": "tasa + fecha", accepted_currencies: enum_list}
+    validation: ["tasa_del_negocio ⇒ rate con fecha ≤ 7 días"]
+    example: {mode: no_convertir, accepted_currencies: [COP]}
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "Por defecto no_convertir: da el precio en la moneda original y dice que no da conversión."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "nuevo (ExchangeRate existe a nivel plataforma)", storage_status: nuevo}
+  readiness: {predicate_kind: default_accepted, predicate: "default aceptado o configurado", gap_message: "¿Quieres que el agente convierta precios a otra moneda?"}
+  qa_truth: "no_convertir → precio original + aclaración; aproximada → con la palabra 'aproximado' y la tasa del caso."
+  owner_decision: E7
+
+# ─────────────────────────── PAGOS ───────────────────────────
+- id: CORE.PAYMENT.METHODS
+  title: Medios de pago aceptados
+  kind: knowledge
+  applies_when: always
+  answers: [C14, P14-3]
+  exposure: always_in_context
+  data:
+    name: payment.methods[]
+    type: enum_list
+    structure: {methods: "enum_list [efectivo, tarjeta_débito, tarjeta_crédito, transferencia, PSE, Pix, Nequi, Daviplata, link_de_pago, contra_entrega, …] (catálogo por país)", "notes?": text_i18n, "by_channel?": "presencial/online"}
+    validation: ["≥1 método", "métodos ∈ catálogo del pack de país"]
+    example: {methods: [efectivo, tarjeta_crédito, transferencia]}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: NC+AV, behavior: "Solo en ensayo: «no tengo confirmados los medios de pago» + AV.", never: ["«aceptamos todos los medios»"]}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "nuevo (ni campo ni tipo de política; hoy solo FAQs de plantilla)", storage_status: nuevo}
+  readiness: {predicate_kind: count_min, predicate_params: {path: methods, min: 1}, predicate: "cuenta(methods confirmados) ≥ 1", gap_message: "Marca los medios de pago que aceptas (un clic por medio)."}
+  qa_truth: "C14: AFIRMA la lista; un medio no listado → 'no lo tengo confirmado' (no 'no aceptamos')."
+
+- id: CORE.PAYMENT.TIMING_DEPOSIT
+  title: Momento del pago y regla de anticipo o depósito
+  kind: policy
+  applies_when: "any_object_with_write or sells_goods"
+  answers: [C16, C27, P20-3, P28-3]
+  exposure: read_on_intent
+  data:
+    name: payment.timing
+    type: policy_terms
+    structure: {when: "enum [al_reservar, anticipo_parcial, en_sitio, contra_entrega, al_finalizar]", deposit: "{amount: money|porcentaje, refundable: bool, deadline?: duration} | ninguno", scope: "global|por_objeto|por_ítem"}
+    validation: ["anticipo_parcial ⇒ deposit", "refundable declarado si hay depósito"]
+    example: {when: anticipo_parcial, deposit: {amount: "30%", refundable: false}}
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) si OBJ.<x>.WRITE_MODE exige pago para confirmar", when: [{if: payment_required_any, level: bloqueante, rule: R2}]}
+  when_missing: {code: NC+AV, behavior: "«No tengo confirmado si se requiere anticipo» + AV.", never: ["afirmar 'no se cobra depósito' sin 'ninguno' confirmado"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "services/properties/tour_packages/courses.{payment_policy, deposit_percent, deposit_amount} por ítem (payment_policy = 'none' es default de columna ⇒ sembrado, schema §7.5 L4); photo_sessions.deposit_paid; regla general del negocio: nuevo", storage_status: parcial}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [when, deposit]}, predicate: "existe(when) y existe(deposit) (o 'ninguno') confirmados", gap_message: "¿Cuándo se paga y pides anticipo?"}
+  qa_truth: "C27: AFIRMA monto y si es reembolsable; 'ninguno' → NIEGA; ausente → NC+AV."
+
+- id: CORE.PAYMENT.FINANCING
+  title: Cuotas, financiación, convenios y aseguradoras aceptadas
+  kind: knowledge
+  applies_when: always
+  answers: [P07-8, P08-6, P14-3, P15-4, P26-3, P04-6]
+  exposure: read_on_intent
+  data:
+    name: payment.financing
+    type: list
+    structure: {installments: "bool + entidades", partners: "lista de entidades financieras", insurers_accepted: "lista de aseguradoras/EPS/convenios + regla ('cobertura se confirma en valoración')"}
+    validation: ["vacío confirmado permitido"]
+    example: {insurers_accepted: ["Sura", "Colsanitas"], installments: {enabled: true, partners: ["Addi"]}}
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "PREG por la aseguradora concreta y luego NC+AV si no consta.", never: ["pre-aprobar crédito", "afirmar cobertura de un seguro"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [installments, insurers_accepted]}, predicate: "installments e insurers_accepted declarados (valor o vacío confirmado)", gap_message: "¿Trabajas con cuotas, convenios o aseguradoras? Si no, confírmalo."}
+  qa_truth: "Entidad listada → AFIRMA con su regla; no listada → NC+AV."
+
+- id: CORE.PAYMENT.AGENT_COLLECTS
+  title: El agente envía enlaces de pago o cobra depósitos
+  kind: config
+  applies_when: any_object_with_write
+  answers: [C16, C27, T01]
+  exposure: platform_only
+  data:
+    name: payment.agent_collects
+    type: enum
+    structure: {mode: "enum [no, enlace_de_pago, depósito_obligatorio]", provider: "ref TenantPaymentProviderConfig", objects: "lista de objetos donde aplica"}
+    validation: ["mode≠no ⇒ proveedor activo y verificado"]
+    example: {mode: enlace_de_pago, provider: wompi, objects: [food_order]}
+  criticality: {level: recomendado, rule: R5, conditional: "bloqueante (R2) si WRITE_MODE de algún objeto declara 'pago requerido para confirmar'", when: [{if: payment_required_any, level: bloqueante, rule: R2}]}
+  when_missing: {code: HUM, behavior: "Por defecto 'no': el agente explica los medios (CORE.PAYMENT.METHODS) y no promete enlaces."}
+  sources: {allowed: [owner_form, integration]}
+  collection: {channels: [form, integration], ui_today: /admin/settings/integrations, storage_today: "TenantPaymentProviderConfig + tenant_payment_intents (monto del servidor)", storage_status: existe}
+  readiness: {predicate_kind: custom, predicate: "mode configurado; si ≠ no, proveedor verificado", gap_message: "¿Quieres que el agente envíe enlaces de pago?"}
+  qa_truth: "Ofrecer enlace solo si mode ≠ no; el monto lo fija el servidor (oráculo)."
+  owner_decision: E10
+
+- id: CORE.PAYMENT.INVOICING
+  title: Factura o comprobante
+  kind: procedure
+  applies_when: always
+  answers: [C23]
+  exposure: read_on_intent
+  data:
+    name: proc.invoice
+    type: procedure_spec
+    structure: {required_fields: "[nombre/razón social, NIT/CPF/RFC…, correo]", confirms: "business", sla: duration, electronic_invoice: bool}
+    validation: ["campos ∈ diccionario fiscal del país"]
+    example: {required_fields: [razón_social, nit, correo], confirms: business, sla: {min: 1, unit: día}}
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: HUM, behavior: "Solicitud + HUM; no pide datos fiscales si no hay procedimiento."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "nuevo (verificado: /admin/settings/fiscal es el perfil fiscal del tenant para la facturación de la plataforma: settings.fiscalData + public.fiscal_invoices)", storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {any_of: [["required_fields[]", sla], [no_invoice]]}, predicate: "required_fields y sla confirmados, o 'no emitimos factura' confirmado", gap_message: "¿Cómo entregas facturas y qué datos necesitas?"}
+  qa_truth: "C23: PREG por required_fields y confirmación de solicitud con el SLA; sin procedimiento → HUM."
+
+# ─────────────────────────── POLÍTICAS ───────────────────────────
+- id: CORE.POLICY.CANCELLATION_CHANGES
+  title: Política de cancelación, cambios, no-show y llegada tarde (general)
+  kind: policy
+  applies_when: any_object_reservable
+  answers: [C21, C22, C24, P06-9, P13-4, P10-5]
+  exposure: read_on_intent
+  data:
+    name: policies.cancellation
+    type: policy_terms
+    structure: {cancel: "policy_terms (plazo antes del evento, cargo, reembolso)", change: "policy_terms", no_show: "cargo o consecuencia", late_tolerance: "duration?", scope: "global; los objetos e ítems pueden sobrescribir (OBJ.<x>.CHANGE_RULES)"}
+    validation: ["plazo y cargo estructurados (no solo texto)", "si el texto menciona horas o %, coinciden con los campos"]
+    example: {cancel: {deadline: {min: 24, unit: h}, charge: "ninguno", refund: {medio: "mismo medio", plazo: "5 días hábiles"}}, no_show: {charge: "50%"}, late_tolerance: {min: 15, unit: min}}
+  criticality: {level: bloqueante, rule: R2, conditional: "bloqueante si any_object_with_write; necesario si los objetos reservables son solo de solicitud", when: [{if: "not any_reservable_direct", level: necesario, rule: R4}]}
+  when_missing: {code: NC+AV, behavior: "«No tengo confirmada la política de cancelación» + AV; si el cliente quiere cancelar ya, HUM.", never: ["«no tenemos política»", "inventar plazos o cargos"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: false}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/policies, storage_today: "policies.type = cancellation (texto libre, una versión activa)", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "cancel.deadline y cancel.charge confirmados (o 'ninguno') y sin_contradicción con FAQs"
+    gap_message: "Define hasta cuándo se puede cancelar y si cobras algo."
+  qa_truth: "C24: AFIRMA plazo y cargo de la regla más específica (ítem > objeto > general); ausente → NC+AV."
+
+- id: CORE.POLICY.REFUND_RETURNS
+  title: Reembolsos, devoluciones y cambios de producto
+  kind: policy
+  applies_when: "sells_goods or has_prepayment"
+  answers: [C25, P02-8, P03-5]
+  exposure: read_on_intent
+  data:
+    name: policies.refund_returns
+    type: policy_terms
+    structure: {returns: "plazo, estado del producto, quién paga el envío", refunds: "medio y plazo", exchanges: bool, exceptions: lista}
+    validation: ["plazo ≥ mínimo legal del pack de país (CORE.POLICY.CONSUMER_RIGHTS)"]
+    example: {returns: {deadline: {min: 30, unit: días}, condition: "sin uso, con empaque"}, refunds: {medio: "mismo medio", plazo: "10 días hábiles"}}
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) en catalog_order con write_mode = direct_commit", when: [{if: "direct_commit(catalog_order)", level: bloqueante, rule: R2}]}
+  when_missing: {code: NC+AV, behavior: "NC+AV + derechos legales del país si aplican (retracto, garantía legal).", never: ["negar devolución sin política"]}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form], ui_today: /admin/settings/policies, storage_today: "policies.type = return (texto)", storage_status: parcial}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {any_of: [[returns.deadline, refunds], [not_applicable]]}, predicate: "returns.deadline y refunds confirmados (o 'no aplica' confirmado)", gap_message: "Define tu política de devoluciones y reembolsos."}
+  qa_truth: "C25: AFIRMA plazo y condición; menciona el derecho legal si el pack lo exige."
+
+- id: CORE.POLICY.WARRANTY
+  title: Garantía
+  kind: policy
+  applies_when: "object_enabled(catalog_order) or profile_in([P16, P26, P27])"
+  answers: [C26, P03-4, P16-6, P26-6, P27-6]
+  exposure: read_on_intent
+  data:
+    name: policies.warranty
+    type: policy_terms
+    structure: {duration: duration, coverage: text_i18n, procedure: text_i18n, scope: "global|categoría|ítem"}
+    validation: ["duration ≥ garantía legal del pack"]
+    example: {duration: {min: 12, unit: meses}, coverage: "defectos de fábrica", scope: categoría}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Garantía legal del país si aplica + NC+AV para la del negocio.", never: ["inventar meses de garantía"]}
+  sources: {allowed: [owner_form, import]}
+  collection: {channels: [form, import], ui_today: /admin/settings/policies, storage_today: "policies.type = warranty (texto)", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "duration confirmada para cada categoría activa (o global)", gap_message: "Indica la garantía de tus productos o trabajos."}
+  qa_truth: "C26: AFIRMA la garantía más específica; si no hay, la legal + NC+AV."
+  notes: "v0.2: ya no aplica por sells_goods (validación con comida: un pedido de comida no tiene garantía; su reclamo es CORE.COMPLAINT.PROCEDURE)."
+
+- id: CORE.POLICY.HOUSE_RULES
+  title: Reglas de admisión (menores, mascotas, fumar, código de vestimenta, sin cita)
+  kind: policy
+  applies_when: "modality_includes(presencial)"
+  answers: [P01-5, P05-7, P11-9, P13-7]
+  exposure: read_on_intent
+  data:
+    name: policies.house_rules
+    type: list
+    structure: "lista de {topic: enum [menores, mascotas, fumar, fiestas, walk_in, acompañantes, vestimenta], rule: text_i18n, allowed: bool?}"
+    validation: ["sin topics duplicados"]
+    example: [{topic: mascotas, allowed: true, rule: "Perros pequeños en terraza"}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "«No tengo confirmado si se admiten mascotas» + AV.", never: ["afirmar prohibición o permiso sin dato"]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: custom, predicate: "cada topic de params.required_topics del override del perfil declarado (allowed + rule); sin override: valor o vacío confirmado", gap_message: "¿Admites mascotas, niños, atención sin cita?"}
+  qa_truth: "Topic confirmado → AFIRMA allowed/regla; ausente → NC+AV."
+
+- id: CORE.POLICY.CONSUMER_RIGHTS
+  title: Derechos legales del consumidor y avisos obligatorios del país
+  kind: policy
+  applies_when: always
+  answers: [C25, C26, P03-5, P13-5]
+  exposure: read_on_intent
+  data:
+    name: country_pack.consumer_rights
+    type: list
+    structure: "retracto (plazo), garantía legal, derecho a cancelar suscripciones, avisos obligatorios — mantenido por la plataforma"
+    validation: ["pack vigente para el país"]
+    example: {retracto: {min: 5, unit: días_hábiles}, garantia_legal: "según ley"}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Sin pack: no cita derechos legales; NC+AV."}
+  sources: {allowed: [country_pack]}
+  collection: {channels: [platform], ui_today: "n/a (plataforma)", storage_today: "nuevo (verificado: el pack de país en packages/shared/src/tenant-regional-profile.ts no contiene derechos del consumidor)", storage_status: nuevo}
+  readiness: {predicate_kind: platform_pack, predicate_params: {field: consumerRights}, predicate: "country_pack resuelto contiene consumer_rights", gap_message: "(plataforma) Falta el paquete legal del país."}
+  qa_truth: "Pregunta por devolución en venta a distancia → la esperada menciona el retracto del pack si el negocio no da un plazo mayor."
+
+# ─────────────────────────── PRIVACIDAD ───────────────────────────
+- id: CORE.PRIVACY.NOTICE
+  title: Aviso de privacidad y responsable del tratamiento
+  kind: policy
+  applies_when: always
+  answers: [C28, C16]
+  exposure: read_on_intent
+  data:
+    name: policies.privacy
+    type: policy_terms
+    structure: {controller: "razón social + contacto", purposes: text_i18n, url_or_text: "URL pública o texto", version: int}
+    validation: ["controller con correo o teléfono", "versión activa única"]
+    example: {controller: {name: "Sonrisa SAS", email: "datos@sonrisa.co"}, url_or_text: "https://sonrisa.co/privacidad"}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: HUM, behavior: "No se publica sin aviso. En ensayo: deriva preguntas de datos a HUM."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "/admin/settings/policies (privacy) + textos legales", storage_today: "policies.type = privacy, legal_text_versions, consent_records", storage_status: existe}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [controller, url_or_text]}, predicate: "existe versión activa con controller confirmado", gap_message: "Falta tu aviso de privacidad (obligatorio para operar)."}
+  qa_truth: "C28: entrega el enlace o resumen y el contacto del responsable."
+
+- id: CORE.PRIVACY.DATA_REQUESTS
+  title: Baja de mensajes, acceso y borrado de datos
+  kind: procedure
+  applies_when: always
+  answers: [C28]
+  exposure: read_on_intent
+  data:
+    name: proc.data_request
+    type: procedure_spec
+    structure: {opt_out: "inmediato (plataforma, no configurable)", access_delete: "{confirms: business, sla: duration, responsible: usuario}"}
+    validation: ["sla ≤ plazo legal del pack"]
+    example: {access_delete: {confirms: business, sla: {min: 10, unit: días_hábiles}}}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Opt-out se cumple siempre de inmediato. Acceso/borrado: registra deletion_request + HUM con el plazo legal."}
+  sources: {allowed: [owner_form, country_pack]}
+  collection: {channels: [form, platform], ui_today: /admin/compliance, storage_today: "opt_out_records, deletion_requests", storage_status: existe}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [access_delete.responsible, access_delete.sla]}, predicate: "responsable y sla confirmados", gap_message: "¿Quién atiende las solicitudes de borrado de datos?"}
+  qa_truth: "«No quiero recibir mensajes» → confirma la baja en el turno; «borren mis datos» → registro + plazo."
+
+- id: CORE.PRIVACY.CUSTOMER_MEMORY
+  title: Guardar preferencias y condiciones del cliente entre conversaciones
+  kind: config
+  applies_when: always
+  answers: [T08, P05-10]
+  exposure: platform_only
+  data:
+    name: privacy.customer_memory
+    type: enum
+    structure: {mode: "enum [solo_conversación, con_consentimiento, siempre_no_sensibles]", retention: duration, sensitive_never: "lista fija (salud, alergias → solo con consentimiento explícito)"}
+    validation: ["dominios health/mental_health ⇒ mode ≠ siempre_no_sensibles para datos de salud"]
+    example: {mode: con_consentimiento, retention: {min: 12, unit: meses}}
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: PREG, behavior: "Por defecto solo_conversación: aplica la preferencia en la conversación y no la guarda."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "conversation_memory / customer_profiles (extracción LLM con flag)", storage_status: parcial}
+  readiness: {predicate_kind: default_accepted, predicate: "default aceptado o configurado", gap_message: "¿El agente puede recordar preferencias de tus clientes?"}
+  qa_truth: "T08: la preferencia se aplica en los turnos siguientes de la misma conversación."
+  owner_decision: E15
+
+# ─────────────────────────── TRASPASO Y ESCALAMIENTO ───────────────────────────
+- id: CORE.HANDOFF.TEAM
+  title: Quién recibe los traspasos y cómo se le avisa
+  kind: procedure
+  applies_when: always
+  answers: [C29, C30, T01]
+  exposure: platform_only
+  data:
+    name: proc.handoff.team
+    type: procedure_spec
+    structure: {assignees: "lista de usuarios o equipo (≥1 activo)", routing: "enum [cola_compartida, por_área, por_sede]", notify_channels: "enum_list [inbox, push, email, whatsapp, sms, slack, webhook]"}
+    validation: ["≥1 usuario activo con permiso de inbox", "≥1 canal de aviso verificado fuera del inbox"]
+    example: {assignees: ["recepcion@sonrisa.co"], routing: cola_compartida, notify_channels: [inbox, push, whatsapp]}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: GAP, behavior: "Sin equipo no se publica: HUM no tendría destino y NC+AV no tendría quién responda."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "/admin/settings/notifications + /admin/users", storage_today: "conversation_assignments, avisos por inbox/CRM/push/slack/sms/webhooks/email (A2)", storage_status: existe}
+  readiness: {predicate_kind: custom, predicate: "cuenta(assignees activos) ≥ 1 y cuenta(notify_channels verificados) ≥ 1; sin asignación explícita cuenta el usuario admin activo con correo verificado y aviso de traspaso activo (users.notification_preferences.categories.handoff)", gap_message: "Elige quién atiende cuando el agente pasa la conversación y cómo se le avisa."}
+  qa_truth: "C30: el traspaso se crea (evento verificable), no solo se anuncia."
+
+- id: CORE.HANDOFF.HOURS_SLA
+  title: Horario de atención humana, tiempos y qué se le dice al cliente
+  kind: procedure
+  applies_when: always
+  answers: [C30, C31, C29, T01]
+  exposure: always_in_context
+  data:
+    name: proc.handoff.hours_sla
+    type: procedure_spec
+    structure: {human_hours: "weekly_hours (por defecto = CORE.HOURS.REGULAR)", sla_in_hours: duration, sla_out_of_hours: "enum [siguiente_apertura, duration]", out_of_hours_message: "text_i18n (plantilla con {próxima_apertura})", callback_offered: bool}
+    validation: ["sla_in_hours ≤ 24 h", "el mensaje no promete un tiempo menor al SLA"]
+    example: {sla_in_hours: {min: 15, unit: min}, sla_out_of_hours: siguiente_apertura, callback_offered: true}
+  criticality: {level: bloqueante, rule: R1}
+  when_missing: {code: HUM, behavior: "Solo en ensayo: «te paso con el equipo; te responderán en cuanto estén disponibles» sin prometer tiempos.", never: ["prometer una respuesta inmediata fuera del horario humano"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "/admin/agent (afterHoursMessage) — horario humano y SLA: nuevo", storage_today: "persona config afterHoursMessage (texto); SLA y horario humano: nuevo", storage_status: parcial}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [human_hours, sla_in_hours, sla_out_of_hours]}, predicate: "human_hours y sla_in_hours y sla_out_of_hours confirmados", gap_message: "Indica en qué horario responde una persona y en cuánto tiempo."}
+  qa_truth: "C30 dentro de horario → 'te paso; responden en {sla}'; fuera → 'te responden {próxima apertura}' + solicitud registrada."
+  owner_decision: E12
+
+- id: CORE.HANDOFF.ALWAYS_HUMAN
+  title: Qué requiere siempre a una persona
+  kind: policy
+  applies_when: always
+  answers: [C29, C30, P07-8, P21-5, P22-4, P25-4]
+  exposure: platform_only
+  data:
+    name: proc.handoff.triggers
+    type: enum_list
+    structure: {platform_defaults: "lista fija por perfil/dominio (queja, excepción de política, diagnóstico, asesoría, aprobación de crédito…)", business_additions: "enum_list [descuentos, grupos_grandes, eventos, cotizaciones_a_medida, clientes_vip, …]"}
+    validation: ["las additions no pueden quitar platform_defaults"]
+    example: {business_additions: [descuentos, grupos_grandes]}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Se usan los defaults del perfil y dominio."}
+  sources: {allowed: [owner_form, country_pack]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "reglas fijas en código (petición humana, queja, descuento, VIP, 3 fallos) + business_rules sin uso", storage_status: parcial}
+  readiness: {predicate_kind: default_accepted, predicate: "defaults aceptados (lista revisada por el dueño)", gap_message: "Revisa qué casos quieres atender siempre tú."}
+  qa_truth: "Intención dentro de la lista → la esperada es HUM con resumen, sin resolver por cuenta propia."
+
+- id: CORE.HANDOFF.RETURN_TO_AI
+  title: Espera máxima del humano y regreso a la IA
+  kind: config
+  applies_when: always
+  answers: [C31, T01]
+  exposure: platform_only
+  data:
+    name: proc.handoff.return
+    type: config
+    structure: {max_wait_in_hours: duration, on_timeout: "enum [ia_retoma_con_aviso, sigue_en_espera_con_aviso]", single_notice: "siempre true (P6)"}
+    validation: ["max_wait_in_hours ≥ sla_in_hours"]
+    example: {max_wait_in_hours: {min: 10, unit: min}, on_timeout: ia_retoma_con_aviso}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Default de plataforma: 10 min y retoma con un único aviso."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "cron fijo de 10 min (A2)", storage_status: parcial}
+  readiness: {predicate_kind: default_accepted, predicate: "default aceptado o configurado", gap_message: "¿Cuánto esperamos a tu equipo antes de que el agente retome?"}
+  qa_truth: "C31: un solo mensaje con qué se pidió, a quién, cuándo y el estado; nunca avisos apilados."
+
+- id: CORE.PENDING.ROUTING
+  title: Consultas pendientes al negocio («lo averiguo»)
+  kind: procedure
+  applies_when: always
+  answers: [C31, T01]
+  exposure: platform_only
+  data:
+    name: proc.pending_question
+    type: procedure_spec
+    structure: {recipients: "por defecto = CORE.HANDOFF.TEAM", channel: "enum_list [panel, whatsapp_dueño, email]", sla: duration, notify_customer_on_answer: bool, answer_becomes_knowledge: "bool (propone guardar la respuesta como dato: C5)"}
+    validation: ["sla > 0", "≥1 canal verificado"]
+    example: {channel: [panel, whatsapp_dueño], sla: {min: 4, unit: h}, notify_customer_on_answer: true, answer_becomes_knowledge: true}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Sin esto el agente NO ofrece «lo averiguo»: ofrece una persona (HUM) o el contacto. Nunca ofrece algo sin efecto."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "kb_unanswered_queries (registro sin flujo al dueño ni aviso al cliente)", storage_status: parcial}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: ["channel[]", sla]}, predicate: "canal verificado y sla confirmado (o default aceptado)", gap_message: "¿Dónde quieres recibir las preguntas que el agente no supo responder?"}
+  qa_truth: "Tras NC+AV aceptado: se crea la consulta y la respuesta cita el SLA; sin este requisito, la oferta esperada es HUM."
+  owner_decision: E11
+
+# ─────────────────────────── PROCEDIMIENTOS DE PLATAFORMA (derivados) ───────────────────────────
+- id: CORE.PROC.OFFER_ACCEPTANCE
+  title: Ofertas que el agente puede hacer y su efecto al aceptarlas
+  kind: procedure
+  applies_when: always
+  answers: [T01, T02, C16, C30, C31]
+  exposure: platform_only
+  data:
+    name: proc.offers
+    type: derived
+    structure: "tabla calculada {oferta → precondición → efecto}: 'lo consulto con el equipo' ⇐ CORE.PENDING.ROUTING; 'te paso con una persona' ⇐ CORE.HANDOFF.*; 'te reservo/pido' ⇐ OBJ.<x>.WRITE_MODE ≠ none; 'te envío el enlace' ⇐ CORE.PAYMENT.AGENT_COLLECTS; 'te muestro el menú/fotos' ⇐ catálogo con ítems/imagenes"
+    validation: ["cada oferta pendiente se guarda en el estado de la conversación con su efecto exacto"]
+    example: {pending_offer: {kind: pending_question, payload: "¿hay parqueadero?", expires_after_turns: 2}}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Si una precondición falta, esa oferta no se hace. 'Sí' ejecuta exactamente la oferta pendiente y confirma el efecto real; 'ok, gracias' cierra y no acepta nada (T02)."}
+  sources: {allowed: [derived]}
+  collection: {channels: [derived], ui_today: n/a, storage_today: "ejecución del «sí» contra el ledger (A2), solo para escrituras", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "derivado: cumple si hay al menos una salida (HUM) y cada oferta habilitada tiene su precondición cumplida", gap_message: "(informativo) Estas ofertas no estarán disponibles hasta completar: {lista}.", derived: true}
+  qa_truth: "T01: el efecto esperado es el de la oferta pendiente del turno anterior (evento verificable); T02: cierre sin traspaso ni consulta."
+
+- id: CORE.PROC.FOLLOW_UP_STATE
+  title: Estado de lo pendiente (traspasos, consultas, solicitudes)
+  kind: procedure
+  applies_when: always
+  answers: [C31, C20]
+  exposure: account_read
+  data:
+    name: proc.follow_up
+    type: derived
+    structure: "registro por conversación/contacto: {qué, a quién, cuándo, estado, respuesta?} de handoffs, consultas pendientes y solicitudes de objetos"
+    validation: ["un solo estado vigente por elemento pendiente"]
+    example: {kind: pending_question, asked_at: "2026-10-30T10:02", to: "equipo", status: sin_respuesta, sla_due: "14:02"}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "«¿Sigue alguien ahí?» → un único mensaje con el estado real leído en el turno."}
+  sources: {allowed: [derived]}
+  collection: {channels: [derived], ui_today: n/a, storage_today: "waiting_human + avisos dispersos; registro unificado: nuevo", storage_status: nuevo}
+  readiness: {predicate_kind: custom, predicate: "existe el registro unificado de pendientes (plataforma) y ref_cumple(CORE.HANDOFF.TEAM) y ref_cumple(CORE.PENDING.ROUTING)", gap_message: "(plataforma)", derived: true}
+  qa_truth: "C31: la respuesta esperada contiene qué, a quién, cuándo y el estado, en un solo mensaje y en el idioma del cliente."
+
+# ─────────────────────────── QUEJAS ───────────────────────────
+- id: CORE.COMPLAINT.PROCEDURE
+  title: Procedimiento de quejas (ticket común)
+  kind: procedure
+  applies_when: always
+  answers: [C29, P02-8, P27-6, P24-3]
+  exposure: read_on_intent
+  data:
+    name: proc.complaint
+    type: procedure_spec
+    structure: {required_fields: "[referencia del pedido/reserva?, qué pasó, foto?]", confirms: human_always, sla: duration, owner: "ref CORE.HANDOFF.TEAM o área"}
+    validation: ["sla ≤ 48 h"]
+    example: {required_fields: [referencia, descripcion, foto_opcional], confirms: human_always, sla: {min: 24, unit: h}}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: HUM, behavior: "Empatía breve, recoge referencia y qué pasó, crea traspaso. Sin culpar ni prometer compensaciones.", never: ["prometer reembolso, reposición o descuento no definidos"]}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: "nuevo (verificado: /admin/cases son casos profesionales sobre opportunities, no quejas)", storage_today: "nuevo (hoy solo 'queja' como handoffTrigger de la persona + traspaso)", storage_status: nuevo}
+  readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [sla]}, predicate: "sla confirmado (o default aceptado)", gap_message: "Define en cuánto tiempo respondes una queja."}
+  qa_truth: "C29: registro + HUM; la esperada contiene el SLA si consta y ninguna compensación no listada."
+  owner_decision: E13
+
+- id: CORE.COMPLAINT.COMPENSATIONS
+  title: Compensaciones que el agente puede ofrecer
+  kind: policy
+  applies_when: always
+  answers: [C29, P02-8]
+  exposure: platform_only
+  data:
+    name: proc.complaint.compensations
+    type: list
+    structure: "lista de {case: enum [pedido_incompleto, pedido_frío, retraso, …], offer: [reposición, cupón(money), reembolso_parcial], max: money} o vacío confirmado (por defecto: ninguna)"
+    validation: ["max definido para cupones y reembolsos"]
+    example: []
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: HUM, behavior: "Por defecto ninguna: siempre HUM."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  readiness: {predicate_kind: default_accepted, predicate: "default aceptado", gap_message: "¿Puede el agente ofrecer algo ante una queja (reposición, cupón)?"}
+  qa_truth: "Solo se esperan compensaciones listadas para ese caso."
+
+# ─────────────────────────── IDENTIDAD DEL CLIENTE, SEGURIDAD Y CONOCIMIENTO ───────────────────────────
+- id: CORE.ACCOUNT.IDENTITY_DEFAULT
+  title: Nivel de identidad por defecto para leer registros del cliente
+  kind: config
+  applies_when: any_object_with_write
+  answers: [C19, C20, C21, C22]
+  exposure: platform_only
+  data:
+    name: account.identity_default
+    type: enum
+    structure: {level: "enum [canal (A1), código_de_reserva, OTP (A2), humano (A4)]"}
+    validation: ["dominios regulados lo suben (DOM.*); nunca por debajo de canal"]
+    example: {level: canal}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: PREG, behavior: "Default canal (número o identidad del canal). Si el objeto exige más, verifica antes de leer."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: nuevo, storage_today: "identidad A1/A2/A4 en la política estática de herramientas + ChatIdentityChallenge (OTP)", storage_status: parcial}
+  readiness: {predicate_kind: default_accepted, predicate: "default aceptado o configurado", gap_message: "¿Qué tan seguro debe ser identificar a un cliente antes de mostrarle sus reservas?"}
+  qa_truth: "C19 con identidad insuficiente → la esperada es el paso de verificación, no los datos."
+  owner_decision: E14
+
+- id: CORE.SAFETY.EMERGENCY_BASE
+  title: Número general de emergencias del país
+  kind: knowledge
+  applies_when: always
+  answers: [P16-3, P27-7, P28-6]
+  exposure: read_on_intent
+  data:
+    name: safety.emergency.general
+    type: list
+    structure: "contact_point por país (emergencias, bomberos, gas) — mantenido por la plataforma"
+    validation: ["pack vigente"]
+    example: [{kind: phone, label: "Emergencias", value: "123"}]
+  criticality: {level: necesario, rule: R4, conditional: "bloqueante (R3) vía DOM.* en dominios con EXT", when: [{if: "domain_any([health, mental_health, veterinary, insurance, finance, home_safety])", level: bloqueante, rule: R3}]}
+  when_missing: {code: EXT, behavior: "Sin número: «llama a los servicios de emergencia locales de inmediato» sin inventar un número."}
+  sources: {allowed: [country_pack]}
+  collection: {channels: [platform], ui_today: n/a, storage_today: "COUNTRY_EMERGENCY_CONTACTS en packages/shared/src/tenant-regional-profile.ts (medical, crisisLine?, reviewStatus; 18 países; se resuelve por Tenant.operatingCountry y sin país no hay número)", storage_status: existe}
+  readiness: {predicate_kind: custom, predicate: "ref_cumple(CORE.IDENTITY.REGION) y el pack del operating_country contiene el número general", gap_message: {ausente: "Confirma tu país para que el agente dé el número de emergencias correcto.", plataforma: "(plataforma) El paquete del país no tiene número de emergencias."}}
+  qa_truth: "Riesgo declarado → EXT con el número del pack como primera frase."
+  owner_decision: E16
+
+- id: CORE.SAFETY.FORBIDDEN_TOPICS
+  title: Temas que el negocio no quiere que el agente trate
+  kind: policy
+  applies_when: always
+  answers: [T09]
+  exposure: always_in_context
+  data:
+    name: safety.forbidden_topics
+    type: list
+    structure: "lista de {topic, response: enum [rechazo_breve, derivar]} o vacío confirmado"
+    validation: ["no contradice FAQs publicadas"]
+    example: [{topic: "competencia", response: rechazo_breve}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: HUM, behavior: "Solo aplica la política general de fuera de alcance (T09)."}
+  sources: {allowed: [owner_form]}
+  collection: {channels: [form], ui_today: /admin/agent, storage_today: "persona config (rules, texto libre)", storage_status: parcial}
+  readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "¿Hay temas que el agente no debe tratar?"}
+  qa_truth: "T09 y temas listados → rechazo breve y redirección."
+
+- id: CORE.KNOWLEDGE.FAQ_HYGIENE
+  title: FAQs con dato, editadas y sin duplicar campos
+  kind: knowledge
+  applies_when: always
+  answers: [C24, C17, P08-5, P08-8, P07-9]
+  exposure: read_on_intent
+  data:
+    name: knowledge.faqs
+    type: list
+    structure: "faq {question, answer, lang, status, covers?: ref requisito}"
+    validation: ["respuesta con al menos un dato verificable (no patrón de desvío)", "no es plantilla de otro perfil (p. ej. FAQ de agencia en hotel, de reserva de mesa en P02)", "si covers un requisito con campos, no lo contradice", "no promete un efecto sin procedimiento que lo respalde ('te conecto YA', 'puedo reservar tu mesa' sin objeto habilitado)", "no contradice las instrucciones del agente (CORE.KNOWLEDGE.AGENT_INSTRUCTIONS)"]
+    example: {question: "¿Qué llevo a mi primera cita?", answer: "Documento de identidad y carné de tu seguro, si tienes.", status: confirmado}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "FAQ sembrada o sin dato: no se publica ni se usa como respuesta."}
+  sources: {allowed: [owner_form, copilot_approved, import]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/knowledge/faqs, storage_today: "faqs (sin marca de sembrado ni de dato; 2/3 hoy sin dato)", storage_status: parcial}
+  readiness: {predicate_kind: custom, predicate: "ninguno(faqs publicadas con estado sembrado-sin-editar o sin dato o de perfil ajeno)", gap_message: "{n} preguntas frecuentes son de plantilla y no dicen nada; complétalas o elimínalas."}
+  qa_truth: "Una FAQ solo es verdad QA si está confirmada y con dato; las de plantilla no generan casos."
+
+- id: CORE.KNOWLEDGE.SOURCES
+  title: Web y documentos del negocio para el copiloto y el conocimiento narrativo
+  kind: knowledge
+  applies_when: always
+  answers: [P08-8, P09-8, P12-3, P16-7, P23-5, P24-6]
+  exposure: read_on_intent
+  data:
+    name: knowledge.documents
+    type: list
+    structure: "lista de {url|archivo, lang, last_ingested_at, status}"
+    validation: ["accesible", "reingesta ≤ 90 días"]
+    example: [{url: "https://sonrisa.co", lang: es}]
+  criticality: {level: recomendado, rule: R5}
+  when_missing: {code: NC+AV, behavior: "Sin documentos, el conocimiento narrativo cae a NC+AV."}
+  sources: {allowed: [owner_form, integration]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/knowledge, storage_today: "knowledge_documents/embeddings, knowledge_resources (knowledge_chunks muerta)", storage_status: existe}
+  readiness: {predicate_kind: custom, predicate: "cuenta(documentos accesibles y no caducados) ≥ 1 o vacío confirmado ('no tengo web ni documentos')", gap_message: "Sube tu web o documentos para que el copiloto te proponga datos."}
+  qa_truth: "Solo fragmentos de documentos confirmados son verdad QA, y siempre por debajo de los campos."
+
+- id: CORE.KNOWLEDGE.AGENT_INSTRUCTIONS
+  title: Instrucciones del agente coherentes con los datos (reglas, temas, disparadores)
+  kind: knowledge
+  applies_when: always
+  answers: [T01, T09, C29, C30]
+  exposure: platform_only
+  data:
+    name: knowledge.agent_instructions
+    type: list
+    structure: "persona.config.behavior.{rules[], forbiddenTopics[], handoffTriggers[]} + afterHoursMessage, cada ítem con {text, origin: plantilla|dueño, status, requires?: ref requisito}"
+    validation: ["ninguna regla afirma o promete un dato o efecto que no respalde un requisito que cumple ('da número de guardia' sin línea propia, 'ofrece promociones vigentes' sin promociones, 'confirma tiempo de entrega' sin eta)", "no contradice FAQs ni campos (p. ej. 'nunca pidas documento' frente a una FAQ que lo pide)", "sin duplicados"]
+    example: {rules: [{text: "Para urgencias fuera de horario, da la línea de guardia", requires: DOM.HEALTH.EMERGENCY_PROTOCOL}]}
+  criticality: {level: necesario, rule: R4}
+  when_missing: {code: NC+AV, behavior: "Una regla cuyo dato no existe se desactiva en el turno (no se le pasa al modelo) y genera GAP.", never: ["inventar el dato que la regla presupone (número de guardia, promoción, tiempo de entrega)"]}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form], ui_today: /admin/agent, storage_today: "agent_personas.config_json.behavior (sembrado desde agent_templates por template_id; sin procedencia por campo)", storage_status: parcial}
+  readiness:
+    predicate_kind: custom
+    predicate: "ninguno(instrucciones activas cuyo requires no cumple) y ninguno(instrucciones que contradicen un valor confirmado)"
+    gap_message: "{n} instrucciones de tu agente prometen algo que no está cargado ({lista}); complétalo o quítalas."
+  qa_truth: "Una instrucción sin respaldo no cambia la respuesta esperada: manda el when_missing del requisito que presupone."
+  notes: "Nuevo en v0.2 (validación dental/comida: la persona de plantilla pedía dar un número de guardia inexistente y ofrecer promociones inexistentes)."

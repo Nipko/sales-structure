@@ -55,6 +55,14 @@ integration('Knowledge attribution on real PostgreSQL', () => {
             `CREATE TABLE kb_unanswered_queries(id UUID DEFAULT gen_random_uuid() PRIMARY KEY,query TEXT,query_hash TEXT,occurrences INT,
                 last_seen_at TIMESTAMP,resolved BOOLEAN DEFAULT false)`,
             `CREATE UNIQUE INDEX kb_test_unanswered ON kb_unanswered_queries(query_hash) WHERE resolved=false`,
+            `CREATE TABLE pending_questions(id UUID DEFAULT gen_random_uuid() PRIMARY KEY,requirement_id TEXT,item_ref TEXT,intent_id TEXT,
+                topic_key TEXT NOT NULL,sample_question TEXT NOT NULL,sample_conversation_id UUID,language TEXT,source TEXT NOT NULL DEFAULT 'agent',
+                status TEXT NOT NULL DEFAULT 'gap',occurrences INT NOT NULL DEFAULT 1,waiters_count INT NOT NULL DEFAULT 0,
+                first_seen_at TIMESTAMPTZ DEFAULT clock_timestamp(),last_seen_at TIMESTAMPTZ DEFAULT clock_timestamp(),
+                updated_at TIMESTAMPTZ DEFAULT clock_timestamp())`,
+            `CREATE UNIQUE INDEX pq_test_open ON pending_questions(topic_key) WHERE status IN ('gap','open')`,
+            `CREATE TABLE pending_question_waiters(id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                pending_question_id UUID NOT NULL REFERENCES pending_questions(id) ON DELETE CASCADE,conversation_id UUID NOT NULL,contact_id UUID)`,
         ]) await execute(statement);
         prisma = {
             executeInTenantSchema: async (name: string, sql: string, params: any[] = []) => {
@@ -74,7 +82,7 @@ integration('Knowledge attribution on real PostgreSQL', () => {
     });
 
     beforeEach(async () => {
-        await execute(`TRUNCATE contacts,conversations,messages,knowledge_documents,kb_retrieval_log,kb_unanswered_queries,
+        await execute(`TRUNCATE contacts,conversations,messages,knowledge_documents,kb_retrieval_log,kb_unanswered_queries,pending_questions,
             kb_feedback,customer_memory_erasure,contact_identities,customer_memory_facts,customer_memories CASCADE`);
         await execute(`INSERT INTO contacts(id) VALUES ($1::uuid)`, [contactId]);
         await execute(`INSERT INTO conversations(id,contact_id) VALUES ($1::uuid,$2::uuid),($3::uuid,$2::uuid)`, [conversationId, contactId, otherConversationId]);
@@ -126,6 +134,8 @@ integration('Knowledge attribution on real PostgreSQL', () => {
         await (compliance as any).eraseCustomerMemory(schema, contactId, tenantId);
         expect(await execute(`SELECT id FROM kb_retrieval_log`)).toEqual([]);
         expect(await execute(`SELECT id FROM kb_unanswered_queries`)).toEqual([]);
+        expect(await execute(`SELECT sample_question, sample_conversation_id FROM pending_questions`))
+            .toEqual([{ sample_question: '[borrado]', sample_conversation_id: null }]);
         expect(await execute(`SELECT query,comment,message_id FROM kb_feedback`)).toEqual([{ query: null, comment: null, message_id: null }]);
         await track([result]);
         expect((await service.recordResponseAttribution(tenantId, conversationId, '[Article: Conditions]', [source])).persistence).toBe('contact_erased');

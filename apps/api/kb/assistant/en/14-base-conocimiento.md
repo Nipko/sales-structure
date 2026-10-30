@@ -73,10 +73,10 @@ FAQs are question-and-answer pairs the agent uses to give exact replies, word fo
 - To edit: in **Library**, click the document's **edit** button (pencil) and change its name, content or category. Save with **Save changes**.
 - Every edit creates a new version. With the **Version history** button (clock icon) you can view earlier versions and click **Restore** to go back to one of them.
 
-## Quality and AI suggestions
+## Quality
 
 - On the **Quality** tab, each document gets a score from 0 to 100 based on its content, whether it has a category, how often it's queried and how relevant it is in replies. Start by improving the ones in red.
-- On the **Analytics** tab, the **Article suggestions (AI)** section analyzes the questions your customers asked that the agent couldn't answer, and proposes new articles with an outline. Click **Generate suggestions** and then **Create** on the one you want to write.
+- What the agent could not answer no longer sits in a list: it goes to **Readiness → Pending knowledge**, where you answer it once or save it as data, and the customer who was waiting gets the reply.
 
 ## Analytics: what's queried and what's missing
 
@@ -84,13 +84,13 @@ When enabled, the **Analytics** tab shows:
 
 - **Unique queries**, **hit rate** and the daily volume of the agent's searches in your knowledge base.
 - **Most queried documents** — your star content.
-- **Unanswered questions** — what customers asked that the agent couldn't find. From there you can **create an article** with one click or mark them as **Resolve**.
+- **Unanswered questions** — now handled in **Readiness → Pending knowledge** (the link is right there).
 
 ## Gaps: find the holes in your content
 
 The **Gaps** tab organizes what needs your attention:
 
-- **Unanswered queries** — create an article or FAQ that covers them.
+- **Unanswered questions** — handled in **Readiness → Pending knowledge**.
 - **Low satisfaction docs** — articles that got negative reactions from your team in the inbox; review and improve them.
 - **Outdated docs** — content that hasn't changed in a long time (prices and policies tend to go stale).
 
@@ -117,7 +117,7 @@ When a customer asks something, the agent searches your documents and FAQs for t
 ## Frequently asked questions
 
 **The agent replies "I don't have that information", what do I do?**
-That's a sign content is missing. Type the same question in **Search in context**: if there are no results, create an article or FAQ that covers it. Also check **Analytics → Unanswered questions**, where that query was logged.
+That's a sign content is missing. Type the same question in **Search in context**: if there are no results, create an article or FAQ that covers it. Also check **Readiness → Pending knowledge**, where that question was recorded and you can answer it.
 
 **Can I import my entire website?**
 You can import page by page with **Import URL** up to the limit shown on screen. Start with your highest-value pages: FAQs, pricing, and policies.

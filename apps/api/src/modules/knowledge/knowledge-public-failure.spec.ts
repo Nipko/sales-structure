@@ -50,31 +50,3 @@ describe('public knowledge availability is not confused with empty content', () 
         await expect(service.getPublicArticle('store', 'shipping')).rejects.toThrow('public_knowledge_unavailable');
     });
 });
-
-describe('knowledge suggestions redact provider failures', () => {
-    it('returns a localized closed error instead of provider credentials or request text', async () => {
-        const service = Object.create(KnowledgeService.prototype) as KnowledgeService;
-        const prisma = {
-            executeInTenantSchema: jest.fn()
-                .mockResolvedValueOnce([{ query: 'precio', occurrences: 2 }])
-                .mockResolvedValueOnce([]),
-        };
-        Object.assign(service as any, {
-            prisma,
-            logger: { error: jest.fn(), warn: jest.fn(), log: jest.fn() },
-            tenantSchema: jest.fn().mockResolvedValue('tenant_secret'),
-            getTenantLanguage: jest.fn().mockResolvedValue('es'),
-            ensureOpenAI: jest.fn().mockRejectedValue(
-                new Error('Authorization Bearer sk-private SELECT tenant_secret'),
-            ),
-        });
-
-        const result = await service.generateArticleSuggestions('tenant-id');
-
-        expect(result).toMatchObject({
-            suggestions: [],
-            error: 'suggestions_unavailable',
-        });
-        expect(JSON.stringify(result)).not.toMatch(/sk-private|tenant_secret|Authorization Bearer/);
-    });
-});

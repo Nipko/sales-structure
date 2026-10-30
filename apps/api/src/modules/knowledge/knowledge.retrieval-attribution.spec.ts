@@ -19,6 +19,7 @@ function fixture(){
         if(sql.includes('SELECT pg_advisory_xact_lock_shared')&&!sql.includes(')::text'))
             throw new Error("Failed to deserialize column of type 'void'");
         if(sql.includes('SELECT c.id FROM conversations'))return state.erased?[]:[{id:conversationId}];
+        if(sql.includes("to_regclass('pending_questions')"))return [{t:'pending_questions'}];
         if(sql.includes('INSERT INTO kb_retrieval_log'))state.rows.push(...JSON.parse(params[0]).map((row:any)=>({...row,was_used:false,conversation_id:params[2]})));
         if(sql.includes('UPDATE kb_retrieval_log')){
             const changed:any[]=[];
@@ -92,7 +93,7 @@ describe('Retrieval and final response persistence',()=>{
     it('stores a conversation gap sentinel without claiming use',async()=>{
         const f=fixture();await f.track(null);
         expect(f.state.rows).toEqual([expect.objectContaining({document_id:null,relevance_passed:false,was_used:false,conversation_id:conversationId})]);
-        expect(f.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO kb_unanswered_queries'))).toBe(true);
+        expect(f.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO pending_questions'))).toBe(true);
     });
     it('relevance and final-response evidence are independent',async()=>{
         const f=fixture();await f.track();
@@ -124,7 +125,7 @@ describe('Retrieval and final response persistence',()=>{
     it('erasure blocks late retrieval, attribution and feedback under the shared privacy lock',async()=>{
         const f=fixture();f.state.erased=true;await f.track();
         expect(f.state.rows).toEqual([]);
-        expect(f.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO kb_unanswered_queries'))).toBe(false);
+        expect(f.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO pending_questions'))).toBe(false);
         expect((await f.service.recordResponseAttribution(tenantId,conversationId,'[Article: Devoluciones]',[item])).persistence).toBe('contact_erased');
         await expect(f.service.submitFeedback(tenantId,{conversationId,rating:1,comment:'private'})).rejects.toThrow('knowledge_feedback_conversation_unavailable');
         expect(f.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO kb_feedback'))).toBe(false);

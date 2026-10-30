@@ -23,6 +23,11 @@ export interface ValueWriteInput {
     status: StoredStatus;
     origin: string;
     scopeKey?: string;
+    /**
+     * Valor guardado hoy en el mismo alcance, si lo hay. Lo usa la lista cerrada de `WRITE_MODE.required_fields` (R4):
+     * un campo libre que ya estaba guardado (la lista era abierta hasta R3) se sigue aceptando; uno nuevo, no.
+     */
+    previous?: unknown;
 }
 
 /** Tamaño máximo del valor serializado: un valor de negocio no es un documento. */
@@ -48,6 +53,15 @@ const closedList = (s: string): string[] | null => {
     if (/…|\.\.\./.test(s)) return null;
     return s.split(',').map(x => x.trim()).filter(Boolean);
 };
+
+/** Campos fuera del diccionario del objeto en `OBJ.<X>.WRITE_MODE.required_fields` (sin contar los ya guardados). */
+export function requiredFieldsOutsideDictionary(spec: CompiledSpec, requirementId: string, value: unknown, previous?: unknown): string[] {
+    const req = spec.requirements[requirementId];
+    if (!req || req.templateId !== 'OBJ.*.WRITE_MODE' || !req.object || !isPlainObject(value) || !Array.isArray(value.required_fields)) return [];
+    const allowed = new Set(spec.objects[req.object]?.customerFields ?? []);
+    const kept = new Set(isPlainObject(previous) && Array.isArray(previous.required_fields) ? previous.required_fields.map(String) : []);
+    return value.required_fields.map(String).filter(f => !allowed.has(f) && !kept.has(f));
+}
 
 /** ¿Se guarda en `requirement_values`? Los catálogos viven en sus tablas y los derivados no los escribe nadie. */
 export function isValueRequirement(req: CompiledRequirement): boolean {
@@ -151,6 +165,10 @@ export function validateRequirementValue(spec: CompiledSpec, requirementId: stri
         for (const [key, desc] of fields) {
             if (/^requerido\b/.test(desc.trim()) && blank(v[key])) issues.push({ path: key, code: 'required', message: `falta ${key}` });
             checkField(key, desc, v[key], issues);
+        }
+        const outside = requiredFieldsOutsideDictionary(spec, requirementId, v, input.previous);
+        if (outside.length) {
+            issues.push({ path: 'required_fields', code: 'enum', message: `required_fields: fuera del diccionario de ${req.object} (${outside.join(', ')})` });
         }
     } else if (!Array.isArray(v) && !isPlainObject(v)) {
         issues.push({ path: '', code: 'shape', message: `el valor de ${requirementId} es una lista (o [] confirmado)` });

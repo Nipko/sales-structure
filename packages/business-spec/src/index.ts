@@ -30,7 +30,7 @@ export {
 export type {
     FactSources, OwnerFact, RuntimeDay, RuntimeBusinessHours, RuntimePolicy, NotOfferedEntry, IdentityOverlay, LegacyPatch, LegacyProjection,
 } from './business-facts';
-export { validateRequirementValue, isValueRequirement, isIsoDuration, unionOptions, MAX_VALUE_BYTES } from './validate-value';
+export { validateRequirementValue, requiredFieldsOutsideDictionary, isValueRequirement, isIsoDuration, unionOptions, MAX_VALUE_BYTES } from './validate-value';
 export type { ValueIssue, ValueWriteInput } from './validate-value';
 export { planProvenanceBackfill, applyBackfillPlan } from './backfill';
 export type { BackfillPlan, PlannedValue, PlannedRow, SkippedValue } from './backfill';
@@ -39,6 +39,10 @@ export { evaluate, gapMessageFor } from './engine/evaluate';
 export { CUSTOM_EVALUATORS, CUSTOM_EVALUATOR_IDS, GENERIC_EVALUATORS } from './engine/evaluators';
 export { qaTruth, requirementsForIntent, itemFieldState, COMMON_NEVER } from './qa/truth';
 export type { QaTruth, QaTruthCase, QaTruthQuery, ExpectedCode } from './qa/truth';
+export { buildTurnContract, renderKnowledgeStatus, compactValue, TURN_CONTRACT_SCHEMA } from './contract/turn';
+export type {
+    TurnKnowledgeContract, TurnContractFact, TurnContractUnknown, TurnContractOptions, KnowledgeState, ObjectWriteMode, RenderKnowledgeStatusOptions,
+} from './contract/turn';
 export { renderReportMarkdown, renderTenantMarkdown, renderSummaryMarkdown } from './report';
 export { generateRequirementsDoc } from './docs';
 export { canonicalJson, sha256, hashOf } from './hash';

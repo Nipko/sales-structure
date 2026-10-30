@@ -91,6 +91,11 @@ export interface ObjectDef {
     availabilityKinds: string[];
     defaultWriteMode: 'direct_commit' | 'request_to_business' | 'none';
     defaultIdentity: string;
+    /**
+     * Diccionario CERRADO de lo que el negocio puede pedir al cliente para este objeto (`customer_fields_common` +
+     * `customer_fields` del objeto, R4): `OBJ.<X>.WRITE_MODE.required_fields` ⊆ esta lista.
+     */
+    customerFields: string[];
     availabilityDefault?: { source: string; field?: string; gap_message?: string };
 }
 

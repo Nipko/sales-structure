@@ -44,4 +44,20 @@ describe('F4300-47 · a quantity of the catalogue product gets its total', () =>
     it('the unit price said as the unit price stays', () => {
         expect(quantityTotalNote('Cada Audífono QA Aurora cuesta 119.900 COP; tenemos 2.', '¿y si me llevo 2?', CATALOG, 'es')).toBeNull();
     });
+
+    // Production QA 29/30-oct (travel, three times): «¿qué incluye exactamente ese tour de 4 horas?» → «Por 4 unidades serían 500 EUR».
+    it.each([
+        ['es', 'Sí, por favor dime qué incluye exactamente ese tour de 4 horas.'],
+        ['en', "What's included in that 4-hour tour?"],
+        ['fr', 'Que comprend ce tour de 4 heures ?'],
+    ])('[%s] a duration is not a quantity of units', (lang, ask) => {
+        const TOUR = [{ title: 'Spark QA Tour 20261018T2140Z', price: 125, currency: 'EUR' }];
+        expect(quantityTotalNote('El Spark QA Tour 20261018T2140Z dura 4 horas. ¿Desea más información?', ask, TOUR, lang)).toBeNull();
+    });
+
+    it('a quantity next to a duration still counts («2 tours de 4 horas»)', () => {
+        const TOUR = [{ title: 'Spark QA Tour 20261018T2140Z', price: 125, currency: 'EUR' }];
+        expect(spaced(quantityTotalNote('El Spark QA Tour 20261018T2140Z dura 4 horas. ¿Desea reservar?', '¿y 2 cupos del Spark QA Tour de 4 horas?', TOUR, 'es')))
+            .toContain('Por 2 unidades serían 250 EUR (2 × 125 EUR).');
+    });
 });

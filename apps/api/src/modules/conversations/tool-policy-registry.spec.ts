@@ -44,7 +44,8 @@ describe('canonical AI tool policy registry', () => {
     // + five workshop tools over the canonical repair_order object: intake,
     // owned list/detail, exact estimate decision and owner-scoped cancellation.
     // + owned class-booking reader for cross-conversation cancellation.
-    const STATIC_TOOL_COUNT = 123;
+    // + register_pending_question (R5, ADR 0011): «lo averiguo» as a real action.
+    const STATIC_TOOL_COUNT = 124;
 
     it('covers exactly the definitions, executor branches and policies with no drift', () => {
         const expected = [...new Set(definitionNames)].sort();
@@ -79,6 +80,8 @@ describe('canonical AI tool policy registry', () => {
             'triage_pet_emergency',
             'check_policy_status',
             'list_my_claims',
+            // R5: writes the pending-knowledge queue only with persistence; Agent Test and eval run it dry.
+            'register_pending_question',
         ]);
 
         expect(safe.length).toBeGreaterThan(0);

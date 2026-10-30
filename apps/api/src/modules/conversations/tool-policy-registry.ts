@@ -202,6 +202,23 @@ const TOOL_POLICY_ENTRIES = [
     })),
     entry('list_customer_orders', contactRead({ agentTestAllowed: true })),
     entry('get_customer_context', sensitiveRead({ agentTestAllowed: true })),
+    // «Lo averiguo» (R5, ADR 0011): deja la pregunta en la bandeja del dueño y la
+    // espera de esta conversación. NO compromete al negocio —promete una
+    // respuesta, no un precio ni una reserva—, así que sobrevive a un perfil
+    // bloqueado, que es justo el que más pregunta sin poder cerrar. Idempotente
+    // por (tema, conversación): repetirla no agrega otra espera. En Agent Test y
+    // en la evaluación corre en seco (persistencia apagada): no escribe la cola
+    // ni avisa a nadie, y devuelve lo mismo que en producción: por eso es
+    // `conditional_write` (escribe solo con persistencia), como las lecturas que
+    // preparan su tabla, y no un writer de negocio que deje un objeto operativo.
+    entry('register_pending_question', contactWrite({
+        effect: 'conditional_write',
+        confirmation: 'not_required',
+        idempotency: 'deterministic',
+        downstreamEffects: ['notification'],
+        agentTestAllowed: true,
+        commitsBusiness: false,
+    })),
 
     // ── CRM: lo que el agente aprende y antes no anotaba ──────────────
     //

@@ -22,6 +22,8 @@ export const EVALUATION_TOOL_READ_GROUPS: readonly EvaluationToolReadGroup[] = [
     group(['list_my_catalog_orders','get_catalog_order'], ['CatalogOrderCommands.listOwned/getOwned'], ['orders','order_items','contacts','customer_memory_erasure']),
     group(['list_active_offers'], ['AIToolExecutor.listActiveOffers'], ['commercial_offers','courses'], ['wall_clock']),
     group(['search_faqs'], ['FaqsService.search/structuredKnowledgeRelation'], ['faqs'], ['sealed_eligible_collection','PostgreSQL_recordset_search']),
+    // R5 (ADR 0011): with persistence off it answers from its arguments alone (dry run); it reads and writes nothing.
+    group(['register_pending_question'], ['AIToolExecutor.registerPendingQuestion(dryRun)'], []),
     group(['get_policy'], ['BusinessFactsReader.policy','PoliciesService.getActive/structuredKnowledgeRelation'], ['policies','requirement_values'], ['sealed_eligible_collection','PostgreSQL_recordset_query']),
     group(['search_knowledge_base'], ['KnowledgeService.tenantHasKnowledge/searchRelevant','KnowledgeConflictService.annotations'],
         ['knowledge_documents','knowledge_embeddings','knowledge_conflict_cases','knowledge_conflict_decisions'],

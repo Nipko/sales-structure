@@ -13,7 +13,7 @@ import { evaluationNamespaceTimezone } from '../simulation/eval-temporal-context
 import { RepairOrderTerms, RepairTermsChangedError, repairRequestHash, repairTermsReviewResult, repairActionErrorResult } from '../repair-orders/repair-order-terms';
 import { catalogHash, catalogActionError, catalogTermsReviewResult } from '../orders/catalog-order-contract';
 import { shortReference, withShortReference } from './transition-engine';
-import { BadRequestException, ConflictException, Injectable, Logger, Optional } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -68,6 +68,7 @@ import { absoluteMediaUrl } from '../../common/utils/media-url.util';
 import { ChatIdentityService } from './chat-identity.service';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { persistenceDisabled } from '../../common/types/execution-context';
+import { PENDING_QUESTIONS, type PendingQuestionsPort } from './pending-questions.port';
 import {
     agentTestBlockedToolResult,
     canEvalExecuteWriter,
@@ -214,6 +215,11 @@ export class AIToolExecutorService {
          * only falls back to the `policies` table when there is none. Absent in hand-built specs: `policies`, as before.
          */
         @Optional() private readonly businessFacts?: BusinessFactsReader,
+        /**
+         * R5 (ADR 0011): `register_pending_question` records the customer's wait in the pending-knowledge queue. A
+         * token, not the class (pending-questions.port.ts). Absent in hand-built specs: the tool answers unavailable.
+         */
+        @Optional() @Inject(PENDING_QUESTIONS) private readonly pendingQuestions?: PendingQuestionsPort,
     ) { }
 
     /**
@@ -867,6 +873,13 @@ export class AIToolExecutorService {
                         tenantId, args.query, args.limit, opts?.executionContext, opts?.jurisdiction,
                         opts?.knowledgeSearch, conversationId,opts?.withDataSourceAuthority,
                     );
+
+                case 'register_pending_question':
+                    // Dry run whenever persistence is off (Agent Test, the eval gate, a draft): same answer as production,
+                    // no row and no notice. The waiter only exists for a real conversation.
+                    return this.registerPendingQuestion(tenantId, contactId, conversationId, args,
+                        opts?.readOnly === true || persistenceDisabled(opts?.executionContext) || opts?.executionContext?.mode === 'draft'
+                        || opts?.evalMode === true || !!canonicalSandbox);
 
                 case 'list_customer_orders':
                     return this.listCustomerOrders(schemaName, contactId, args.limit, args.status);
@@ -3004,6 +3017,43 @@ export class AIToolExecutorService {
         if (rejectedByKind[kind].includes(normalizedResourceStatus)) return null;
 
         return `${kind}:${id}`;
+    }
+
+    // ── «Lo averiguo» (R5, ADR 0011) ─────────────────────────────
+
+    /**
+     * The customer accepted that the team finds out: record the question with this conversation's wait. `dryRun`
+     * (Agent Test, eval, drafts) answers exactly like production and writes nothing, so a test conversation can never
+     * end up waiting for (or receiving) an answer.
+     */
+    private async registerPendingQuestion(tenantId: string, contactId: string, conversationId: string | undefined,
+        args: Record<string, any>, dryRun: boolean): Promise<Record<string, unknown>> {
+        const question = String(args?.question ?? '').replace(/\s+/g, ' ').trim().slice(0, 500);
+        if (!question) return { success: false, error: 'question_required', message: 'Falta la pregunta del cliente.' };
+        const requirementId = typeof args?.requirementId === 'string' ? args.requirementId.trim() : null;
+        const language = ['es', 'en', 'pt', 'fr'].includes(String(args?.language)) ? String(args.language) : null;
+        if (dryRun) {
+            return { success: true, recorded: true, simulated: true, persisted: false, status: 'open', expectedWithinHours: null,
+                note: 'The team will answer and the customer will get the reply in this conversation.' };
+        }
+        if (!this.pendingQuestions) {
+            return { success: false, error: 'pending_questions_unavailable', message: 'No se pudo registrar la consulta; ofrece una persona del equipo.' };
+        }
+        if (!conversationId) return { success: false, error: 'conversation_required', message: 'La consulta necesita una conversación.' };
+        try {
+            const result = await this.pendingQuestions.acceptWait(tenantId, {
+                question, requirementId, conversationId, contactId, language,
+            });
+            const hours = result.slaDueAt ? Math.max(1, Math.ceil((new Date(result.slaDueAt).getTime() - Date.now()) / 3_600_000)) : null;
+            return {
+                success: true, recorded: true, persisted: true, status: result.status, alreadyWaiting: result.alreadyWaiting,
+                expectedWithinHours: hours,
+                note: 'The team will answer and the customer will get the reply in this conversation.',
+            };
+        } catch (error: any) {
+            this.logger.warn(`[PendingQuestion] not recorded for ${tenantId}: ${error?.message}`);
+            return { success: false, error: 'pending_question_not_recorded', message: 'No se pudo registrar la consulta; ofrece una persona del equipo.' };
+        }
     }
 
     // ── Knowledge tools ─────────────────────────────

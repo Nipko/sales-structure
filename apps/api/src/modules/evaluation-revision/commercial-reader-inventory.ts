@@ -135,6 +135,8 @@ export const COMMERCIAL_GROUP_DIMENSIONS: Readonly<Record<string, readonly Comme
     list_pets_for_contact: [],
     /** A CRM stage. It reports where a deal is, and decides nothing about it. */
     get_case_status: [],
+    /** «Lo averiguo» (R5): in an evaluation it answers from its own arguments and promises a reply, not a price. */
+    register_pending_question: [],
 });
 
 export type OutsideAuthorityKind =

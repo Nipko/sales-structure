@@ -146,6 +146,7 @@ import { VerticalIntegrationsService } from '../vertical-integrations/vertical-i
 import { McpClientService } from '../mcp/mcp-client.service';
 import { AttributionService } from '../attribution/attribution.service';
 import { identityStepUpToolNames, identityStepUpToolsFor } from './identity-step-up-registration';
+import { REGISTER_PENDING_QUESTION_TOOL } from './tools/pending-question-tools';
 import { BookingEngineService, invalidateBookingProposal, type BookingState } from './booking-engine.service';
 import { arbitrateMissionFocus, missionDialogue, toolMissionAliases, missionToolAllowed, toolMissionDomain, type MissionCandidate, type MissionFocusDecision } from './mission-focus';
 import { MissionFocusStore } from './mission-focus-store';
@@ -4879,6 +4880,8 @@ export class ConversationsService {
             for (const name of identityStepUpToolNames()) {
                 if (tools.some(t => t?.name === name)) pinned.add(name);
             }
+            // «Lo averiguo» (R5): the customer accepts with a bare "sí", which matches nothing either.
+            if (tools.some(t => t?.name === REGISTER_PENDING_QUESTION_TOOL.name)) pinned.add(String(REGISTER_PENDING_QUESTION_TOOL.name));
             tools = this.toolRetrieval.retrieveRelevantTools(
                 retrievalQuery, tools, 10, pinned,
                 capability.contract?.domainContract?.intents?.map(intent => intent.toolPlan) ?? [],

@@ -185,10 +185,10 @@ describe('terminology in the assembled turn', () => {
     });
 
     /**
-     * El set dorado mide que el agente rechace lo que su perfil declara que no
-     * hace. Hasta acá **nada se lo decía**: se medía al modelo adivinando.
+     * R3b (D9): `<not_offered>` es lo que el NEGOCIO declaró (CORE.OFFER.NOT_OFFERED, BusinessFactsReader); el
+     * ensamblador solo lo pinta.
      */
-    it('carries the profile declared limits into the prompt', () => {
+    it('carries the business declared limits into the prompt', () => {
         const prompt = assembler.assemble(config, {
             verticalContext: {
                 industry: 'salud',
@@ -207,6 +207,9 @@ describe('terminology in the assembled turn', () => {
         // La parte que evita el peor error: tener la tool no es tener permiso.
         expect(contract).toContain('the limit is about the business, not about your tools');
         expect(contract).toContain('pass them to a person');
+        // R3b: lo que no está en la lista ni en el catálogo no es un límite declarado
+        expect(contract).toContain('itself declared');
+        expect(contract).toContain('is not a declared limit');
     });
 
     /** Sin términos propios el bloque no aparece: nada vacío que el modelo interprete. */

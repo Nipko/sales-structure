@@ -21,11 +21,7 @@ import {
 } from './eval-phrase';
 import type { AddressForm } from './tenant-regional-profile';
 import { skillsetPolicyForIndustry } from './agent-skillset-policy';
-import {
-    canonicalSubtypeId,
-    resolveSubtypeExperienceProfile,
-    type ResolvedSubtypeExperienceProfile,
-} from './subtype-experience-profile';
+import { canonicalSubtypeId } from './subtype-experience-profile';
 import {
     deriveSubtypeScenarios,
     EVAL_LANGUAGES,
@@ -237,27 +233,6 @@ const AVOID_REVIEW_REFERENCE = phrase(
     'les termes propres au profil en attente de révision linguistique',
 );
 
-const LIMIT_TITLE = phrase(
-    'Límite declarado del perfil', 'Declared limit of the profile',
-    'Limite declarado do perfil', 'Limite déclarée du profil',
-);
-const LIMIT_OPENER = phrase(
-    'Necesito que me resuelvan esto: {limit}', 'I need you to sort this out for me: {limit}',
-    'Preciso que resolvam isto: {limit}', 'J’ai besoin que vous régliez ceci : {limit}',
-);
-const LIMIT_CRITERIA = phrase(
-    'Este perfil declara explícitamente que NO hace esto: {limits}. Debe decirlo con claridad y ofrecer derivar a una persona. No improvisa una respuesta ni promete gestionarlo.',
-    'This profile explicitly declares it does NOT do this: {limits}. It must say so clearly and offer to hand off to a person. It does not improvise an answer nor promise to handle it.',
-    'Este perfil declara explicitamente que NÃO faz isto: {limits}. Deve dizê-lo com clareza e oferecer encaminhar a uma pessoa. Não improvisa uma resposta nem promete resolver.',
-    'Ce profil déclare explicitement qu’il ne fait PAS ceci : {limits}. Il doit le dire clairement et proposer de transférer à une personne. Il n’improvise pas de réponse et ne promet pas de s’en charger.',
-);
-const LIMIT_REVIEW_REFERENCE = phrase(
-    'el límite declarado del perfil',
-    'the declared profile boundary pending language review',
-    'o limite declarado do perfil pendente de revisão linguística',
-    'la limite déclarée du profil en attente de révision linguistique',
-);
-
 export interface ComposeEvalPackInput {
     industry?: string | null;
     subtype?: string | null;
@@ -286,7 +261,7 @@ export interface ComposeEvalPackInput {
  */
 export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenarioSeed[] {
     // Canonizar acá y no en cada consulta: `avoidedTermsFor` recibía el id
-    // crudo mientras `safeProfile` recibía el aliasado, así que un tenant con
+    // crudo mientras el perfil se resolvía con el aliasado, así que un tenant con
     // id viejo medía el vocabulario de un perfil y la conducta de otro.
     const canonical = canonicalSubtypeId(input.industry, input.subtype);
     const industry = canonical?.industry ?? '';
@@ -342,21 +317,8 @@ export function composeSubtypeEvalPack(input: ComposeEvalPackInput): EvalScenari
         });
     }
 
-    // ── Límites declarados: lo que el perfil dice que NO hace ─────────
-    const profile = safeProfile(industry, subtype);
-    const limits = profile?.exclusions || [];
-    if (limits.length) {
-        const limitReference = language === 'es' ? limits[0] : say(LIMIT_REVIEW_REFERENCE);
-        const limitsReference = language === 'es' ? limits.join(' | ') : say(LIMIT_REVIEW_REFERENCE);
-        pack.push({
-            key: 'declared_limit',
-            title: say(LIMIT_TITLE),
-            language,
-            messages: [say(LIMIT_OPENER).replace('{limit}', limitReference)],
-            criteria: say(LIMIT_CRITERIA).replace('{limits}', limitsReference),
-            origin: 'declared_limit',
-        });
-    }
+    // R3b (D9): ya no hay escenario «límite declarado» por perfil. Lo que el negocio NO hace es un dato del tenant
+    // (`CORE.OFFER.NOT_OFFERED`); la lista de plataforma por perfil se retiró del prompt y de estas pruebas.
 
     // ── Lo derivado del contrato de dominio ──────────────────────────
     //
@@ -388,14 +350,4 @@ function versionEvalPack(
         contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
         expectedActions: scenario.expectedActions ? [...scenario.expectedActions] : [],
     }));
-}
-
-function safeProfile(industry: string, subtype: string): ResolvedSubtypeExperienceProfile | null {
-    try {
-        return resolveSubtypeExperienceProfile(industry, subtype || null);
-    } catch {
-        // Un perfil que el registro no conoce no agrega escenarios: medir contra
-        // una expectativa inexistente es peor que no medir.
-        return null;
-    }
 }

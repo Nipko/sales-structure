@@ -76,10 +76,17 @@ describe('catalogue over FAQ: the reply', () => {
     it('«Sí, ofrecemos tratamiento de ortodoncia» is a claim; the not-offered answer lists the catalogue', () => {
         const claimed = offerClaimForAbsent('Sí, ofrecemos tratamiento de ortodoncia. Generalmente dura entre 12 y 24 meses.', absent, DENTAL);
         expect(claimed?.key).toBe('ortodoncia');
+        // R3b (D9): absent from the catalogue is «no lo veo», never «no lo hacemos»
         expect(notOfferedReply(claimed!, DENTAL, 'es', 'usted')).toBe(
-            'Por ahora no ofrecemos tratamiento de ortodoncia: no está entre nuestros servicios. Los servicios que ofrecemos son Consulta general, Consulta especializada y Control y seguimiento. ¿Le interesa alguno?');
+            'No veo tratamiento de ortodoncia entre nuestros servicios. Los servicios que ofrecemos son Consulta general, Consulta especializada y Control y seguimiento. ¿Le interesa alguno?');
         expect(notOfferedReply(claimed!, DENTAL, 'es', 'tu')).toMatch(/¿Te interesa alguno\?$/);
-        expect(notOfferedReply(claimed!, DENTAL, 'en', 'usted')).toContain('it is not among our services');
+        expect(notOfferedReply(claimed!, DENTAL, 'en', 'usted')).toContain("I don't see tratamiento de ortodoncia among our services");
+        // only what the business declared in CORE.OFFER.NOT_OFFERED is «no ofrecemos»
+        const declared = ['ortodoncia invisible (alternative: brackets estéticos)'];
+        expect(notOfferedReply(claimed!, DENTAL, 'es', 'usted', declared)).toBe(
+            'Por ahora no ofrecemos tratamiento de ortodoncia: no está entre nuestros servicios. Los servicios que ofrecemos son Consulta general, Consulta especializada y Control y seguimiento. ¿Le interesa alguno?');
+        expect(notOfferedReply(claimed!, DENTAL, 'en', 'usted', declared)).toContain('it is not among our services');
+        expect(notOfferedReply(claimed!, DENTAL, 'es', 'usted', ['blanqueamiento'])).toMatch(/^No veo /);
         expect(offerClaimForAbsent('¡Sí! El tratamiento de ortodoncia dura entre 12 y 24 meses.', absent, DENTAL)?.key).toBe('ortodoncia');
         expect(offerClaimForAbsent('Yes, we offer orthodontic treatment.', absentServicesIn('treatment of orthodontics', DENTAL), DENTAL)?.key).toBe('orthodontics');
     });

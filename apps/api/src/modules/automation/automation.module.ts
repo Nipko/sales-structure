@@ -15,6 +15,7 @@ import { DripSequenceController } from './drip-sequence.controller';
 import { HttpRequestHandler } from './handlers/http-request.handler';
 import { HttpRequestService } from '../../common/services/http-request.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ReadinessModule } from '../readiness/readiness.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { PersonaModule } from '../persona/persona.module';
 import { AIModule } from '../ai/ai.module';
@@ -26,6 +27,7 @@ import { PipelineModule } from '../pipeline/pipeline.module';
 @Module({
     imports: [
         PrismaModule,
+        ReadinessModule,
         forwardRef(() => WhatsappModule),
         PersonaModule,
         AIModule,

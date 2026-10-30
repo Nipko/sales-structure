@@ -61,13 +61,12 @@ describe('subtype eval pack', () => {
         }
     });
 
-    it('turns a declared exclusion into a scenario the agent must decline', () => {
-        const scenario = composeSubtypeEvalPack({
-            industry: 'salud', subtype: 'farmacia',
-        }).find((s) => s.key === 'declared_limit');
-        expect(scenario).toBeDefined();
-        expect(scenario?.criteria).toMatch(/NO hace/);
-        expect(scenario?.criteria).toMatch(/derivar/);
+    // R3b (D9): lo que el negocio NO hace es CORE.OFFER.NOT_OFFERED del tenant; las exclusiones de plataforma del
+    // perfil ya no llegan al prompt, así que tampoco generan un escenario que el agente deba rechazar.
+    it('no longer turns a platform profile exclusion into a scenario the agent must decline', () => {
+        const pack = composeSubtypeEvalPack({ industry: 'salud', subtype: 'farmacia' });
+        expect(pack.find((s) => s.key === 'declared_limit')).toBeUndefined();
+        expect(pack.some((s) => /^limit_\d+$/.test(s.key))).toBe(false);
     });
 
     it('does not invent scenarios for a profile the registry does not know', () => {

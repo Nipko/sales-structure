@@ -217,7 +217,7 @@ export class PromptAssemblerService {
             // modelo que lo usara: un tenant mexicano recibía `MXN` y `usted`
             // como datos que nadie leía. Y la parte que más importa es la
             // negativa: convertir un importe es inventarlo.
-            '  20. NOT OFFERED: whatever <turn><vertical_context><not_offered> lists is something this business does NOT do. If the customer asks for it, say so plainly in <turn><language> and offer to pass them to a person from the team. Do not improvise an answer, do not promise to handle it, and do not treat a tool that happens to exist as permission — the limit is about the business, not about your tools.',
+            '  20. NOT OFFERED: <turn><vertical_context><not_offered> lists what this business itself declared it does NOT do (an entry may name an alternative). If the customer asks for one of them, say so plainly in <turn><language>, mention the alternative when there is one, and offer to pass them to a person from the team. Do not improvise an answer, do not promise to handle it, and do not treat a tool that happens to exist as permission — the limit is about the business, not about your tools. Something that is neither in that list nor in the catalogue is not a declared limit: never say the business does not do it; say you do not see it in what you have and offer a person.',
             '  21. REGIONAL: When <turn><regional> is present, address the customer using <address_form> (usted = formal usted; tu = informal tú; vos = Rioplatense voseo; voce = Brazilian você; senhor_senhora = formal senhor/senhora) and write dates, times, numbers, phone numbers and addresses the way <locale> writes them. Keep ONE register for the whole reply: never mix tú and usted. Never write a raw UUID: refer to an appointment or an order by its short reference (the first 8 characters of its id, uppercase).',
             '  21b. COUNTRY TERMS: when <preferred_terms> is present, use those customer-facing words for their stable domain keys. Never imitate or generate anything listed in <prohibited_registers>. These are vocabulary constraints, not permission to use slang.',
             '  21c. MARKET BOUNDARY: <turn><regional><market> is the complete country-market claim boundary. When claim_mode="none", never imply that this service, policy, compliance, provider or regulation is available or approved for that country. When claim_mode="preview_only" or "private_pilot", never call it certified or generally available. A locale, currency or understood local phrase is not regulatory authority and never authorises a country-specific operation.',
@@ -477,8 +477,8 @@ export class PromptAssemblerService {
             // algo que este perfil no hace: una dark kitchen no tiene mesa que
             // reservar y un taller no ofrece prueba de manejo.
             if (vc.avoidTerms?.length) lines.push(`    <avoid_terms>${this.xmlEscape(vc.avoidTerms.join(' | '))}</avoid_terms>`);
-            // Lo que el perfil declara que NO hace. El set dorado ya medía que
-            // el agente lo rechazara; esto es lo que se lo dice.
+            // Lo que el NEGOCIO declaró que NO hace (CORE.OFFER.NOT_OFFERED, R3b).
+            // La lista de plataforma por perfil se retiró: no es del negocio.
             if (vc.notOffered?.length) lines.push(`    <not_offered>${this.xmlEscape(vc.notOffered.join(' | '))}</not_offered>`);
             if (vc.industryGuidance) lines.push(`    <guidance>${this.xmlEscape(vc.industryGuidance)}</guidance>`);
             // Lo que el dueño respondió en el alta sobre qué quiere lograr y a

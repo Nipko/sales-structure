@@ -216,6 +216,16 @@ export function scheduleEntryWindow(entry: unknown): [number, number] | null {
     return open === null || close === null ? null : [open, close];
 }
 
+/** Same-day spans of an entry that lists several (`windows`); empty when it lists none or the day is closed. */
+export function scheduleEntrySpans(entry: unknown): Array<[number, number]> {
+    if (!entry || typeof entry !== 'object' || ('enabled' in (entry as object) && !(entry as any).enabled)) return [];
+    const windows = (entry as any).windows;
+    if (!Array.isArray(windows)) return [];
+    return windows.map((w: any) => [toMinutes(w?.open), toMinutes(w?.close)] as const)
+        .filter((w): w is readonly [number, number] => w[0] !== null && w[1] !== null && w[0] <= w[1])
+        .map(([open, close]) => [open, close] as [number, number]);
+}
+
 /** The weekday (0 = Sunday) and minutes since midnight at `now` in `timezone`. */
 function localClock(now: Date, timezone: string): { day: number; minutes: number } {
     const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(now);
@@ -230,7 +240,14 @@ function localClock(now: Date, timezone: string): { day: number; minutes: number
 function withinSchedule(schedule: unknown, timezone: string, fallbackTimezone: string, now: Date): boolean {
     let clock: { day: number; minutes: number };
     try { clock = localClock(now, timezone); } catch { clock = localClock(now, fallbackTimezone); }
-    const today = scheduleEntryWindow(scheduleEntryForDay(schedule, clock.day));
+    const todayEntry = scheduleEntryForDay(schedule, clock.day);
+    // R3b: a day of CORE.HOURS.REGULAR with several spans (BusinessFactsReader: `windows`, e.g. 08-12 and 14-18) is
+    // open only inside one of them; `open/close` is just their envelope, kept for the screens that know one span.
+    const spans = scheduleEntrySpans(todayEntry);
+    if (spans.length > 1) {
+        if (spans.some(([open, close]) => clock.minutes >= open && clock.minutes <= close)) return true;
+    }
+    const today = spans.length > 1 ? null : scheduleEntryWindow(todayEntry);
     if (today) {
         const [open, close] = today;
         // Same-day window; or an overnight one (open > close, "22:00-02:00", "18:00-00:00"): its evening

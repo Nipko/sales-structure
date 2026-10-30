@@ -80,11 +80,13 @@ describe('los escenarios salen de hechos declarados', () => {
         expect(new Set(avoidScenarios.map(s => s.key)).size).toBe(avoidScenarios.length);
     });
 
-    it('cada exclusión declarada tiene su propio escenario', () => {
+    // R3b (D9): las exclusiones de plataforma del perfil ya no son límites del negocio; lo que el negocio NO hace es
+    // CORE.OFFER.NOT_OFFERED del tenant, que el pack por perfil no conoce. No se derivan escenarios de ellas.
+    it('una exclusión de plataforma del perfil ya no genera escenario', () => {
         const pack = composeSubtypeEvalPack({
             industry: 'seguros', subtype: 'broker', language: 'es',
         });
-        expect(pack.filter(s => s.key.startsWith('limit_')).length).toBeGreaterThan(0);
+        expect(pack.filter(s => s.key.startsWith('limit_'))).toEqual([]);
     });
 
     it('un perfil bloqueado se prueba contra intentar cerrar una operación', () => {

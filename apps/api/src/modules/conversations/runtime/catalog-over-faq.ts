@@ -230,11 +230,32 @@ export function offerClaimForAbsent(reply: string, absent: readonly AbsentSubjec
 const list = (names: string[], and: string): string =>
     names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} ${and} ${names[names.length - 1]}`;
 
-/** The not-offered answer: the service is not among the services, and the catalogue is offered instead. */
-export function notOfferedReply(subject: AbsentSubject, catalogue: readonly CatalogueEntry[], language: string, form: AddressForm): string {
+/** Does the business's own `not_offered` list (CORE.OFFER.NOT_OFFERED, rendered for the prompt) name this subject? */
+export function declaredNotOffered(subject: AbsentSubject, declared: readonly string[] | undefined): boolean {
+    if (!declared?.length) return false;
+    const stems = subject.words.map(stem);
+    return declared.some(entry => {
+        const words = fold(entry.split(' (alternative:')[0]).split(/[^a-z0-9ñ]+/).filter(Boolean).map(stem);
+        return stems.length > 0 && stems.every(s => words.some(w => sameWord(s, w)));
+    });
+}
+
+/**
+ * The answer when the reply offered a service the catalogue does not list (R3b, D9). Only a subject the business itself
+ * declared in `not_offered` gets «we don't offer X»; anything else is «I don't see X in our catalogue» — absence from
+ * the catalogue is not the business saying it does not do it. The catalogue is offered instead in both cases.
+ */
+export function notOfferedReply(subject: AbsentSubject, catalogue: readonly CatalogueEntry[], language: string, form: AddressForm, declared?: readonly string[]): string {
     const names = [...new Set(catalogue.map(entry => String(entry?.name ?? '').trim()).filter(Boolean))].slice(0, 10);
     const lang = String(language || 'es').slice(0, 2).toLowerCase();
     const phrase = subject.phrase;
+    if (!declaredNotOffered(subject, declared)) {
+        if (lang === 'en') return `I don't see ${phrase} among our services. The services we offer are ${list(names, 'and')}. Would any of them interest you?`;
+        if (lang === 'pt') return `Não vejo ${phrase} entre os nossos serviços. Os serviços que oferecemos são ${list(names, 'e')}. Algum deles interessa?`;
+        if (lang === 'fr') return `Je ne vois pas ${phrase} parmi nos services. Les services que nous proposons sont ${list(names, 'et')}. L'un d'eux vous intéresse-t-il ?`;
+        const ask = form === 'tu' ? '¿Te interesa alguno?' : '¿Le interesa alguno?';
+        return `No veo ${phrase} entre nuestros servicios. Los servicios que ofrecemos son ${list(names, 'y')}. ${ask}`;
+    }
     if (lang === 'en') return `We don't offer ${phrase}: it is not among our services. The services we offer are ${list(names, 'and')}. Would any of them interest you?`;
     if (lang === 'pt') return `Não oferecemos ${phrase}: não está entre os nossos serviços. Os serviços que oferecemos são ${list(names, 'e')}. Algum deles interessa?`;
     if (lang === 'fr') return `Nous ne proposons pas ${phrase} : cela ne fait pas partie de nos services. Les services que nous proposons sont ${list(names, 'et')}. L'un d'eux vous intéresse-t-il ?`;

@@ -394,6 +394,11 @@ export class PersonaService {
                     const v = value as any;
                     if (v.enabled === false) {
                         lines.push(`    <day name="${escapeXmlAttribute(day)}">closed</day>`);
+                    } else if (Array.isArray(v.windows) && v.windows.length > 1) {
+                        // R3b: CORE.HOURS.REGULAR with several spans that day (08-12 and 14-18): one line per span
+                        for (const w of v.windows) {
+                            lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(w.open)}" end="${escapeXmlAttribute(w.close)}" />`);
+                        }
                     } else {
                         lines.push(`    <day name="${escapeXmlAttribute(day)}" start="${escapeXmlAttribute(v.open ?? v.start)}" end="${escapeXmlAttribute(v.close ?? v.end)}" />`);
                     }

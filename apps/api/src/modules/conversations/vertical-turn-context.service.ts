@@ -1,9 +1,8 @@
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import {
     buildDomainContractDraft,
     localizedTerm,
-    resolveSubtypeExperienceProfile,
     resolveIntentWorkflow,
     subtypeTerminologyFor,
     localizeVerticalPromptPhrases,
@@ -12,6 +11,7 @@ import {
 } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerticalsService } from '../verticals/verticals.service';
+import { BusinessFactsReader, renderNotOfferedEntry } from '../readiness/business-facts.reader';
 
 /**
  * Reconcile the stable domain plan with the immutable capability snapshot for
@@ -68,6 +68,8 @@ export class VerticalTurnContextService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly verticals: VerticalsService,
+        /** R3b: lo que el NEGOCIO declaró que no hace (`CORE.OFFER.NOT_OFFERED`). Sin él (specs a mano), no hay <not_offered>. */
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) {}
 
     async resolve(input: {
@@ -117,9 +119,10 @@ export class VerticalTurnContextService {
             if (avoid.values.length) context.avoidTerms = avoid.values;
         }
 
-        const profile = resolveSubtypeExperienceProfile(config.industry, config.subType ?? null);
-        const localizedExclusions = localizeVerticalPromptPhrases(profile.exclusions, language);
-        if (localizedExclusions.values.length) context.notOffered = localizedExclusions.values;
+        // R3b (D9): lo que el negocio declaró que NO hace, en sus palabras. La lista de plataforma por perfil
+        // (`exclusions`) ya no llega al prompt: decir «no lo hacemos» sin que el negocio lo declare es inventar.
+        const notOffered = await this.businessFacts?.notOffered(input.tenantId, input.executionContext);
+        if (notOffered?.length) context.notOffered = notOffered.map(renderNotOfferedEntry);
 
         const domain = buildDomainContractDraft(config.industry, config.subType ?? null);
         const localizedClaims = localizeVerticalPromptPhrases(domain.prompt.claims, language);
@@ -155,7 +158,6 @@ export class VerticalTurnContextService {
         const review = new Set<string>([...domain.unresolved, ...missingLocalizedTerms]);
         if (!domain.prompt.terminology.customerNoun) review.add('terminology.customerNoun');
         if (!domain.prompt.terminology.transactionNoun) review.add('terminology.transactionNoun');
-        if (localizedExclusions.missing.length) review.add(`prompt.notOffered.${language}`);
         if (localizedClaims.missing.length) review.add(`prompt.claims.${language}`);
         const localizedAvoid = localizeVerticalPromptPhrases(terms?.avoid ?? [], language);
         if (localizedAvoid.missing.length) review.add(`terminology.avoid.${language}`);

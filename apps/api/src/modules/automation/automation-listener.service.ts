@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -8,6 +8,7 @@ import { PersonaService } from '../persona/persona.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { LeadCapturedEvent } from './events/lead-captured.event';
 import { isWithinOpeningHours } from '../conversations/informational-hours';
+import { BusinessFactsReader } from '../readiness/business-facts.reader';
 
 export const AUTOMATION_JOBS_QUEUE = 'automation-jobs';
 
@@ -27,6 +28,8 @@ export class AutomationListenerService {
         private readonly throttle: TenantThrottleService,
         @InjectQueue(AUTOMATION_JOBS_QUEUE) private readonly automationQueue: Queue,
         private readonly regionalProfile: RegionalProfileService,
+        /** R3b: el horario del negocio sale de CORE.HOURS.REGULAR (BusinessFactsReader). Sin él (specs a mano), de settings. */
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) {}
 
     @OnEvent('lead.captured')
@@ -529,8 +532,10 @@ export class AutomationListenerService {
     private async isWithinBusinessHours(config: any, tenantId: string): Promise<boolean> {
         let businessHours: any = null;
         try {
-            const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } });
-            businessHours = (tenant?.settings as any)?.businessHours ?? null;
+            // R3b: el mismo horario que lee la conversación (BusinessFactsReader), así la compuerta no puede discrepar.
+            businessHours = this.businessFacts
+                ? await this.businessFacts.hours(tenantId)
+                : ((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }))?.settings as any)?.businessHours ?? null;
         } catch (error: any) {
             // Sin el horario del negocio decide el del agente; no se inventa uno.
             this.logger.warn(`[AutomationListener] No se pudo leer el horario del negocio: ${error?.message}`);

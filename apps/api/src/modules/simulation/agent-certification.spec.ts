@@ -196,7 +196,9 @@ describe('computing whether a profile has been shown to do its work', () => {
                     languageTotal + new Set(composeSubtypeEvalPack({ industry, subtype, language })
                         .map(scenario => scenario.key)).size, 0);
             }, 0);
-        expect(expectedPerChannel).toBe(19_768);
+        // R3b (D9): 1.064 escenarios menos por canal (los «límite declarado» que salían de las exclusiones de
+        // plataforma del perfil; lo que el negocio NO hace es ahora CORE.OFFER.NOT_OFFERED del tenant).
+        expect(expectedPerChannel).toBe(18_704);
         expect(report.summary.requiredCases).toBe(expectedPerChannel);
         expect(certifyProfiles({
             scope: { channels: ['web_widget', 'whatsapp'], models: scope.models }, evidence: [],

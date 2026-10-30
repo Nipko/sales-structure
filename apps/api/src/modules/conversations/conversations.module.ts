@@ -76,6 +76,7 @@ import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module'
 import { TenantMercadoPagoOperationProvider } from '../tenant-payments/tenant-mercadopago-operation.provider';
 import { ExpiredHoldSweeperService } from './expired-hold-sweeper.service';
 import { VerticalTurnContextService } from './vertical-turn-context.service';
+import { ReadinessModule } from '../readiness/readiness.module';
 import { TurnCapabilityComposerService } from './turn-capability-composer.service';
 
 @Module({
@@ -97,6 +98,7 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
         BusinessInfoModule,
         FaqsModule,
         PoliciesModule,
+        ReadinessModule,
         TenantsModule,
         VacationRentalModule,
         ToursModule,

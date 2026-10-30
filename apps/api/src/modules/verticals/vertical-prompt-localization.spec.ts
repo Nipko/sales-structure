@@ -8,7 +8,8 @@ import {
 } from '@parallext/shared';
 
 describe('localized vertical prompt boundaries', () => {
-    it('covers every claim, exclusion and forbidden term used by every business profile', () => {
+    // R3b: las exclusiones del perfil ya no llegan al prompt (`<not_offered>` es del negocio: CORE.OFFER.NOT_OFFERED).
+    it('covers every claim and forbidden term used by every business profile', () => {
         const missing: string[] = [];
 
         for (const profileId of listSubtypeExperienceProfileIds()) {
@@ -20,7 +21,6 @@ describe('localized vertical prompt boundaries', () => {
             for (const language of TERMINOLOGY_LANGUAGES) {
                 for (const [field, source] of [
                     ['claims', domain.prompt.claims],
-                    ['notOffered', profile.exclusions],
                     ['avoid', avoid],
                 ] as const) {
                     for (const phrase of localizeVerticalPromptPhrases(source, language).missing) {

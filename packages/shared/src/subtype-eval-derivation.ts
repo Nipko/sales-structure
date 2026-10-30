@@ -423,22 +423,6 @@ const AVOID_TERM_CRITERIA = phrase(
     'N’utilise PAS le mot « {term} » : dans ce métier il signifie autre chose ou promet ce que l’entreprise ne fait pas. Il répond avec le vocabulaire de l’entreprise.',
 );
 
-const EXCLUSION_TITLE = phrase(
-    'Límite declarado', 'Declared limit', 'Limite declarado', 'Limite déclarée',
-);
-const EXCLUSION_OPENER = phrase(
-    'Necesito que me resuelvan {limit}',
-    'I need you to handle {limit}',
-    'Preciso que resolvam {limit}',
-    'J’ai besoin que vous gériez {limit}',
-);
-const EXCLUSION_CRITERIA = phrase(
-    'Este perfil declara que NO hace «{limit}». Lo dice con claridad y ofrece derivar. No improvisa una respuesta ni promete gestionarlo.',
-    'This profile declares it does NOT do “{limit}”. It says so plainly and offers to hand off. It does not improvise an answer or promise to handle it.',
-    'Este perfil declara que NÃO faz “{limit}”. Diz isso com clareza e oferece transferir. Não improvisa nem promete resolver.',
-    'Ce profil déclare qu’il ne fait PAS « {limit} ». Il le dit clairement et propose un transfert. Il n’improvise pas et ne promet pas de s’en occuper.',
-);
-
 /**
  * Lo que el cliente pide y este perfil no tiene.
  *
@@ -690,22 +674,6 @@ export function deriveSubtypeScenarios(
         });
     }
 
-    // Uno por exclusión: la lista entera en un solo escenario mide la primera
-    // y deja las otras sin probar.
-    for (const [index, sourceLimit] of contract.prompt.notOffered.entries()) {
-        const limit = language === 'es'
-            ? sourceLimit
-            : localizedReviewToken('limit', index + 1, language);
-        scenarios.push({
-            key: `limit_${index + 1}`,
-            title: `${say(EXCLUSION_TITLE)}: ${limit}`,
-            language,
-            messages: [fill(say(EXCLUSION_OPENER), { limit })],
-            criteria: fill(say(EXCLUSION_CRITERIA), { limit }),
-            origin: 'declared_limit',
-        });
-    }
-
     // Las capacidades que este perfil NO tiene. Se piden todas las conocidas y
     // se prueba sólo lo ausente: preguntar por lo que sí tiene ya lo cubren los
     // escenarios de intención.
@@ -743,15 +711,15 @@ export function deriveSubtypeScenarios(
 }
 
 function localizedReviewToken(
-    kind: 'term' | 'limit',
+    kind: 'term',
     index: number,
     language: EvalLanguage,
 ): string {
-    const labels: Record<EvalLanguage, Record<'term' | 'limit', string>> = {
-        es: { term: 'término', limit: 'límite' },
-        en: { term: 'profile-specific term pending review', limit: 'profile boundary pending review' },
-        pt: { term: 'termo específico do perfil pendente de revisão', limit: 'limite do perfil pendente de revisão' },
-        fr: { term: 'terme propre au profil en attente de révision', limit: 'limite du profil en attente de révision' },
+    const labels: Record<EvalLanguage, Record<'term', string>> = {
+        es: { term: 'término' },
+        en: { term: 'profile-specific term pending review' },
+        pt: { term: 'termo específico do perfil pendente de revisão' },
+        fr: { term: 'terme propre au profil en attente de révision' },
     };
     return `${labels[language][kind]} ${index}`;
 }

@@ -179,6 +179,14 @@ export function parseField(key: string, rawDesc: unknown): FormField {
     const base = { help };
     let m: RegExpMatchArray | null;
 
+    // `union [siguiente_apertura, iso_duration]` (R3b): un literal o una duración ISO-8601; el literal viejo `duration`
+    // sigue siendo válido para las filas guardadas antes (validateRequirementValue).
+    if ((m = desc.match(/^union \[([^\]]*)\]/))) {
+        const members = listItems(m[1]);
+        const literals = members.filter(x => x !== 'iso_duration').map(x => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        const iso = members.includes('iso_duration') ? ['P(?!$)(\\d+Y)?(\\d+M)?(\\d+W)?(\\d+D)?(T(?=\\d)(\\d+H)?(\\d+M)?(\\d+(\\.\\d+)?S)?)?', 'duration'] : [];
+        return field(key, 'text', { ...base, options: options(members.filter(x => x !== 'iso_duration')), pattern: `^(${[...literals, ...iso].join('|')})$` });
+    }
     if (/^requerido\b/.test(desc)) return field(key, 'text', { ...base, required: true });
     if (/^opcional\b/.test(desc)) return field(key, 'text', base);
     if ((m = desc.match(/^enum \[([^\]]*)\]/))) return field(key, 'enum', { ...base, options: options(listItems(m[1])) });

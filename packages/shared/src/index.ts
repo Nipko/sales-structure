@@ -1186,12 +1186,10 @@ export interface VerticalContext {
     primaryObjectNoun?: string;
     primaryObjectNounPlural?: string;
     /**
-     * Lo que este perfil declara que NO hace.
+     * Lo que el NEGOCIO declaró que no hace (`CORE.OFFER.NOT_OFFERED`, D9), leído por BusinessFactsReader (R3b).
      *
-     * Vive en el registro de perfiles y alimenta el set dorado desde U22: se
-     * medía que el agente rechazara estas cosas y **nada se las decía**. Una
-     * prueba que exige un comportamiento que el prompt nunca pidió mide al
-     * modelo adivinando, no al sistema.
+     * Hasta R3b salía de las exclusiones del perfil (configuración de plataforma por vertical). Se retiró: un límite
+     * que el negocio no declaró hace que el agente rechace algo que el negocio sí hace. Sin valor confirmado, no hay.
      */
     notOffered?: string[];
     /**

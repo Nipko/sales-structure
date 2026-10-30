@@ -4,7 +4,8 @@
  *
  * Puro y determinista. `data.structure` de cada requisito es la forma del valor: un mapa campo → descripción, o una
  * descripción de lista. De la descripción se leen solo las partes normativas que no dejan lugar a interpretación:
- * `requerido`, `bool`, `enum [a, b]` y `enum_list [a, b]` cerrados (sin «…»). El resto de las reglas de
+ * `requerido`, `bool`, `enum [a, b]` y `enum_list [a, b]` cerrados (sin «…») y `union [literal, iso_duration]`
+ * (un literal o una duración ISO-8601, R3b). El resto de las reglas de
  * `data.validation` (prosa) las aplica el evaluador del requisito al calcular la preparación, no la escritura.
  */
 import { MIGRATION_ORIGINS, PROVENANCE_ORIGINS, STORED_STATUSES } from './provenance';
@@ -54,9 +55,32 @@ export function isValueRequirement(req: CompiledRequirement): boolean {
     return !req.derived && !req.platform && type !== 'derived' && !type.startsWith('item_list') && !type.startsWith('campos del objeto');
 }
 
+/** Duración ISO-8601 (`PT4H`, `P1D`, `PT30M`…), con al menos un componente. */
+const ISO_DURATION = /^P(?!$)(\d+Y)?(\d+M)?(\d+W)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+(?:\.\d+)?S)?)?$/;
+export const isIsoDuration = (v: unknown): boolean => typeof v === 'string' && ISO_DURATION.test(v.trim());
+
+/**
+ * Literales viejos que una unión sigue aceptando para no invalidar filas ya guardadas: hasta R3b el formulario guardaba
+ * el literal `duration` en `CORE.HANDOFF.HOURS_SLA.sla_out_of_hours` (ADR 0008, ADR 0009).
+ */
+const UNION_LEGACY_LITERALS: Readonly<Record<string, readonly string[]>> = { iso_duration: ['duration'] };
+
+/** Miembros de `union [a, iso_duration]` (o null si la descripción no es una unión). */
+export function unionOptions(desc: string): string[] | null {
+    const m = String(desc ?? '').trim().match(/^union \[([^\]]*)\]/);
+    return m ? m[1].split(',').map(x => x.trim()).filter(Boolean) : null;
+}
+
 function checkField(path: string, desc: string, v: unknown, issues: ValueIssue[]): void {
     if (blank(v)) return;
     const d = desc.trim();
+    const members = unionOptions(d);
+    if (members) {
+        const ok = members.some(m => (m === 'iso_duration' ? isIsoDuration(v) || (UNION_LEGACY_LITERALS[m] ?? []).includes(String(v)) : String(v) === m));
+        const shown = members.map(m => (m === 'iso_duration' ? 'una duración ISO-8601 (p. ej. PT4H)' : m)).join(' o ');
+        if (!ok) issues.push({ path, code: 'enum', message: `${path} debe ser ${shown}` });
+        return;
+    }
     const en = d.match(/^enum \[([^\]]*)\]/);
     if (en) {
         const allowed = closedList(en[1]);

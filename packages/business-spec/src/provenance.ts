@@ -126,6 +126,17 @@ export function migratedRef(v: ValueRecord): MigratedSourceRef | null {
     return ref && typeof ref.migrated_from === 'string' && typeof ref.migrated_hash === 'string' ? ref as MigratedSourceRef : null;
 }
 
+/**
+ * `source_ref` de un valor que `BusinessFactsService` escribió también en el almacenamiento viejo (R3b, expand): dónde
+ * y la huella de lo que la foto lee de ahí después de escribirlo (ADR 0009).
+ */
+export interface ProjectedSourceRef { projected_to: string; projected_hash: string }
+
+export function projectedRef(v: ValueRecord): ProjectedSourceRef | null {
+    const ref = asObject(v.sourceRef);
+    return ref && typeof ref.projected_to === 'string' && typeof ref.projected_hash === 'string' ? ref as ProjectedSourceRef : null;
+}
+
 const iso = (s: unknown): string | null => (Number.isFinite(toMs(s)) ? new Date(toMs(s)).toISOString() : null);
 
 /** Fila de `requirement_values` → ValueRecord (o null si la fila no es válida). */
@@ -142,7 +153,9 @@ export function valueRecordFromRow(row: Row): ValueRecord | null {
 /**
  * Mezcla las filas de `requirement_values` con los valores que dedujeron las reglas L (por requisito y alcance):
  * - fila escrita por `BusinessFactsService` (sin `migrated_from`): manda; los valores heredados de ese requisito y
- *   alcance dejan de leerse;
+ *   alcance dejan de leerse. Si además se proyectó al almacenamiento viejo (`projected_to`, R3b), manda solo mientras
+ *   ese almacenamiento conserve la proyección (misma huella): si una pantalla vieja lo editó después, la edición es lo
+ *   más reciente, la fila se ignora y manda la lectura con reglas L (ADR 0009);
  * - fila migrada: reemplaza al valor heredado del que salió MIENTRAS ese almacenamiento conserve el valor migrado
  *   (misma huella). Si el almacenamiento de hoy cambió después de la migración (sus pantallas siguen vivas hasta R3b),
  *   la copia migrada quedó vieja: se ignora y manda la lectura con reglas L. Los demás valores heredados del mismo
@@ -162,6 +175,11 @@ export function applyRequirementValues(snap: TenantSnapshot, rows: readonly Row[
         const ref = migratedRef(rec);
         real.add(rec);
         if (!ref) {
+            const projected = projectedRef(rec);
+            if (projected) {
+                const target = current.find(r => inScope(r) && r.storage === projected.projected_to);
+                if (valueFingerprint(target?.value ?? null) !== projected.projected_hash) { stale++; continue; }
+            }
             snap.values[id] = [...current.filter(r => !inScope(r)), rec];
             used++;
             continue;

@@ -151,8 +151,6 @@ export interface VerticalPromptContractV2 {
     disclosure: readonly string[];
     /** Lo que SÍ puede afirmar. Nada fuera de esta lista es afirmable. */
     claims: readonly string[];
-    /** Lo que este negocio NO hace. Sale de las exclusiones del perfil. */
-    notOffered: readonly string[];
     /** Los sustantivos del rubro y las palabras prohibidas. */
     terminology: {
         primaryObject?: Readonly<Record<TerminologyLanguage, string>>;
@@ -1120,7 +1118,6 @@ export function buildDomainContractDraft(
         // El perfil promete más de lo que sus tools pueden ejecutar.
         unresolved.push('scope_without_committing_intent');
     }
-    if (!profile.exclusions.length) unresolved.push('prompt.notOffered');
 
     return {
         contractVersion: VERTICAL_DOMAIN_CONTRACT_VERSION,
@@ -1132,7 +1129,6 @@ export function buildDomainContractDraft(
             scope: profile.scope,
             disclosure: disclosureFor(profile),
             claims: claimsFor(profile),
-            notOffered: profile.exclusions,
             terminology: {
                 primaryObject: terminology?.primaryObject,
                 customerNoun: terminology?.customerNoun,

@@ -85,7 +85,7 @@ import { DripSequenceService } from '../automation/drip-sequence.service';
 import {
     NormalizedMessage, TenantConfig, TurnContext, RetrievedKnowledgeItem,
     ModelTier, RoutingFactors,
-    localizedTerm, subtypeTerminologyFor, resolveSubtypeExperienceProfile,
+    localizedTerm, subtypeTerminologyFor,
     type EffectiveCapabilityContract, type TurnCapability,
     isToolAuthorityDenial,
     type LocalizedTerm, type ToolExecutionAuthority,
@@ -176,6 +176,7 @@ import { CATALOG_EMPTY_PROBES, catalogHasNoRows } from './catalog-empty.util';
 import { HUMAN_OFFER_MARK, HUMAN_OFFER_TTL_MS, NO_DATA_WAIT_REPLACEMENT, NO_DATA_NO_OFFER, noDataWaitReplacementText, noDataNoOfferText, containsHumanOffer, endsWithHumanOffer, isOfferAcceptance, isAffirmationOfHumanOffer, repliesYesToHumanOffer, repeatsAcceptedHumanOffer, isLiveHumanOffer, withReturnNotice, offerInsteadOfPromise, policyPersonOfferText, withPolicyPersonOffer, teamRequestClaimAction } from './human-offer';
 import { LanguageDetectorService } from './language-detector.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
+import { BusinessFactsReader, renderNotOfferedEntry } from '../readiness/business-facts.reader';
 import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
 import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
@@ -801,6 +802,11 @@ export class ConversationsService {
         @Optional() private readonly tasksService?: TasksService,
         /** Per-tenant runtime flags (`agentRuntime.safetyTriage`, `agentRuntime.slotWindow`, `agentRuntime.operationClassifier`). Absent in hand-built specs: every flag reads as off. */
         @Optional() private readonly featureFlags?: FeatureFlagsService,
+        /**
+         * What the agent reads about the business (R3b): hours, not_offered and identity from `requirement_values`, with
+         * the legacy storage as fallback. Absent in hand-built specs: the turn reads the legacy storage, as before.
+         */
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) {}
 
     /**
@@ -2488,12 +2494,11 @@ export class ConversationsService {
         if (cached) return cached;
 
         try {
-            const tenant = await this.prisma.tenant.findUnique({
-                where: { id: tenantId },
-                select: { settings: true },
-            });
-            const settings = (tenant?.settings as any) || {};
-            const bh = settings.businessHours || null;
+            // R3b: CORE.HOURS.REGULAR (and the owner's out-of-hours message) through BusinessFactsReader, in the shape of
+            // `settings.businessHours`; the legacy storage only when the business has no value of its own in force.
+            const bh = this.businessFacts
+                ? await this.businessFacts.hours(tenantId)
+                : ((await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { settings: true } }))?.settings as any)?.businessHours || null;
             if (bh) {
                 await cache.setJson(cacheKey, bh, 300);
             }
@@ -2952,10 +2957,17 @@ export class ConversationsService {
                 await this.verticalTurnContext!.resolve({ tenantId, language, toolsConfig: config.tools,
                     executionContext: AGENT_TEST_EXECUTION_CONTEXT }) || null] as const)),
         ]);
+        // R3b: the sealed context reads the business facts exactly as a live turn does (BusinessFactsReader).
+        const businessHours = this.businessFacts
+            ? await this.businessFacts.hours(tenantId, AGENT_TEST_EXECUTION_CONTEXT)
+            : (tenant.settings as any)?.businessHours ?? null;
+        const business = this.businessFacts
+            ? await this.businessFacts.identity(tenantId, identity, AGENT_TEST_EXECUTION_CONTEXT)
+            : identity;
         return resolveEvaluationTurnContext({ version: 1, tenantId,
-            businessHours: (tenant.settings as any)?.businessHours ?? null,
+            businessHours: businessHours ?? null,
             appointmentHours: await this.captureAppointmentHours(tenantId, config),
-            regional, business: projectBusinessTurnContext(identity),
+            regional, business: projectBusinessTurnContext(business),
             activeObjectPolicy: tenantActiveObjectPolicyContext(tenant),
             vertical: Object.fromEntries(verticalEntries) as EvaluationTurnContextInputs['vertical'],
             safetyTriage: resolveFeatureFlag((tenant.settings as any)?.featureFlags, SAFETY_TRIAGE_FLAG),
@@ -3377,10 +3389,12 @@ export class ConversationsService {
         }
 
         // Business identity — the "who we are" data the agent uses to answer
-        // questions about the company. Cached in Redis inside BusinessInfoService.
+        // questions about the company. Cached in Redis inside BusinessInfoService; R3b: what the owner declared
+        // (CORE.IDENTITY.*, LOCATIONS.LIST, CONTACT.CHANNELS) goes on top through BusinessFactsReader.
         try {
+            const primary = evaluationContext ? null : await this.businessInfoService.getPrimary(tenantId, executionContext);
             const business = evaluationContext ? evaluationContext.business
-                : projectBusinessTurnContext(await this.businessInfoService.getPrimary(tenantId, executionContext));
+                : projectBusinessTurnContext(this.businessFacts ? await this.businessFacts.identity(tenantId, primary, executionContext) : primary);
             if (business) turnContext.business = business;
         } catch (e: any) {
             this.logger.warn(`Business identity lookup failed (non-fatal): ${e.message}`);
@@ -3435,24 +3449,15 @@ export class ConversationsService {
                 verticalConfig?.subType,
                 turnContext.regional?.operatingCountry,
             );
-            // Lo que el perfil declara que NO hace. Se resuelve aparte de la
-            // terminología porque un perfil puede tener límites sin tener
-            // sustantivos propios — de hecho la mayoría está en ese caso.
-            try {
-                const profile = resolveSubtypeExperienceProfile(
-                    verticalConfig?.industry,
-                    verticalConfig?.subType ?? null,
-                );
-                if (profile.exclusions?.length) {
-                    turnContext.verticalContext = {
-                        ...(turnContext.verticalContext || {}),
-                        notOffered: [...profile.exclusions],
-                    };
-                }
-            } catch {
-                // Un perfil que el registro no conoce no declara límites. No
-                // inventar ninguno es lo correcto: un límite falso hace que el
-                // agente rechace algo que el negocio sí hace.
+            // Lo que el negocio declara que NO hace (R3b, D9): `CORE.OFFER.NOT_OFFERED` del tenant, nunca la lista de
+            // plataforma del perfil (retirada: un límite que el negocio no declaró hace que el agente rechace algo que
+            // sí hace). Sin valor confirmado no hay <not_offered>.
+            const notOffered = await this.businessFacts?.notOffered(tenantId, executionContext).catch(() => null);
+            if (notOffered?.length) {
+                turnContext.verticalContext = {
+                    ...(turnContext.verticalContext || {}),
+                    notOffered: notOffered.map(renderNotOfferedEntry),
+                };
             }
 
             if (subtypeTerms) {
@@ -6288,7 +6293,8 @@ export class ConversationsService {
             if (catalogOverFaq && !deterministicReply && finalResponse && !isPipelineFallbackReply(finalResponse) && !engineProducedText) {
                 const claimed = offerClaimForAbsent(finalResponse, absentServices.list(), serviceCatalogue);
                 if (claimed) {
-                    deterministicReply = notOfferedReply(claimed, serviceCatalogue, userLanguage, addressFormOf(regional?.addressForm.value));
+                    deterministicReply = notOfferedReply(claimed, serviceCatalogue, userLanguage, addressFormOf(regional?.addressForm.value),
+                        turnContext.verticalContext?.notOffered);
                     turnTrace.add('guardrail', 'catalog_over_faq', { subject: claimed.key });
                     this.recordAgentSignal(tenantId, 'catalog_over_faq_reply_replaced', session);
                 }

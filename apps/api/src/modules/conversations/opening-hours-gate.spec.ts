@@ -1,5 +1,6 @@
 import { isWithinOpeningHours, scheduleEntryForDay, scheduleEntryWindow } from './informational-hours';
 import { resolveBusinessWindow } from './business-window';
+import { PersonaService } from '../persona/persona.service';
 
 /**
  * `isWithinOpeningHours` is the single after-hours gate (conversation pipeline AND automation listener).
@@ -229,5 +230,35 @@ describe('resolveBusinessWindow follows the same precedence and keys', () => {
     it('the empty wizard record does not hide the agent schedule', () => {
         const agent = { schedule: { mie: { start: '14:00', end: '18:00' } } };
         expect(resolveBusinessWindow(wizardShell, agent, '2026-10-07')).toEqual({ openMin: 840, closeMin: 1080 });
+    });
+});
+
+/**
+ * R3b: CORE.HOURS.REGULAR admite varios tramos por día. BusinessFactsReader los entrega en `windows` (con el envolvente
+ * en `open/close` para las pantallas que solo conocen uno): la compuerta abre solo dentro de un tramo, y el prompt
+ * dice cada tramo.
+ */
+describe('level 1: several spans in a day (CORE.HOURS.REGULAR, R3b)', () => {
+    const split = business({
+        wednesday: { enabled: true, open: '08:00', close: '18:00', windows: [{ open: '08:00', close: '12:00' }, { open: '14:00', close: '18:00' }] },
+    });
+
+    it('open inside a span, closed at lunch even though the envelope covers it', () => {
+        expect(isWithinOpeningHours(split, undefined, WED_11)).toBe(true);
+        expect(isWithinOpeningHours(split, undefined, WED_15)).toBe(true);
+        expect(isWithinOpeningHours(split, undefined, new Date('2026-10-07T18:00:00Z'))).toBe(false); // 13:00 Bogotá
+        expect(isWithinOpeningHours(split, undefined, WED_20)).toBe(false);
+    });
+
+    it('the prompt lists every span of the day', () => {
+        const persona = new PersonaService({} as any, {} as any, {} as any, {} as any, {} as any);
+        const prompt: string = persona.buildSystemPrompt({
+            persona: { name: 'Luna', role: 'Asistente', personality: {} },
+            behavior: { mainInstructions: 'Atiende', rules: [], forbiddenTopics: [], handoffTriggers: [] },
+            hours: {}, industry: 'salon', language: 'es',
+        } as any, split);
+        expect(prompt).toContain('<day name="wednesday" start="08:00" end="12:00" />');
+        expect(prompt).toContain('<day name="wednesday" start="14:00" end="18:00" />');
+        expect(prompt).not.toContain('<day name="wednesday" start="08:00" end="18:00" />');
     });
 });

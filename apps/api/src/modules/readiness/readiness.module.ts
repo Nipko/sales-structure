@@ -1,19 +1,22 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RedisModule } from '../redis/redis.module';
+import { BusinessFactsCacheListener } from './business-facts-cache.listener';
+import { BusinessFactsReader } from './business-facts.reader';
 import { BusinessFactsService } from './business-facts.service';
 import { ReadinessController } from './readiness.controller';
 import { ReadinessInvalidationListener } from './readiness-invalidation.listener';
 import { ReadinessService } from './readiness.service';
 
 /**
- * Preparación del negocio (C0 §1): motor de @parallext/business-spec + historial + caché (R2) y la única puerta de
- * escritura de los valores del negocio, BusinessFactsService (R3).
+ * Preparación del negocio (C0 §1): motor de @parallext/business-spec + historial + caché (R2), la única puerta de
+ * escritura de los valores del negocio, BusinessFactsService (R3), y el lector que usa el agente, BusinessFactsReader
+ * (R3b: horario, políticas, not_offered e identidad).
  */
 @Module({
     imports: [PrismaModule, RedisModule],
-    providers: [ReadinessService, BusinessFactsService, ReadinessInvalidationListener],
+    providers: [ReadinessService, BusinessFactsService, BusinessFactsReader, ReadinessInvalidationListener, BusinessFactsCacheListener],
     controllers: [ReadinessController],
-    exports: [ReadinessService, BusinessFactsService],
+    exports: [ReadinessService, BusinessFactsService, BusinessFactsReader],
 })
 export class ReadinessModule {}

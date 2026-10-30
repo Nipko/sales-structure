@@ -26,6 +26,7 @@ import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.
 import { FaqsService } from '../faqs/faqs.service';
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import { PoliciesService } from '../policies/policies.service';
+import { BusinessFactsReader, RUNTIME_POLICY_TYPES as VALID_POLICY_TYPES } from '../readiness/business-facts.reader';
 import { KnowledgeService } from '../knowledge/knowledge.service';
 import { PropertiesService } from '../vacation-rental/properties.service';
 import { ToursService } from '../tours/tours.service';
@@ -208,6 +209,11 @@ export class AIToolExecutorService {
         private readonly appointmentsService?: AppointmentsService,
         /** Per-tenant runtime flags (`agentRuntime.slotWindow`). Absent in hand-built specs: the flag reads as off. */
         @Optional() private readonly featureFlags?: FeatureFlagsService,
+        /**
+         * R3b: `get_policy` reads the business's structured policy (`policy_terms` in requirement_values, ADR 0009) and
+         * only falls back to the `policies` table when there is none. Absent in hand-built specs: `policies`, as before.
+         */
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) { }
 
     /**
@@ -2099,6 +2105,19 @@ export class AIToolExecutorService {
         executionContext?: ServiceExecutionContext,
         captured?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture,
     ): Promise<any> {
+        // A sealed evaluation replays its frozen copy of `policies`; a live turn reads the business facts (R3b). While the
+        // legacy table is still written (dual write), both say the same text for a value the owner saved in the panel.
+        if (this.businessFacts && !captured && (VALID_POLICY_TYPES as readonly string[]).includes(type)) {
+            const fact = await this.businessFacts.policy(tenantId, type, executionContext);
+            if (!fact) return { error: `No ${type} policy is configured for this business.` };
+            return {
+                type: fact.type,
+                title: fact.title,
+                content: fact.content,
+                version: fact.version,
+                ...(fact.terms ? { terms: fact.terms } : {}),
+            };
+        }
         const policy = await this.policiesService.getActive(tenantId, type, executionContext, captured);
         if (!policy) return { error: `No ${type} policy is configured for this business.` };
         return {

@@ -4,7 +4,7 @@
  * (scripts/readiness/backfill-provenance.ts) escriba con exactamente el mismo SQL. business-facts-writes.spec.ts
  * admite escrituras sobre `requirement_values` solo en este archivo y en business-facts.service.ts.
  */
-import { PROVENANCE_TABLES, type PlannedRow, type StoredStatus } from '@parallext/business-spec';
+import { PROVENANCE_TABLES, type LegacyPatch, type PlannedRow, type StoredStatus } from '@parallext/business-spec';
 
 /** Quién escribe. Una persona (con su delegación si actúa por suplantación) o un script de la plataforma. */
 export type BusinessFactActor =
@@ -122,3 +122,74 @@ export function toView(r: Record<string, any>): BusinessFactView {
         validUntil: toIso(r.valid_until), specVersion: r.spec_version, version: Number(r.version), updatedAt: toIso(r.updated_at) as string,
     };
 }
+
+// ─────────────────────────── proyección al almacenamiento viejo (R3b, expand) ───────────────────────────
+
+/**
+ * Sentencias que escriben la proyección de un valor en su almacenamiento de hoy (C0 §2 expand-contract, ADR 0009), en
+ * la MISMA transacción que el valor: si la escritura del valor falla (409 por versión), la proyección se deshace. Se
+ * ejecutan con `search_path` en el esquema del tenant; `public.tenants` va calificado.
+ *
+ * - horario → `tenants.settings.businessHours` (y sube `agent_personas.version`, como la pantalla de horario: la
+ *   configuración que sirve el agente cambió);
+ * - nombre → `tenants.name`;
+ * - descripción, sede principal y contacto → la fila `is_primary` de `companies` (se crea si no hay), y el público en
+ *   `settings.customerTypes`;
+ * - políticas → una versión nueva y activa en `policies` (la anterior queda inactiva, como en PoliciesService).
+ *
+ * Se retiran en la release siguiente, cuando nadie lea el almacenamiento viejo (docs/domain/business-readiness-runtime.md).
+ */
+export function legacyPatchStatements(tenantId: string, patch: LegacyPatch, actorLabel: string): { sql: string; params: unknown[] }[] {
+    switch (patch.kind) {
+        case 'settings.businessHours':
+            return [
+                {
+                    sql: `UPDATE public.tenants SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('businessHours', $2::jsonb), updated_at = NOW()
+ WHERE id = $1::uuid RETURNING id`,
+                    params: [tenantId, JSON.stringify(patch.businessHours)],
+                },
+                { sql: 'UPDATE agent_personas SET version = COALESCE(version, 0) + 1, updated_at = NOW() RETURNING id', params: [] },
+            ];
+        case 'tenants.name':
+            return [{ sql: 'UPDATE public.tenants SET name = $2, updated_at = NOW() WHERE id = $1::uuid RETURNING id', params: [tenantId, patch.name] }];
+        case 'companies': {
+            const cols = Object.keys(patch.fields).filter(c => COMPANY_COLUMNS.has(c));
+            const values = cols.map(c => (c === 'social_links' ? JSON.stringify(patch.fields[c] ?? {}) : patch.fields[c] ?? null));
+            const cast = (c: string, i: number) => (c === 'social_links' ? `$${i}::jsonb` : `$${i}`);
+            const out: { sql: string; params: unknown[] }[] = [];
+            if (cols.length) {
+                out.push({
+                    sql: `WITH updated AS (
+    UPDATE companies SET ${cols.map((c, i) => `${c} = ${cast(c, i + 2)}`).join(', ')}, updated_at = NOW() WHERE is_primary = true RETURNING id
+)
+INSERT INTO companies (name, is_primary, ${cols.join(', ')}, updated_at)
+SELECT (SELECT name FROM public.tenants WHERE id = $1::uuid), true, ${cols.map((c, i) => cast(c, i + 2)).join(', ')}, NOW()
+ WHERE NOT EXISTS (SELECT 1 FROM updated)
+RETURNING id`,
+                    params: [tenantId, ...values],
+                });
+            }
+            if (patch.customerTypes) {
+                out.push({
+                    sql: `UPDATE public.tenants SET settings = COALESCE(settings, '{}'::jsonb) || jsonb_build_object('customerTypes', $2::jsonb), updated_at = NOW()
+ WHERE id = $1::uuid RETURNING id`,
+                    params: [tenantId, JSON.stringify(patch.customerTypes)],
+                });
+            }
+            return out;
+        }
+        case 'policies':
+            return [
+                { sql: 'UPDATE policies SET is_active = false, effective_to = NOW(), updated_at = NOW() WHERE type = $1 AND is_active = true RETURNING id', params: [patch.type] },
+                {
+                    sql: `INSERT INTO policies (type, title, content, version, is_active, created_by)
+SELECT $1, $2, $3, COALESCE(MAX(version), 0) + 1, true, $4 FROM policies WHERE type = $1
+RETURNING id`,
+                    params: [patch.type, patch.title, patch.content, actorLabel],
+                },
+            ];
+    }
+}
+
+/** Columnas de `companies` que puede escribir una proyección (lista cerrada: el nombre de columna va en el SQL). */
+const COMPANY_COLUMNS: ReadonlySet<string> = new Set(['about', 'address', 'city', 'country', 'phone', 'email', 'website', 'social_links']);

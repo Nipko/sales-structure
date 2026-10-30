@@ -804,7 +804,7 @@ requirements:
   data:
     name: proc.handoff.hours_sla
     type: procedure_spec
-    structure: {human_hours: "weekly_hours (por defecto = CORE.HOURS.REGULAR)", sla_in_hours: duration, sla_out_of_hours: "enum [siguiente_apertura, duration]", out_of_hours_message: "text_i18n (plantilla con {próxima_apertura})", callback_offered: bool}
+    structure: {human_hours: "weekly_hours (por defecto = CORE.HOURS.REGULAR)", sla_in_hours: duration, sla_out_of_hours: "union [siguiente_apertura, iso_duration] (la próxima apertura, o una duración ISO-8601 como PT4H; ADR 0009)", out_of_hours_message: "text_i18n (plantilla con {próxima_apertura})", callback_offered: bool}
     validation: ["sla_in_hours ≤ 24 h", "el mensaje no promete un tiempo menor al SLA"]
     example: {sla_in_hours: {min: 15, unit: min}, sla_out_of_hours: siguiente_apertura, callback_offered: true}
   criticality: {level: bloqueante, rule: R1}

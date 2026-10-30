@@ -7,11 +7,12 @@ import { AgentDraftController } from './agent-draft.controller';
 import { AgentPublicationService } from './agent-publication.service';
 import { AgentPublicationController } from './agent-publication.controller';
 import { EvaluationRevisionModule } from '../evaluation-revision/evaluation-revision.module';
+import { ReadinessModule } from '../readiness/readiness.module';
 
 @Module({
     // EvaluationRevisionModule and not ConversationsModule: publication needs the
     // manifest check, and ConversationsModule already imports this one.
-    imports: [forwardRef(() => TenantsModule), EvaluationRevisionModule],
+    imports: [forwardRef(() => TenantsModule), EvaluationRevisionModule, ReadinessModule],
     controllers: [PersonaController, AgentDraftController, AgentPublicationController],
     providers: [PersonaService, AgentDraftService, AgentPublicationService],
     exports: [PersonaService, AgentDraftService, AgentPublicationService],

@@ -4,8 +4,10 @@ import {
     Injectable,
     Logger,
     NotFoundException,
+    Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessFactsReader } from '../readiness/business-facts.reader';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { EmailTemplatesService } from '../email-templates/email-templates.service';
@@ -64,6 +66,8 @@ export class PropertiesService {
         // working. When absent the tenant behaves as Channel-Manager-free,
         // which is what a tenant without the integration is.
         private readonly lodgingSor?: LodgingSourceOfTruthService,
+        /** R3b: la zona del horario del negocio sale de CORE.HOURS.REGULAR (BusinessFactsReader); sin él, de settings. */
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) {}
 
     /**
@@ -191,7 +195,8 @@ export class PropertiesService {
         if (!tenant) throw new NotFoundException('Tenant not found');
 
         const settings = (tenant.settings as any) || {};
-        const timezone = settings.businessHours?.timezone || settings.timezone || 'America/Bogota';
+        const hours = this.businessFacts ? await this.businessFacts.hours(tenantId).catch(() => settings.businessHours) : settings.businessHours;
+        const timezone = hours?.timezone || settings.timezone || 'America/Bogota';
         try {
             const parts = new Intl.DateTimeFormat('en-US', {
                 timeZone: timezone,

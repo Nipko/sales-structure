@@ -17,6 +17,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PrismaService } from '../prisma/prisma.service';
+import { BusinessFactsReader } from '../readiness/business-facts.reader';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { PERSONA_TEMPLATES } from './templates';
 import * as yaml from 'js-yaml';
@@ -74,6 +75,9 @@ export class PersonaController {
         // same hand-built specs; without it the link reports that it answers,
         // which is what an unknown allowance reports anyway.
         @Optional() private readonly demoAllowance?: DemoAllowanceService,
+        // R3b: lo que el agente lee del horario (CORE.HOURS.REGULAR). Optional for the same hand-built specs; without it
+        // the setup status reads `settings.businessHours`, as before.
+        @Optional() private readonly businessFacts?: BusinessFactsReader,
     ) {}
 
     /**
@@ -791,9 +795,9 @@ export class PersonaController {
         // de volver a pedir una plantilla y pisar lo que el dueño ya respondió.
         let defaultAgent: { id: string; name: string | null; greeting: string | null } | null = null;
 
-        // Readiness del agente: horarios de atención viven en tenant.settings.businessHours
-        // (nivel tenant, no requiere query). 24/7 o ≥1 día con horario cuenta como configurado.
-        const bh = settings.businessHours;
+        // Readiness del agente: el horario que lee el agente (R3b: CORE.HOURS.REGULAR por BusinessFactsReader, o
+        // settings.businessHours si el negocio no tiene valor propio). 24/7 o ≥1 día con horario cuenta como configurado.
+        const bh = this.businessFacts ? await this.businessFacts.hours(tenantId).catch(() => settings.businessHours) : settings.businessHours;
         const hasBusinessHours = !!(bh && (bh.is247 === true || Object.keys(bh.schedule || {}).length > 0));
 
         if (schema) {

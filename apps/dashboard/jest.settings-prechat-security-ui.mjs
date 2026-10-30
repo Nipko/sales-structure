@@ -11,6 +11,8 @@ export default {
     moduleFileExtensions: ['ts', 'tsx', 'js', 'mjs', 'json', 'node'],
     moduleNameMapper: {
         '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+        '^@parallext/business-spec$': '<rootDir>/../../packages/business-spec/src/index.ts',
+        '^@parallext/business-spec/load$': '<rootDir>/../../packages/business-spec/src/load.ts',
         '^@/(.*)$': '<rootDir>/src/$1',
         '^jsdom$': environmentRequire.resolve('jsdom'),
         '^react$': ownRequire.resolve('react'),

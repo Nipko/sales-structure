@@ -34,7 +34,7 @@ function sample(f: FormField | SpecFormField): unknown {
         case "object": case "address": return fill(f.fields ?? []);
         case "list": return [fill(f.fields ?? [])];
         case "ref_or_own": return refValue(String(f.ref));
-        default: return TEXT[f.key] ?? "Consultorio odontológico en Chapinero con limpiezas, ortodoncia e implantes.";
+        default: return f.options?.[0]?.value ?? TEXT[f.key] ?? "Consultorio odontológico en Chapinero con limpiezas, ortodoncia e implantes.";
     }
 }
 function fill(fields: (FormField | SpecFormField)[]): Record<string, unknown> {

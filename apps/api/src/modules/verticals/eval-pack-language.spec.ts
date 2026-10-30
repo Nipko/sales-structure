@@ -96,7 +96,6 @@ describe('barrido semántico de todos los perfiles', () => {
             // de los cuatro paquetes.
             const spanishSource = [
                 ...contract.intents.map(intent => intent.description),
-                ...contract.prompt.notOffered,
                 ...contract.prompt.terminology.avoid,
             ]
                 .map(value => value.trim().toLowerCase())

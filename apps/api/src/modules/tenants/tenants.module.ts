@@ -2,6 +2,7 @@ import { forwardRef, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { TenantsService } from './tenants.service';
 import { TenantsController } from './tenants.controller';
+import { BusinessFactProjectionListener } from './business-fact-projection.listener';
 import { PlatformStatusController } from './platform-status.controller';
 import { AIModule } from '../ai/ai.module';
 import { PersonaModule } from '../persona/persona.module';
@@ -25,7 +26,7 @@ import { InvitationsModule } from '../invitations/invitations.module';
         InvitationsModule,
     ],
     controllers: [TenantsController, PlatformStatusController],
-    providers: [TenantsService],
+    providers: [TenantsService, BusinessFactProjectionListener],
     exports: [TenantsService],
 })
 export class TenantsModule { }

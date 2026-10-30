@@ -77,6 +77,6 @@ Al crear una página o endpoint de super_admin:
 
 ## Referencias
 
-- [`security-specification.md`](security-specification.md), [`SECURITY.md`](SECURITY.md) — controles de seguridad y RBAC
+- [`security-specification.md`](security-specification.md) — controles de seguridad y RBAC
 - [`analytics-billing-reference.md`](analytics-billing-reference.md) — endpoints super_admin (billing-ops, financials)
 - `apps/api/src/modules/auth/` — `impersonate` / `endImpersonation`; `common/utils/audit-actor.util.ts`; `roles.ts`

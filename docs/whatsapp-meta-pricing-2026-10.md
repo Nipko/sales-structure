@@ -37,7 +37,7 @@ Fuentes de esta reconstrucción:
 factura, así que no podemos absorberlo, subsidiarlo ni revenderlo con margen.
 
 Consecuencia directa: la línea “WhatsApp/Meta” del COGS en
-`docs/plan-profitability-2026-07.md` **no existe como costo nuestro**. Cualquier
+`docs/archive/2026-08-pagos/plan-profitability-2026-07.md` **no existe como costo nuestro**. Cualquier
 escenario que la use está mal planteado, y por eso ese documento lleva la
 advertencia en el índice.
 

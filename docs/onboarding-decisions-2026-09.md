@@ -1,14 +1,14 @@
 # Onboarding: qué queda de las ideas anteriores, qué ideas nuevas traemos y la hoja de decisiones
 
-> **Revisión del 18-sep-2026:** D1–D26 y la bitácora siguientes conservan su significado histórico. La [propuesta v2, sección 9](onboarding-experience-plan-v2-2026-09.md#9-enmiendas-propuestas-a-las-26-decisiones) documenta enmiendas recomendadas después de investigar productos, casos y usabilidad. No se marcan retroactivamente como aprobadas o construidas. Consultar la [auditoría técnica](onboarding-review-and-completion-plan-2026-09-18.md) para diferencias entre la bitácora y el código.
+> **Revisión del 18-sep-2026:** D1–D26 y la bitácora siguientes conservan su significado histórico. La [propuesta v2, sección 9](archive/2026-09-onboarding/onboarding-experience-plan-v2-2026-09.md#9-enmiendas-propuestas-a-las-26-decisiones) documenta enmiendas recomendadas después de investigar productos, casos y usabilidad. No se marcan retroactivamente como aprobadas o construidas. Consultar la [auditoría técnica](archive/2026-09-onboarding/onboarding-review-and-completion-plan-2026-09-18.md) para diferencias entre la bitácora y el código.
 
-> Complementa `docs/onboarding-experience-design-2026-09.md` (el diseño) y `docs/onboarding-diagnosis-2026-09.md` (la evidencia). Este documento existe para que el dueño decida de una vez: cada decisión está en modo de opciones, con la recomendación y la consecuencia de cada camino.
+> Complementa `docs/onboarding-experience-design-2026-09.md` (el diseño) y `docs/archive/2026-09-onboarding/onboarding-diagnosis-2026-09.md` (la evidencia). Este documento existe para que el dueño decida de una vez: cada decisión está en modo de opciones, con la recomendación y la consecuencia de cada camino.
 
 ---
 
 ## 1. Las ideas del agente anterior: qué queda, qué cambia, qué se descarta
 
-El documento `docs/onboarding-ux-benchmark-and-video-audit.md` tenía la intuición correcta (armar piezas, cero prompts, probar antes de Meta, estación de reanudación, superpoderes en un clic). Lo que se hizo con cada idea:
+El documento `docs/archive/2026-09-onboarding/onboarding-ux-benchmark-and-video-audit.md` tenía la intuición correcta (armar piezas, cero prompts, probar antes de Meta, estación de reanudación, superpoderes en un clic). Lo que se hizo con cada idea:
 
 | Idea del agente anterior | Qué pasó con ella | Por qué |
 |---|---|---|

@@ -1525,7 +1525,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Tenant endpoints:** `GET|PUT /fiscal/:tenantId/data` (datos fiscales del tenant), `GET /fiscal/:tenantId/invoices`, `POST /fiscal/:tenantId/invoices/:id/retry`, `GET /fiscal/:tenantId/invoices/:id/pdf`, `GET /fiscal/:tenantId/invoices/:id/xml`
 - **Admin endpoints:** `GET|PUT /fiscal-admin/config`, `GET /fiscal-admin/invoices`, `POST /fiscal-admin/invoices/:id/retry`, `POST /fiscal-admin/invoices/:id/reissue` (recuperación 409: borrar+reemitir/reconciliar), `GET /fiscal-admin/preview-invoice`, `POST /fiscal-admin/test-invoice`, `GET /fiscal-admin/factus/health`, `GET /fiscal-admin/factus/numbering-ranges`
 - **BullMQ:** `fiscal-invoice` (concurrency 3)
-- **Model:** `FiscalInvoice` (global). Ver `docs/facturacion-electronica-colombia-2026-06.md`
+- **Model:** `FiscalInvoice` (global). Ver `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md`
 
 #### 69. sms-credits
 - **Purpose:** custodia legacy de balance/ledger/órdenes SMS y soporte operativo. P26 retiró catálogo tenant, compra, envío nuevo y claims; no es un producto disponible

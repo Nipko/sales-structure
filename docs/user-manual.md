@@ -1,8 +1,5 @@
 # Parallly — Manual de Usuario
 
-<p align="center">
-  <img src="../docs/images/parallly-logo.png" alt="Parallly Logo" width="200" />
-</p>
 
 <p align="center">
   <strong>Plataforma de IA Conversacional Omnicanal</strong><br/>

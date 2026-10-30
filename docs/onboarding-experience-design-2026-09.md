@@ -1,8 +1,8 @@
 # La experiencia de configuración guiada — diseño objetivo (septiembre 2026, v1.1)
 
-> **Actualización del 18-sep-2026:** conservar este documento como diseño base e historia de decisiones. La [propuesta v2 investigada](onboarding-experience-plan-v2-2026-09.md) plantea cambios de recorrido, confirmación de hechos, activación y medición; todavía no se declara implementada ni validada con usuarios. Para lo construido y pendiente consultar la [auditoría técnica](onboarding-review-and-completion-plan-2026-09-18.md). Las reglas de seis pasos, diez minutos universales, cero avisos y rojo solo para regresiones se revisan explícitamente en v2.
+> **Actualización del 18-sep-2026:** conservar este documento como diseño base e historia de decisiones. La [propuesta v2 investigada](archive/2026-09-onboarding/onboarding-experience-plan-v2-2026-09.md) plantea cambios de recorrido, confirmación de hechos, activación y medición; todavía no se declara implementada ni validada con usuarios. Para lo construido y pendiente consultar la [auditoría técnica](archive/2026-09-onboarding/onboarding-review-and-completion-plan-2026-09-18.md). Las reglas de seis pasos, diez minutos universales, cero avisos y rojo solo para regresiones se revisan explícitamente en v2.
 
-> **Qué es este documento.** El diseño completo de la experiencia que queremos que viva cualquier persona sin conocimientos técnicos al configurar su agente en Parallly: el día 0 (onboarding), el después (mejorar y cambiar cosas) y el panel de salud. No es una lista de arreglos: es la experiencia nueva. La evidencia de por qué la actual no sirve está en `docs/onboarding-diagnosis-2026-09.md`; aquí se usa solo cuando explica una decisión.
+> **Qué es este documento.** El diseño completo de la experiencia que queremos que viva cualquier persona sin conocimientos técnicos al configurar su agente en Parallly: el día 0 (onboarding), el después (mejorar y cambiar cosas) y el panel de salud. No es una lista de arreglos: es la experiencia nueva. La evidencia de por qué la actual no sirve está en `docs/archive/2026-09-onboarding/onboarding-diagnosis-2026-09.md`; aquí se usa solo cuando explica una decisión.
 > **Alcance.** Los cinco canales conversacionales (WhatsApp, Instagram, Messenger, Telegram y el chat web) en pie de igualdad; las 18 industrias y sus subtipos como fuente de ejemplos y sugerencias; escritorio y celular.
 > **Estado histórico al redactar v1.1.** Diseño previo a su implementación. Posteriormente se construyeron partes de las olas 1–7 y comenzó la 8; el estado actual está en la auditoría enlazada arriba. **v1.1** incorporó la revisión adversarial de tres lentes (dueña sin conocimientos, factibilidad sobre el código real, contenido por rubro): 33 huecos, de los cuales 4 eran bloqueantes y quedaron resueltos en el diseño; el detalle está en `docs/onboarding-diagnosis-2026-09-workdir/design_review_*.md` y el resumen en §12.
 
@@ -229,7 +229,7 @@ Reglas de este modo:
 
 ## 6. El panel de salud: "Salud de {Nombre}"
 
-Una sola pantalla, la misma tarjeta en Inicio, cuatro preguntas en lenguaje llano (detalle en `docs/onboarding-diagnosis-2026-09.md` §6.4):
+Una sola pantalla, la misma tarjeta en Inicio, cuatro preguntas en lenguaje llano (detalle en `docs/archive/2026-09-onboarding/onboarding-diagnosis-2026-09.md` §6.4):
 
 1. **¿Puede atender hoy?** Semáforo de tres bandas, **por canal**: verde atiende; naranja atiende pero pierde ventas (no sabe precios: "2 de 3 sin confirmar", sin persona que reciba, agenda pedida y apagada); rojo no atiende (canal desconectado, apagada, sin ruta a persona). Solo sube con estado verificado; "crítico" en rojo solo cuando algo que funcionaba dejó de funcionar (requiere guardar el último estado bueno por canal, que hoy no existe).
 2. **¿Qué sabe responder?** Las preguntas del rubro con ✔/✖ y "Enséñale"; qué puede hacer (reservar, tomar pedidos, cotizar).

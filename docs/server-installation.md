@@ -1,7 +1,7 @@
 # Parallly — Guia de Instalacion en Servidor Nuevo
 
 > Version jul-2026 | Guia de referencia para levantar la plataforma desde un VPS Ubuntu en blanco.
-> Consolida el antiguo `installation-manual.md` (troubleshooting, monitoreo, backups) en un solo documento.
+> Documento único de instalación (troubleshooting, monitoreo, backups).
 
 ## Requisitos del Servidor
 

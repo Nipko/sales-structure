@@ -113,7 +113,7 @@ src/
     InitialSetupCard.tsx    — Essential setup tasks, plan/role/vertical-aware and fail-closed
     quality/                — Global Agent Health card, banner and safe quality status UI
     SetupBanner.tsx / AgentReadinessBanner.tsx — Prompts de personalización/readiness del agente
-    CopilotWidget.tsx / HelpAssistant.tsx — Copiloto y asistente de ayuda
+    HelpAssistant.tsx       — Asistente de ayuda (Parallly Assist)
     tour/ProductTour.tsx    — Tour guiado del producto
     pwa/                    — InstallPrompt, OfflineIndicator, PushNotificationToggle, ServiceWorkerRegistrar
   contexts/

@@ -73,7 +73,7 @@ instalaron desde el lockfile con `npm ci --ignore-scripts`, sin modificarlo.
 - Correo: `EmailService.sendWithOutcome()` distingue aceptación, rechazo y resultado incierto; `send()` conserva su interfaz booleana.
 - Dashboard: `apps/dashboard/src/app/admin/communications/`.
 - Navegación y acceso: `packages/shared/src/dashboard-page-access.ts`, `navigation-contract.ts`, `roles.ts`, `AppSidebar.tsx`.
-- Contenido del aviso de Meta: `meta-whatsapp-template.json` y el [paquete de comunicación](communications/meta-whatsapp-2026-10/README.md).
+- Contenido del aviso de Meta: `apps/dashboard/src/app/admin/communications/meta-whatsapp-template.json` (el paquete de la campaña del 1-oct-2026 se retiró en K3; queda en el historial de git).
 - Orientación sobre pagos: `WhatsAppRouteBrief.tsx` antes del registro, `WhatsAppPaymentMethodNotice.tsx` en el estado de conexión y `WhatsappFundingPanel.tsx` en la configuración del canal. Incluyen la guía y la ayuda de Meta.
 - Lectura de evidencia: `GET /whatsapp/spend/funding-readiness`. Comprobación en Meta: `POST /channels/whatsapp/connection/check-funding`, restringida a administradores autorizados. La lectura `attached` no garantiza que Meta acepte un cargo; `unknown` no equivale a ausencia.
 - Preparación operativa: `WhatsAppConnectedState.tsx` distingue pagos, zona horaria y pendientes del registro. El cupo gratuito comercial de Meta no elimina las comprobaciones técnicas de Parallly ni las pausas activas.

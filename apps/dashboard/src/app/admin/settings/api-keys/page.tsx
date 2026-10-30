@@ -259,7 +259,7 @@ export default function ApiKeysPage() {
           <p>
             {t.rich("moreDetails", {
               docsLink: (chunks) => (
-                <a href="/docs/API_REFERENCE.md" className="text-indigo-500 hover:underline font-semibold">
+                <a href="https://api.parallly-chat.cloud/docs/public" target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline font-semibold">
                   {chunks}
                 </a>
               )

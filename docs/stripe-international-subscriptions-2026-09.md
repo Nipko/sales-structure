@@ -94,5 +94,5 @@ Validación local completada: TypeScript sin errores en API, dashboard y landing
 - [Stripe: webhook signature and raw body](https://docs.stripe.com/webhooks)
 - [Stripe: idempotencia y conservación de claves](https://docs.stripe.com/api/idempotent_requests)
 - [Stripe: estados y eventos de reembolsos](https://docs.stripe.com/refunds)
-- [Corrección comercial del 14 de septiembre](audits/2026-09-14/plan-economics-implementation.md)
+- [Corrección comercial del 14 de septiembre](archive/2026-08-pagos/plan-economics-implementation-2026-09-14.md)
 - [Operación Wompi](billing-runbook.md)

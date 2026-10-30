@@ -3,7 +3,7 @@
 _Actualizado: jul 2026 (v2026-07)._
 
 > Todas las rutas cuelgan del prefijo global `/api/v1`. En este doc se listan sin el prefijo (p. ej. `/dashboard-analytics/…` = `/api/v1/dashboard-analytics/…`).
-> Docs relacionados: `docs/billing-annual-cycle.md` (ciclo mensual/anual + precios COP), `docs/superadmin-governance.md` (gobernanza de impersonación), `docs/backup-restore-runbook.md` (backup offsite), `docs/facturacion-electronica-colombia-2026-06.md` (DIAN/Factus), `docs/sms-monetization-packages-2026-07.md` (créditos SMS), `docs/multi-channel-per-type-implementation-2026-07.md` (multi-cuenta por tipo).
+> Docs relacionados: `docs/billing-annual-cycle.md` (ciclo mensual/anual + precios COP), `docs/superadmin-governance.md` (gobernanza de impersonación), `docs/backup-restore-runbook.md` (backup offsite), `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md` (DIAN/Factus), `docs/archive/2026-07-sms/sms-monetization-packages-2026-07.md` (créditos SMS), `docs/multi-channel-per-type-implementation-2026-07.md` (multi-cuenta por tipo).
 
 ---
 
@@ -301,7 +301,7 @@ Traslada las consultas psql-por-SSH del runbook al panel. Auditadas con actor re
 
 ## Facturación electrónica DIAN — Colombia (Factus)
 
-Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factus**). Ver `docs/facturacion-electronica-colombia-2026-06.md`.
+Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factus**). Ver `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md`.
 
 - **Modelo**: `fiscal_invoices` (global). Se crea en `billing.payment.succeeded` (cualquier PSP) y se emite async. Guarda CUFE/CUDE, numeración (prefijo+consecutivo), XML/PDF firmados y un `acquirer_snapshot` inmutable. `type`: invoice | credit_note | debit_note. `status`: pending | issued | failed | cancelled
 - **Gate collect-before-pay** (`fiscalGateEnabled`, OFF por defecto): cuando está ON y el país de cobro lo requiere, exige el perfil fiscal (NIT/cédula + DV módulo 11) antes de cobrar. Opt-in "consumidor final" (DIAN 222222222222)
@@ -315,7 +315,7 @@ Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factu
 
 > **Retirado (ago 2026).** El interruptor maestro `sms.platform_enabled` está apagado por defecto (`sms-kill-switch.service.ts`), `GET /sms-credits/packages` devuelve `data: []` con `meta.retired` y `code: sms_product_retired`, y el checkout y las notificaciones responden `sms_product_retired`. La compra con Mercado Pago ya no existe. Lo que sigue describe el diseño original por si hay que auditar saldos o libros históricos.
 
-Modelo reseller one-way: los tenants compran créditos prepagos (1 crédito = 1 segmento Twilio) para **notificar a sus clientes** vía el Twilio de la plataforma. El canal SMS conversacional (bidireccional) quedó **descartado**. Ver `docs/sms-monetization-packages-2026-07.md`.
+Modelo reseller one-way: los tenants compran créditos prepagos (1 crédito = 1 segmento Twilio) para **notificar a sus clientes** vía el Twilio de la plataforma. El canal SMS conversacional (bidireccional) quedó **descartado**. Ver `docs/archive/2026-07-sms/sms-monetization-packages-2026-07.md`.
 
 - **Tablas**: `sms_credit_balances` (cache del total), `sms_credit_ledger` (movimientos append-only, `balance_after`), `sms_package_orders` (compra pago único con Mercado Pago, hoy retirada; `external_reference` = order id, acreditación idempotente por webhook)
 - **Endpoints** (`/sms-credits/*`):

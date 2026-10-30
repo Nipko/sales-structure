@@ -1,9 +1,9 @@
 # Parallext Engine — Especificacion de Seguridad
 
-**Version:** 1.1
-**Fecha:** 2026-07-23
+**Version:** 1.2
+**Fecha:** 2026-10-30 (K3: fusiona `docs/SECURITY.md`; corrige nginx, Mercado Pago y SMS)
 **Alcance:** Plataforma completa (API :3000, Dashboard :3001, WhatsApp Service :3002, Landing :80, app Mobile React Native/Expo `@parallext/mobile`, Infraestructura ~15 contenedores)
-**Base:** Postura endurecida de forma iterativa; controles verificados contra el codigo a 2026-07-23. Referencias operativas: `docs/SECURITY.md`, `docs/superadmin-governance.md`, `docs/backup-restore-runbook.md`.
+**Base:** Postura endurecida de forma iterativa; controles verificados contra el codigo a 2026-07-23. Referencias operativas: Anexo A de este documento, `docs/superadmin-governance.md`, `docs/backup-restore-runbook.md`.
 
 > **v1.1 (jul 2026)** — Actualiza: extraccion de IP anti-spoof tras Cloudflare (§3.1), gobernanza de impersonacion con motivo obligatorio + actor real en auditoria (§1.7), modelo de acceso super_admin sin tenant implicito (§9.2), Twilio per-account + validacion de firma del webhook SMS (§5.3, §16), bloqueo del provider `mock` en produccion (§5.4). Agrega: Multi-canal por tipo (§17), SMS reseller monetizado (§18), Fiscal DIAN (§19), Backup / DR (§20), Ops Center + hardening de deploy (§21).
 
@@ -174,14 +174,9 @@ Endpoints con `@AuthThrottle` (inventario real, `auth.controller.ts` + `customer
 
 **Archivos:** `common/guards/auth-throttle.guard.ts`, `common/decorators/auth-throttle.decorator.ts`
 
-### 3.2 Nivel de Infraestructura (Nginx)
+### 3.2 Nivel de Infraestructura
 
-| Zona | Rate | Uso |
-|------|------|-----|
-| `api` | 30 req/s por IP | Endpoints generales de API |
-| `webhook` | 100 req/s por IP | Webhooks de canales |
-
-**Archivo:** `infra/nginx/nginx.conf:41-42`
+No hay nginx en el camino de produccion: el ingreso es el servicio `tunnel` (Cloudflare Tunnel) de `docker-compose.prod.yml`, con la proteccion DDoS/WAF de Cloudflare. El limite por IP lo aplica la propia API (§3.1, IP real via `CF-Connecting-IP`). Las zonas `api` (30 r/s) y `webhook` (100 r/s) que este documento citaba vivian en `infra/nginx/`, que nunca se monto en produccion y se retiro en K3 (2026-10-30).
 
 ### 3.3 Rate Limiting por Tenant
 
@@ -280,16 +275,16 @@ Validado en `ChannelsController.processSmsWebhook()` / `validateTwilioSignature(
 
 **Nota:** SMS es solo notificacion one-way por creditos (§18); el adaptador conversacional Twilio (`channels/sms/sms.adapter.ts`) queda como legacy.
 
-### 5.4 MercadoPago / Stripe (Billing)
+### 5.4 Wompi / Stripe (Billing)
 
 Validado en `BillingWebhookController.receive()` (`billing/webhook.controller.ts`).
 
 | Parametro | Valor |
 |-----------|-------|
-| Algoritmo | HMAC-SHA256 (MercadoPago) / firma Stripe |
+| Algoritmo | Checksum de eventos Wompi (`WOMPI_EVENTS_SECRET`) / firma Stripe sobre el `rawBody` |
 | Verificacion | `provider.verifyWebhookSignature(rawBody, headers)` sobre el `rawBody` crudo; firma invalida → `401` + `recordWebhookFailure('signature')` |
 | Idempotencia | Dedup por `billing_events UNIQUE(provider, providerEventId)` |
-| **Provider `mock` bloqueado en produccion** | El provider `mock` tiene una verificacion de firma que siempre retorna `true`; exponer su ruta publica en prod dejaria forjar eventos `PAYMENT_SUCCEEDED` sin autenticacion y activar una suscripcion gratis. `receive()` restringe `allowed` a `['mercadopago','stripe']` cuando `NODE_ENV === 'production'` (solo agrega `'mock'` fuera de prod); un provider no permitido responde `501` |
+| **Provider `mock` bloqueado en produccion** | El provider `mock` tiene una verificacion de firma que siempre retorna `true`; exponer su ruta publica en prod dejaria forjar eventos `PAYMENT_SUCCEEDED` sin autenticacion y activar una suscripcion gratis. `receive()` restringe `allowed` a `['stripe','wompi']` cuando `NODE_ENV === 'production'` (solo agrega `'mock'` fuera de prod); un provider no permitido responde `501` |
 
 ---
 
@@ -311,18 +306,8 @@ Validado en `BillingWebhookController.receive()` (`billing/webhook.controller.ts
 
 ### 6.2 Content Security Policy (CSP)
 
-```
-default-src 'self';
-script-src 'self' 'unsafe-inline' 'unsafe-eval' https://connect.facebook.net https://www.googletagmanager.com;
-style-src 'self' 'unsafe-inline';
-img-src 'self' data: https: blob:;
-connect-src 'self' https://api.parallly-chat.cloud https://graph.facebook.com https://graph.instagram.com wss:;
-frame-src https://www.facebook.com https://web.facebook.com;
-object-src 'none';
-base-uri 'self';
-```
-
-**Archivo:** `infra/nginx/nginx.conf:38`
+- **API:** `helmet` con su CSP por defecto en todas las rutas salvo Bull Board (`/api/v1/admin/queues`, que necesita scripts inline) — `apps/api/src/main.ts`.
+- **Dashboard y landing:** sin CSP propia. La politica que este documento citaba estaba en `infra/nginx/nginx.conf`, que no se aplicaba en produccion (retirado en K3). Queda como hallazgo M-18 (§14).
 
 ---
 
@@ -568,6 +553,7 @@ Rate limiting del widget: 5 sesiones por hora por visitor (`widget:rate:{visitor
 | M-07 | Signup retorna tokens antes de verificar email | Diseno | Bajo (patron comun en SaaS) |
 | M-08 | SAML AuthnRequests no firmados | 2h | Medio (depende del IdP) |
 | M-17 | 13 archivos usan `$queryRawUnsafe` con schema interpolado (ya validado por regex) | 4h | Bajo (mitigado por validacion) |
+| M-18 | Dashboard y landing sin Content-Security-Policy (la de `infra/nginx` nunca se aplico en produccion) | 2h | Medio (XSS sin segunda barrera) |
 
 ### BAJO
 
@@ -700,16 +686,9 @@ Un tenant puede conectar N conexiones del mismo tipo de canal (p. ej. 2 numeros 
 - **Anti-conflacion de conversaciones:** los lookups de channel account incluyen `tenantId` (y el `accountId`/numero concreto), de modo que una conexion no cruza mensajes con otra del mismo tenant ni de otro (ver §10.4). El webhook de Telegram resuelve el bot exacto y **nunca** cae a "cualquier bot activo" (evita fuga cross-tenant).
 - **Un agente por conexion:** el binding vive en `agent_personas.channel_bindings` (`ChannelAccountLite`: channelType/accountId), no "un agente por canal". Disconnect es por-cuenta.
 
-## 18. SMS Reseller Monetizado (creditos)
+## 18. SMS (producto retirado)
 
-El SMS conversacional fue **descartado**; SMS hoy es solo notificacion one-way, cobrada por creditos (1 credito = 1 segmento Twilio) contra la cuenta Twilio **de plataforma**. Servicios: `sms-credits/` (`SmsCreditsService`, `tenant-notification-sms.service.ts`), UI `/admin/sms-packages` + checkout MercadoPago pago unico.
-
-- **Kill-switch (super admin, OFF por defecto):** `SmsPackagesConfig.enabled` gobierna todo el modelo. Con `enabled=false` no se venden tiers (`getPackages()` retorna `[]`) ni sale ningun envio medido — la plataforma nunca adelanta un costo que no puede recuperar. Balances y ledger se preservan al alternar el switch.
-- **Ledger atomico anti-double-spend:**
-  - *Consumo* — `consume()` es un unico `UPDATE ... SET balance = balance - N WHERE tenant_id = $1 AND balance >= N RETURNING`; envios concurrentes no pueden dejar el balance negativo.
-  - *Abono idempotente* — `addCredits()` corre incremento + insercion de fila de ledger en **una** transaccion; el indice unico parcial `(tenant_id, reason, ref) WHERE delta > 0` hace del insert la compuerta de idempotencia: un abono duplicado (p. ej. `payment.created` + `payment.updated` del mismo pago MP) falla el insert → rollback → sin doble credito.
-- **Firma del webhook Twilio:** la validacion HMAC-SHA1 de `X-Twilio-Signature` (§5.3) protege el ingreso; el claim de idempotencia se hace **despues** de validar la firma.
-- **Tablas globales** (`sms_credit_balances`, `sms_credit_ledger`): acceso via Prisma / raw con `::uuid`.
+El producto SMS esta **retirado** desde agosto de 2026: el kill switch de plataforma `sms.platform_enabled` esta apagado por defecto y creditos, checkout y notificaciones responden `sms_product_retired` (`sms-kill-switch.service.ts`). Las tablas globales `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` se conservan por trazabilidad contable; su retiro requiere decision del dueño (ver ADR 0005). La validacion de firma Twilio (§5.3) sigue vigente mientras el adaptador legacy exista. El diseño historico esta en `docs/archive/2026-07-sms/`.
 
 ## 19. Fiscal DIAN (Colombia) — gate collect-before-pay
 
@@ -737,3 +716,290 @@ Scripts `infra/backup/backup.sh` + `restore.sh`, orquestados por cron de producc
 - **Throttling por IP real:** el limitador de auth usa `CF-Connecting-IP` (§3.1) para no ser evadible tras Cloudflare; se ampliaron los endpoints con `@AuthThrottle` (`f112d423`).
 - **Deploy defensivo:** gate de pre-conexion SSH con backoff, backup pre-migracion, fail-fast en migrate/seed y alertas de webhook de pago (`38a6a984`, `dbe31c73`).
 - **VPS baseline:** `ufw` (deny incoming, solo 22 abierto), `fail2ban`, Postgres bindeado a `127.0.0.1`.
+
+---
+
+## Anexo A — Operacion de autenticacion y usuarios
+
+Fusionado desde el antiguo `docs/SECURITY.md` (K3, 2026-10-30). Las secciones de ese documento que duplicaban a este (JWT, guards, cifrado, webhooks, idempotencia, infraestructura) se retiraron; aqui queda lo operativo que no estaba en otro lugar.
+
+### A.1 Flujo de autenticación
+
+#### Login completo (paso a paso):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    FLUJO DE AUTENTICACIÓN                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. USUARIO abre /login en el Dashboard                          │
+│     └─ Ve formulario de email + contraseña (glassmorphism)       │
+│                                                                  │
+│  2. DASHBOARD envía POST /auth/login { email, password }         │
+│     └─ HTTPS via Cloudflare → API NestJS                         │
+│                                                                  │
+│  3. API (AuthService.login):                                     │
+│     a) Busca usuario por email en tabla public.users             │
+│     b) Verifica que isActive = true                              │
+│     c) Compara password con bcrypt.compare(input, hash)          │
+│        - Hash almacenado: $2b$12$... (12 rounds)                │
+│     d) Si NO coincide → 401 Unauthorized                         │
+│     e) Si SÍ coincide → genera 2 tokens JWT:                    │
+│                                                                  │
+│  4. RESPUESTA al Dashboard:                                      │
+│     { accessToken, refreshToken, user: { id, email, role ... } } │
+│                                                                  │
+│  5. DASHBOARD guarda en localStorage:                            │
+│     - accessToken    (15 min)                                    │
+│     - refreshToken   (8h; 14 días con "Recordarme")              │
+│     - user           (JSON con perfil)                           │
+│                                                                  │
+│  6. Redirige a /admin → AdminLayout verifica token               │
+│                                                                  │
+│  7. CADA REQUEST a la API:                                       │
+│     Authorization: Bearer <accessToken>                          │
+│     → JwtStrategy valida firma y expiración                      │
+│     → RolesGuard verifica permisos del rol                       │
+│                                                                  │
+│  8. ACCESS TOKEN expira (15 min):                                │
+│     POST /auth/refresh { refreshToken }                          │
+│     → Valida contra Redis, ROTA el refresh (nuevo tid) y         │
+│       revoca el anterior. Reuse detection: si el tid ya no       │
+│       existe → revoca TODAS las sesiones del usuario.            │
+│                                                                  │
+│  9. LOGOUT: POST /auth/logout { refreshToken } →                 │
+│     revoca ese refresh en Redis + destruye la sesión →           │
+│     el front borra localStorage → redirige /login                │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+> Antes de `AuthService.login()` el flujo pasa por `AuthThrottleGuard` (10 intentos / 15 min
+> por IP real, ver §15), por la verificación 2FA si el usuario la tiene activa (§10) y por el
+> reconocimiento de dispositivo de confianza (§11). El login OAuth (Google/Microsoft) y SAML
+> devuelven un `code` de un solo uso (`oauth_exchange:{code}`, TTL corto) que el dashboard
+> canjea vía `POST /auth/exchange-code`.
+
+#### Endpoints de Auth (`auth.controller.ts` + `saml.controller.ts`):
+
+| Endpoint | Método | Auth | Descripción |
+|----------|--------|------|------------|
+| `/auth/login` | POST | ❌ (throttle 10/15m) | Login email+password → tokens + user (o reto 2FA) |
+| `/auth/signup` | POST | ❌ (throttle 5/1h) | Alta self-service: crea empresa + admin |
+| `/auth/register` | POST | ✅ super_admin/tenant_admin | Crear usuario (admin crea solo agents de su tenant) |
+| `/auth/refresh` | POST | ❌ | Renovar access token (**rota** el refresh) |
+| `/auth/logout` | POST | ❌ | Revoca el refresh + destruye sesión |
+| `/auth/exchange-code` | POST | ❌ (throttle 20/15m) | Canjea code OAuth/SAML de un solo uso por tokens |
+| `/auth/me` | POST | ✅ | Info del usuario actual |
+| `/auth/activity-ping` | POST | ✅ | Mantiene viva la sesión (cada 5 min) |
+| `/auth/google` | POST | ❌ | Login/registro con Google OAuth |
+| `/auth/microsoft/url` · `/auth/microsoft/callback` | GET | ❌ | Inicio y callback de Microsoft OAuth |
+| `/auth/forgot-password` | POST | ❌ (throttle 5/1h) | Solicitar código de reseteo |
+| `/auth/reset-password` | POST | ❌ (throttle 10/15m) | Confirmar reseteo con código |
+| `/auth/change-password` | POST | ✅ | Cambiar contraseña (requiere la actual) |
+| `/auth/setup-password` | POST | ✅ | Fijar contraseña a usuarios de Google |
+| `/auth/send-verification` · `/auth/verify-email` | POST | ✅ | Verificación de email (OTP 6 dígitos) |
+| `/auth/update-profile` | POST | ✅ | Actualizar nombre/teléfono/cargo |
+| `/auth/complete-onboarding` | POST | ✅ | Crear empresa + tenant al terminar onboarding |
+| `/auth/users` | GET | ✅ | Listar usuarios del tenant (o todos si super_admin) |
+| `/auth/users/:id` | PATCH/DELETE | ✅ super_admin/tenant_admin | Editar / desactivar usuario (soft delete + revoca sesiones) |
+| `/auth/users/:id/skills` | PUT | ✅ super_admin/tenant_admin | Editar skill tags |
+| `/auth/admin/reset-password` | POST | ✅ super_admin | Reset de contraseña de un usuario |
+| `/auth/impersonate/:tenantId` | POST | ✅ super_admin | Impersonar tenant admin (motivo obligatorio, §14) |
+| `/auth/impersonate/exit` | POST | ✅ super_admin | Cerrar sesión de impersonación |
+| `/auth/2fa/status` · `/setup` · `/verify-setup` · `/disable` | GET/POST | ✅ | Gestión de 2FA TOTP (§10) |
+| `/auth/2fa/verify` | POST | ❌ (throttle 10/15m) | Verificar código 2FA en login (usa `twoFAToken`) |
+| `/auth/2fa/send-email` · `/auth/2fa/send-sms` | POST | ❌ | Enviar OTP fallback por email / SMS |
+| `/auth/2fa/backup-codes` | POST | ✅ | Regenerar backup codes (requiere password) |
+| `/auth/trusted-devices` | GET | ✅ | Listar dispositivos de confianza (§11) |
+| `/auth/trusted-devices/:id/revoke` · `/revoke-all` | POST | ✅ | Revocar uno / todos |
+| `/auth/saml/check` · `/login` · `/acs` · `/metadata/:tenantId` | GET/POST | ❌ | Flujo SAML público (§12) |
+| `/auth/saml/config` · `/auth/saml/forced/:tenantId` | GET/PUT | ✅/❌ | Config IdP por tenant + estado force-SSO |
+
+*(La tabla resume el set real; para firmas y DTOs exactos ver `auth.controller.ts`.)*
+
+#### Payloads:
+
+**Request Login:**
+```json
+{ "email": "admin@empresa.com", "password": "••••••••", "rememberMe": true }
+```
+
+**Response Login:**
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+      "id": "uuid",
+      "email": "admin@parallext.com",
+      "firstName": "Admin",
+      "lastName": "Parallext",
+      "role": "super_admin",
+      "tenantId": null,
+      "tenantName": null
+    }
+  }
+}
+```
+
+---
+
+### A.2 bcrypt — contraseñas
+
+Las contraseñas **nunca** se almacenan en texto plano. Se usa bcrypt con 12 rounds de salting.
+
+#### Cómo funciona:
+1. Usuario envía contraseña: `<contraseña-del-usuario>`
+2. bcrypt genera salt aleatorio y hashea: `$2b$12$95qKCG/djm1h4pJzpIM3wu...`
+3. Solo el hash se guarda en la tabla `users.password`
+4. Al login, `bcrypt.compare()` verifica sin exponer la contraseña original
+
+#### Anatomía del hash:
+```
+$2b$12$95qKCG/djm1h4pJzpIM3wupq9PQ5WaugUXDSv4GO4/IX74njlKZr2
+ │   │  └────────────────────── Hash resultado
+ │   └── 12 rounds (cost factor)
+ └── Algoritmo bcrypt
+```
+
+#### Generar hash manualmente:
+```bash
+# Desde el VPS
+docker exec -it parallext-api node -e "require('bcrypt').hash('MI_PASSWORD', 12).then(h => console.log(h))"
+```
+
+#### Cambiar contraseña de un usuario:
+```bash
+# 1. Generar hash
+HASH=$(docker exec parallext-api node -e "require('bcrypt').hash('NUEVA_PASS', 12).then(h => console.log(h))")
+
+# 2. Actualizar en DB
+docker exec parallext-postgres psql -U parallext -d parallext -c "UPDATE users SET password = '$HASH' WHERE email = 'admin@parallext.com'"
+```
+
+---
+
+### A.3 Matriz de roles y permisos (RBAC)
+
+#### Roles del sistema:
+
+| Rol | Scope | Descripción |
+|-----|-------|------------|
+| `super_admin` | Global | Acceso total a toda la plataforma |
+| `tenant_admin` | Su tenant | Admin de su empresa, crea usuarios |
+| `tenant_supervisor` | Su tenant | Supervisa agentes, ve analytics |
+| `tenant_agent` | Su tenant | Atiende conversaciones |
+
+#### Matriz de permisos:
+
+| Acción | super_admin | tenant_admin | supervisor | agent |
+|--------|:-----------:|:------------:|:----------:|:-----:|
+| Ver todos los tenants | ✅ | ❌ | ❌ | ❌ |
+| Crear/editar tenants | ✅ | ❌ | ❌ | ❌ |
+| Crear usuarios | ✅ | ✅ (su tenant) | ❌ | ❌ |
+| Ver inbox | ✅ | ✅ | ✅ | ✅ |
+| Enviar mensajes | ✅ | ✅ | ✅ | ✅ |
+| Asignar conversaciones | ✅ | ✅ | ✅ | ❌ |
+| Resolver conversaciones | ✅ | ✅ | ✅ | ✅ |
+| Gestionar pipeline | ✅ | ✅ | ✅ | ✅ |
+| Crear automation rules | ✅ | ✅ | ❌ | ❌ |
+| Ver analytics/leaderboard | ✅ | ✅ | ✅ | ❌ |
+| Gestionar API keys | ✅ | ✅ | ❌ | ❌ |
+| Gestionar configuración | ✅ | ✅ | ❌ | ❌ |
+
+#### Tenant isolation:
+- `super_admin`: `tenantId = NULL` → ve todo
+- Otros roles: `tenantId = UUID` → solo ven datos de su tenant
+- Las queries SQL filtran por `SET search_path TO 'tenant_schema'`
+
+---
+
+### A.4 Protección del dashboard
+
+#### Componentes de auth en el frontend:
+
+| Componente | Ubicación | Función |
+|-----------|-----------|---------|
+| `AuthContext.tsx` | `contexts/` | Provider con login, logout, hasRole, estado |
+| `Providers.tsx` | `components/` | Envuelve toda la app con AuthProvider |
+| `login/page.tsx` | `app/login/` | Página de login premium |
+| `admin/layout.tsx` | `app/admin/` | Guard: redirige si no autenticado |
+
+#### Flow del frontend:
+
+```
+App start → AuthProvider lee localStorage
+  ├─ Token existe → setUser → mostrar /admin
+  └─ No token → /login
+
+/admin/layout.tsx:
+  ├─ isLoading → mostrar spinner
+  ├─ !isAuthenticated → router.push('/login')
+  └─ isAuthenticated → mostrar sidebar + topbar + children
+
+/login:
+  ├─ Submit → AuthContext.login() → fetch /auth/login
+  ├─ Éxito → localStorage.set → router.push('/admin')
+  └─ Error → mostrar mensaje "Credenciales inválidas"
+```
+
+#### Top bar del dashboard:
+- Muestra nombre + rol del usuario autenticado
+- Click en avatar → `logout()` → borra tokens → redirige a /login
+
+---
+
+### A.5 Gestión de usuarios
+
+#### Crear usuario admin (VPS):
+```bash
+# ADMIN_PASSWORD es obligatoria (12+ caracteres); no hay contraseña por defecto en el repo.
+cd apps/api && ADMIN_PASSWORD='<elige-una>' npx ts-node prisma/seed-admin.ts
+```
+
+#### Usuarios precargados:
+
+Ninguno. No se versionan usuarios ni contraseñas; el admin se crea con `seed-admin.ts` y `ADMIN_PASSWORD`.
+
+> ⚠️ **CAMBIAR CONTRASEÑAS DESPUÉS DEL PRIMER LOGIN**
+
+#### Crear usuario via API:
+```bash
+curl -X POST https://api.parallly-chat.cloud/auth/register \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "agente@empresa.com",
+    "password": "SecurePass123!",
+    "firstName": "Juan",
+    "lastName": "Agente",
+    "role": "tenant_agent",
+    "tenantId": "uuid-del-tenant"
+  }'
+```
+
+---
+
+### A.6 Google OAuth, 2FA por email, reset de contraseña y opt-out
+- ID token verification via google-auth-library (OAuth2Client)
+- Client ID: env GOOGLE_OAUTH_CLIENT_ID (fallback hardcoded)
+- Creates user with authProvider='google', no password, emailVerified=true
+- Links to existing email accounts if same email
+
+#### Email-based 2FA
+- 6-digit OTP code, 5-minute expiry
+- Sent via SMTP (nodemailer)
+- Stored in users.email_verify_code (same field as email verification)
+
+#### Password Reset
+- POST /auth/forgot-password: always returns success (prevents email enumeration)
+- 6-digit code, 10-minute expiry
+- POST /auth/reset-password: validates code + password strength
+
+#### Opt-Out Compliance
+- Word-boundary regex detection (prevents false positives like "trabajan" ≠ "baja")
+- Pending review workflow: admin confirms or rejects
+- Messages continue to AI pipeline (not dropped)

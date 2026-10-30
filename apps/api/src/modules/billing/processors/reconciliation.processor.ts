@@ -16,7 +16,7 @@ import { SubscriptionEngineService } from '../recurring/subscription-engine.serv
  *
  * Background: MercadoPago webhooks are reportedly unreliable in production
  * for the `subscription_preapproval` topic (multiple developer community
- * reports — see docs/billing-plan.md Section 6). Rather than trust webhooks
+ * reports — see docs/archive/billing-plan.md Section 6). Rather than trust webhooks
  * alone, we run two cron jobs that poll the provider directly to detect drift
  * and repair DB state before the user notices anything wrong.
  *

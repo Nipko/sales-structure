@@ -182,9 +182,9 @@ packages/
   shared/       -- TypeScript types compartidos
 infra/
   docker/       -- docker-compose (dev + prod), 5 Dockerfiles
-  nginx/        -- Reverse proxy config
-  scripts/      -- setup-vps.sh, setup-fresh.sh, reset-db.sh
-docs/           -- Architecture specs, analytics manual, API reference
+  backup/       -- backup.sh / restore.sh (cron en el VPS)
+  scripts/      -- setup-vps.sh, setup-fresh.sh, reset-db.sh, setup-production-crons.sh, harden-vps.sh
+docs/           -- Base de conocimiento (indice: docs/README.md)
 ```
 
 ---
@@ -308,12 +308,11 @@ VPS: Hostinger Ubuntu, Docker (14 servicios en `infra/docker/docker-compose.prod
 | Documento | Descripcion |
 |-----------|-------------|
 | [docs/server-installation.md](docs/server-installation.md) | **Guia completa de instalacion en servidor nuevo** (paso a paso) |
-| [CLAUDE.md](CLAUDE.md) | Contexto tecnico completo para desarrollo |
+| [AGENTS.md](AGENTS.md) | Contexto tecnico unico para desarrollo y agentes de codigo (`CLAUDE.md` lo importa) |
 | [docs/analytics-manual.md](docs/analytics-manual.md) | Manual de analytics, alertas, BI API, anomalias, cohortes |
 | [docs/observability-manual.md](docs/observability-manual.md) | Manual de observabilidad: Pino, Bull Board, Grafana, Loki, Uptime Kuma |
-| [docs/SECURITY.md](docs/SECURITY.md) | Autenticacion, JWT, RBAC, cifrado |
+| [docs/security-specification.md](docs/security-specification.md) | Seguridad: autenticacion, JWT, RBAC, cifrado, webhooks |
 | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) | Endpoints REST, WebSocket, BullMQ |
-| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Historial de cambios (congelado en ago-2026; ver el aviso al inicio del archivo) |
 | [docs/README.md](docs/README.md) | Indice completo de la documentacion, agrupado por tema |
 | [docs/product-capabilities-reference.md](docs/product-capabilities-reference.md) | Capacidades, roles, planes y superficies vigentes |
 

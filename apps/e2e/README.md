@@ -29,7 +29,7 @@ tests must be explicitly mocked.
 
 For manual or tool-assisted visual review of the agent setup, assessment and
 learning pages without a real API, see
-[`docs/agent-platform-visual-review-2026-09-07.md`](../../docs/agent-platform-visual-review-2026-09-07.md).
+[`docs/archive/2026-09-agente/agent-platform-visual-review-2026-09-07.md`](../../docs/archive/2026-09-agente/agent-platform-visual-review-2026-09-07.md).
 The loopback fixture does not certify backend behavior or replace browser tests.
 
 ## CI

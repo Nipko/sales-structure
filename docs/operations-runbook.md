@@ -502,7 +502,7 @@ LIMIT 50;
 
 ## 10. Related docs
 
-- `CHANGELOG.md` — chronological list of every change
+- GitHub releases and merged PRs — chronological list of changes (the frozen `docs/CHANGELOG.md` was removed in K3)
 - `user-manual.md` — end-user documentation (sections 21-26 cover Tier 1 features)
 - `architecture-detail.md` — internal architecture
 - `modules-reference.md` — 40 modules and their files

@@ -332,7 +332,7 @@ ai:stats:{tenantId}:{date}:{category}:cost   — AI usage cost tracking
 
 ## New modules (May 31, 2026 — Competitive Roadmap Q2)
 
-8 modules closing `docs/implementation-plan-2026-q2.md` (Tier 2 + Tier 3). All deterministic flows reuse the booking-engine directive pattern; external adapters are doc-faithful but not live-tested (no external creds in dev).
+8 modules from the Q2-2026 plan (Tier 2 + Tier 3; the plan was retired in K3 and lives in git history). All deterministic flows reuse the booking-engine directive pattern; external adapters are doc-faithful but not live-tested (no external creds in dev).
 
 - **`simulation/`** (T2.13) — Agent simulation pre-deploy. Queue `agent-simulation`, table `simulation_runs`. Reuses `AgentTestService` (full pipeline, `{disableTools:true}` → zero prod side-effects) + `QualityService.judgeTranscript`. Synthetic (LLM per-vertical) + replay scenarios, customer-simulator LLM, regression diff vs baseline run.
 - **`procedures/`** (T2.12) — AOP/SOP. `procedures` table, LLM NL→graph compiler (draft for review). Engine `conversations/procedure-engine.service.ts` (reuses AIToolExecutor, Redis `procedure:{conversationId}`, steps message/ask/tool/condition/handoff, 1 directive/turn). Hooked into `conversations.service.generateResponse` after booking (guarded). Active-procedures cached `procedures:active:{tenantId}`.

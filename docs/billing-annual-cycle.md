@@ -83,4 +83,4 @@ Antes de aceptar un cobro real: cuatro secretos Wompi del mismo ambiente,
 límites positivos, webhook HTTPS validado, precios COP mensuales/anuales,
 Factus producción + rango DIAN y método Wompi activado en el merchant. Consulte
 [`billing-runbook.md`](billing-runbook.md) y el dictamen
-[`wompi-integration-validation-2026-08.md`](wompi-integration-validation-2026-08.md).
+[`wompi-integration-validation-2026-08.md`](archive/2026-08-pagos/wompi-integration-validation-2026-08.md).

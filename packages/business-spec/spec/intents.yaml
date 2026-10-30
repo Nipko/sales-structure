@@ -1,43 +1,46 @@
-# Banco de intenciones (B1 en formato máquina). R1: IDs, capa o perfil y código «si falta»; aún sin frases.
+# Banco de intenciones (B1 en formato máquina). R1: IDs, capa o perfil y código «si falta».
 # Fuente: B1-preguntas-por-perfil.md §B (núcleo C01–C33, transversales T01–T11) y §C (Pnn-k).
-# Las frases de ejemplo en ES/EN/PT/FR se agregan en la rebanada R7 (C0 §1.4).
+# R7 (C0 §1.4, ADR 0013): `phrases` son las frases de ejemplo del ensayo por idioma (ES/EN/PT/FR, de B1 y del corpus
+# QA 4300); `{item}` es el hueco de entidad, que el generador llena con un ítem real del tenant. `demand` son las
+# conversaciones de la campaña 4300 con esa intención (B1 §D.2): pondera la elección; sin él, peso base.
+# Las frases dicen QUÉ pregunta el cliente; la respuesta esperada nunca sale de aquí, sale de qaTruth().
 spec_version: 1.1.0-rc.1
 intents:
-  - {id: C01, layer: "core", block: "B.1 Información del negocio", title: "Qué es o qué hace el negocio", if_missing: [NC+AV]}
-  - {id: C02, layer: "core", block: "B.1 Información del negocio", title: "Ubicación y cómo llegar", if_missing: [NC+AV, PREG]}
-  - {id: C03, layer: "core", block: "B.1 Información del negocio", title: "Horario habitual", if_missing: [NC+AV]}
-  - {id: C04, layer: "core", block: "B.1 Información del negocio", title: "Abierto hoy, ahora o en un festivo", if_missing: [NC+AV]}
-  - {id: C05, layer: "core", block: "B.1 Información del negocio", title: "Contacto y canales", if_missing: [NC+AV]}
-  - {id: C06, layer: "core", block: "B.2 Oferta y precio", title: "Qué ofrecen (catálogo o listado)", if_missing: [NC+AV, HUM]}
-  - {id: C07, layer: "core", block: "B.2 Oferta y precio", title: "¿Tienen o hacen X?", if_missing: [NC+AV]}
-  - {id: C08, layer: "core", block: "B.2 Oferta y precio", title: "Detalle o atributo de un ítem", if_missing: [NC+AV]}
-  - {id: C09, layer: "core", block: "B.2 Oferta y precio", title: "Precio de un ítem", if_missing: [PREG, NC+AV]}
-  - {id: C10, layer: "core", block: "B.2 Oferta y precio", title: "Cotización o total", if_missing: [PREG]}
-  - {id: C11, layer: "core", block: "B.2 Oferta y precio", title: "Comparar o recomendar", if_missing: [PREG]}
-  - {id: C12, layer: "core", block: "B.2 Oferta y precio", title: "Moneda o conversión", if_missing: []}
-  - {id: C13, layer: "core", block: "B.2 Oferta y precio", title: "Promociones y descuentos", if_missing: []}
-  - {id: C14, layer: "core", block: "B.2 Oferta y precio", title: "Medios de pago", if_missing: [NC+AV]}
-  - {id: C15, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Disponibilidad (sin reservar)", if_missing: [PREG, NC+AV]}
-  - {id: C16, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Reservar, agendar o pedir", if_missing: [PREG, HUM]}
-  - {id: C17, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Requisitos o documentos para la transacción", if_missing: [NC+AV]}
-  - {id: C18, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Entrega, envío o recogida", if_missing: [PREG, NC+AV]}
-  - {id: C19, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Mis pedidos o reservas: listar o contar", if_missing: [PREG]}
-  - {id: C20, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Estado de un pedido o reserva", if_missing: [HUM]}
-  - {id: C21, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Modificar o reprogramar", if_missing: [HUM]}
-  - {id: C22, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Cancelar", if_missing: []}
-  - {id: C23, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Comprobante o factura", if_missing: [HUM]}
-  - {id: C24, layer: "core", block: "B.5 Políticas y confianza", title: "Política de cancelación o cambios", if_missing: [NC+AV]}
-  - {id: C25, layer: "core", block: "B.5 Políticas y confianza", title: "Reembolso o devolución", if_missing: [NC+AV]}
-  - {id: C26, layer: "core", block: "B.5 Políticas y confianza", title: "Garantía", if_missing: [NC+AV]}
-  - {id: C27, layer: "core", block: "B.5 Políticas y confianza", title: "Depósito o anticipo", if_missing: [NC+AV]}
-  - {id: C28, layer: "core", block: "B.5 Políticas y confianza", title: "Privacidad y datos personales", if_missing: [HUM]}
-  - {id: C29, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Queja o problema con el servicio o pedido", if_missing: [HUM]}
-  - {id: C30, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Hablar con una persona", if_missing: []}
-  - {id: C31, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Seguimiento de algo pendiente", if_missing: []}
-  - {id: C32, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Opinión o reseña", if_missing: []}
-  - {id: C33, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Empleo o proveedores (no clientes)", if_missing: []}
-  - {id: T01, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Aceptar una oferta del agente", if_missing: [], conversational: true}
-  - {id: T02, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Acuse o cierre", if_missing: [], conversational: true}
+  - {id: C01, layer: "core", block: "B.1 Información del negocio", title: "Qué es o qué hace el negocio", if_missing: [NC+AV], demand: 120, phrases: {es: ["¿Qué es exactamente lo que hacen?", "Hola, ¿a qué se dedican?"], en: ["What kind of place is this?"], pt: ["O que vocês fazem exatamente?"], fr: ["Que faites-vous exactement ?"]}}
+  - {id: C02, layer: "core", block: "B.1 Información del negocio", title: "Ubicación y cómo llegar", if_missing: [NC+AV, PREG], demand: 452, phrases: {es: ["¿Dónde quedan?", "¿Cuál es la dirección?"], en: ["Where are you located?"], pt: ["Onde fica?"], fr: ["Où êtes-vous situés ?"]}}
+  - {id: C03, layer: "core", block: "B.1 Información del negocio", title: "Horario habitual", if_missing: [NC+AV], demand: 675, phrases: {es: ["¿A qué hora abren entre semana?", "¿Cuál es su horario?"], en: ["What are your opening hours?"], pt: ["Qual é o horário de vocês?"], fr: ["Quels sont vos horaires ?"]}}
+  - {id: C04, layer: "core", block: "B.1 Información del negocio", title: "Abierto hoy, ahora o en un festivo", if_missing: [NC+AV], demand: 120, phrases: {es: ["¿Abren el 8 de diciembre?", "¿Están abiertos ahora?"], en: ["Are you open on Christmas Day?"], pt: ["Vocês abrem no feriado?"], fr: ["Vous êtes ouverts maintenant ?"]}}
+  - {id: C05, layer: "core", block: "B.1 Información del negocio", title: "Contacto y canales", if_missing: [NC+AV], demand: 132, phrases: {es: ["¿Me pasas un teléfono de contacto?", "¿Tienen correo o WhatsApp?"], en: ["How can I contact you?"], pt: ["Como posso falar com vocês?"], fr: ["Comment puis-je vous contacter ?"]}}
+  - {id: C06, layer: "core", block: "B.2 Oferta y precio", title: "Qué ofrecen (catálogo o listado)", if_missing: [NC+AV, HUM], demand: 818, phrases: {es: ["¿Qué servicios o productos tienen?", "¿Qué ofrecen?"], en: ["What do you offer?"], pt: ["O que vocês oferecem?"], fr: ["Que proposez-vous ?"]}}
+  - {id: C07, layer: "core", block: "B.2 Oferta y precio", title: "¿Tienen o hacen X?", if_missing: [NC+AV], demand: 354, phrases: {es: ["¿Tienen {item}?", "¿Hacen o venden {item}?"], en: ["Do you have {item}?"], pt: ["Vocês têm {item}?"], fr: ["Avez-vous {item} ?"]}}
+  - {id: C08, layer: "core", block: "B.2 Oferta y precio", title: "Detalle o atributo de un ítem", if_missing: [NC+AV], demand: 2179, phrases: {es: ["¿Qué incluye {item}?", "Cuéntame más de {item}"], en: ["What is included in {item}?"], pt: ["O que inclui {item}?"], fr: ["Que comprend {item} ?"]}}
+  - {id: C09, layer: "core", block: "B.2 Oferta y precio", title: "Precio de un ítem", if_missing: [PREG, NC+AV], demand: 3136, phrases: {es: ["¿Cuánto cuesta {item}?", "¿Qué precio tiene {item}?"], en: ["How much is {item}?"], pt: ["Quanto custa {item}?"], fr: ["Combien coûte {item} ?"]}}
+  - {id: C10, layer: "core", block: "B.2 Oferta y precio", title: "Cotización o total", if_missing: [PREG], demand: 400, phrases: {es: ["Si pido 3 de {item}, ¿cuánto sería en total?"], en: ["What would the total be for 3 of {item}?"], pt: ["Quanto custaria 3 de {item}?"], fr: ["Combien pour 3 {item} ?"]}}
+  - {id: C11, layer: "core", block: "B.2 Oferta y precio", title: "Comparar o recomendar", if_missing: [PREG], demand: 120, phrases: {es: ["¿Qué me recomiendas?", "¿Cuál es la diferencia entre sus opciones?"], en: ["Which one do you recommend?"], pt: ["Qual você recomenda?"], fr: ["Lequel me recommandez-vous ?"]}}
+  - {id: C12, layer: "core", block: "B.2 Oferta y precio", title: "Moneda o conversión", if_missing: [], demand: 60, phrases: {es: ["¿Cuánto es {item} en dólares?", "¿En qué moneda están los precios?"], en: ["Is the price of {item} in dollars?"], pt: ["Em que moeda está o preço?"], fr: ["Dans quelle devise sont les prix ?"]}}
+  - {id: C13, layer: "core", block: "B.2 Oferta y precio", title: "Promociones y descuentos", if_missing: [], demand: 433, phrases: {es: ["¿Tienen promociones o descuentos?"], en: ["Do you have any current deals?"], pt: ["Vocês têm promoções?"], fr: ["Y a-t-il des réductions ?"]}}
+  - {id: C14, layer: "core", block: "B.2 Oferta y precio", title: "Medios de pago", if_missing: [NC+AV], demand: 81, phrases: {es: ["¿Aceptan tarjeta?", "¿Qué medios de pago aceptan?"], en: ["Can I pay by card?"], pt: ["Aceitam Pix ou cartão?"], fr: ["Comment puis-je payer ?"]}}
+  - {id: C15, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Disponibilidad (sin reservar)", if_missing: [PREG, NC+AV], demand: 746, phrases: {es: ["¿Tienen disponibilidad de {item} para el sábado?", "¿Hay cupo esta semana?"], en: ["Is {item} available this weekend?"], pt: ["Tem disponibilidade de {item} no sábado?"], fr: ["{item} est-il disponible samedi ?"]}}
+  - {id: C16, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Reservar, agendar o pedir", if_missing: [PREG, HUM], demand: 561, phrases: {es: ["Quiero reservar {item}", "Quiero agendar o hacer un pedido"], en: ["I want to book {item}"], pt: ["Quero reservar {item}"], fr: ["Je veux réserver {item}"]}}
+  - {id: C17, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Requisitos o documentos para la transacción", if_missing: [NC+AV], demand: 113, phrases: {es: ["¿Qué necesito llevar o qué documentos piden?", "¿Qué requisitos hay para {item}?"], en: ["What do I need to bring?"], pt: ["Que documentos preciso?"], fr: ["Quels documents faut-il ?"]}}
+  - {id: C18, layer: "core", block: "B.3 Disponibilidad y transacción", title: "Entrega, envío o recogida", if_missing: [PREG, NC+AV], demand: 95, phrases: {es: ["¿Hacen envíos o domicilios?", "¿Cómo es la entrega?"], en: ["Do you deliver?"], pt: ["Vocês fazem entrega?"], fr: ["Faites-vous la livraison ?"]}}
+  - {id: C19, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Mis pedidos o reservas: listar o contar", if_missing: [PREG], demand: 290, phrases: {es: ["¿Cuántos pedidos o reservas tengo con ustedes?"], en: ["How many orders do I have with you?"], pt: ["Quantos pedidos eu tenho?"], fr: ["Combien de commandes ai-je ?"]}}
+  - {id: C20, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Estado de un pedido o reserva", if_missing: [HUM], demand: 282, phrases: {es: ["¿En qué va mi pedido o mi reserva?"], en: ["What is the status of my booking?"], pt: ["Qual é o status do meu pedido?"], fr: ["Où en est ma réservation ?"]}}
+  - {id: C21, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Modificar o reprogramar", if_missing: [HUM], demand: 18, phrases: {es: ["Necesito cambiar la fecha de mi reserva"], en: ["I need to reschedule my booking"], pt: ["Preciso remarcar minha reserva"], fr: ["Je dois changer la date de ma réservation"]}}
+  - {id: C22, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Cancelar", if_missing: [], demand: 17, phrases: {es: ["Quiero cancelar mi reserva"], en: ["I want to cancel my booking"], pt: ["Quero cancelar minha reserva"], fr: ["Je veux annuler ma réservation"]}}
+  - {id: C23, layer: "core", block: "B.4 Cuenta del cliente (después de la venta)", title: "Comprobante o factura", if_missing: [HUM], demand: 10, phrases: {es: ["¿Me pueden enviar la factura?"], en: ["Can you send me the invoice?"], pt: ["Podem me enviar a nota fiscal?"], fr: ["Pouvez-vous m’envoyer la facture ?"]}}
+  - {id: C24, layer: "core", block: "B.5 Políticas y confianza", title: "Política de cancelación o cambios", if_missing: [NC+AV], demand: 143, phrases: {es: ["¿Cuál es la política de cancelación?", "Si cancelo, ¿qué pasa?"], en: ["What is your cancellation policy?"], pt: ["Qual é a política de cancelamento?"], fr: ["Quelle est votre politique d’annulation ?"]}}
+  - {id: C25, layer: "core", block: "B.5 Políticas y confianza", title: "Reembolso o devolución", if_missing: [NC+AV], demand: 142, phrases: {es: ["¿Hacen devoluciones o reembolsos?"], en: ["Do you offer refunds?"], pt: ["Vocês fazem reembolso?"], fr: ["Faites-vous des remboursements ?"]}}
+  - {id: C26, layer: "core", block: "B.5 Políticas y confianza", title: "Garantía", if_missing: [NC+AV], demand: 40, phrases: {es: ["¿Tiene garantía?", "¿{item} tiene garantía?"], en: ["Does {item} come with a warranty?"], pt: ["Tem garantia?"], fr: ["Y a-t-il une garantie ?"]}}
+  - {id: C27, layer: "core", block: "B.5 Políticas y confianza", title: "Depósito o anticipo", if_missing: [NC+AV], demand: 40, phrases: {es: ["¿Hay que dejar un anticipo o depósito?"], en: ["Do I need to pay a deposit?"], pt: ["Precisa de sinal ou depósito?"], fr: ["Faut-il verser un acompte ?"]}}
+  - {id: C28, layer: "core", block: "B.5 Políticas y confianza", title: "Privacidad y datos personales", if_missing: [HUM], demand: 10, phrases: {es: ["¿Qué hacen con mis datos personales?"], en: ["What do you do with my personal data?"], pt: ["O que vocês fazem com meus dados?"], fr: ["Que faites-vous de mes données personnelles ?"]}}
+  - {id: C29, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Queja o problema con el servicio o pedido", if_missing: [HUM], demand: 29, phrases: {es: ["Tengo un problema con el servicio que recibí", "Quiero poner una queja"], en: ["I want to make a complaint"], pt: ["Quero fazer uma reclamação"], fr: ["Je veux faire une réclamation"]}}
+  - {id: C30, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Hablar con una persona", if_missing: [], demand: 23, phrases: {es: ["Quiero hablar con una persona", "¿Me comunicas con alguien del equipo?"], en: ["I want to talk to a person"], pt: ["Quero falar com uma pessoa"], fr: ["Je veux parler à quelqu’un"]}}
+  - {id: C31, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Seguimiento de algo pendiente", if_missing: [], demand: 85, phrases: {es: ["¿Hay novedades de lo que les pregunté?"], en: ["Any news about what I asked?"], pt: ["Alguma novidade sobre o que perguntei?"], fr: ["Des nouvelles de ma question ?"]}}
+  - {id: C32, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Opinión o reseña", if_missing: [], demand: 10, phrases: {es: ["¿Dónde puedo dejar una reseña?"], en: ["Where can I leave a review?"], pt: ["Onde posso deixar uma avaliação?"], fr: ["Où puis-je laisser un avis ?"]}}
+  - {id: C33, layer: "core", block: "B.6 Atención, problemas y escalamiento", title: "Empleo o proveedores (no clientes)", if_missing: [], demand: 10, phrases: {es: ["¿Están contratando personal?"], en: ["Are you hiring?"], pt: ["Vocês estão contratando?"], fr: ["Vous recrutez ?"]}}
+  - {id: T01, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Aceptar una oferta del agente", if_missing: [], conversational: true, phrases: {es: ["Sí, por favor", "Dale, sí"], en: ["Yes, please"], pt: ["Sim, por favor"], fr: ["Oui, s’il vous plaît"]}}
+  - {id: T02, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Acuse o cierre", if_missing: [], conversational: true, phrases: {es: ["Ok, gracias"], en: ["Ok, thanks"], pt: ["Ok, obrigado"], fr: ["D’accord, merci"]}}
   - {id: T03, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Solo informarse", if_missing: [], conversational: true}
   - {id: T04, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Cambio de idioma o idioma informal", if_missing: [], conversational: true}
   - {id: T05, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Referencia ambigua o anafórica", if_missing: [PREG], conversational: true}
@@ -46,231 +49,231 @@ intents:
   - {id: T08, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Preferencia o condición personal", if_missing: [], conversational: true}
   - {id: T09, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Fuera de alcance o inyección", if_missing: [], conversational: true}
   - {id: T10, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Multimedia", if_missing: [], conversational: true}
-  - {id: T11, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Saludo o charla", if_missing: [], conversational: true}
-  - {id: P00-1, layer: "profile:P00", block: "C P00 · Genérico", title: "Pedir una cotización a medida", if_missing: [PREG, HUM]}
-  - {id: P00-2, layer: "profile:P00", block: "C P00 · Genérico", title: "Que me llamen", if_missing: [HUM]}
-  - {id: P01-1, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Reservar mesa", if_missing: [HUM]}
-  - {id: P01-2, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Eventos y grupos grandes", if_missing: [NC+AV, HUM]}
-  - {id: P01-3, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Menú del día, carta y especiales", if_missing: [NC+AV]}
-  - {id: P01-4, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Alérgenos, dietas e ingredientes", if_missing: [HUM]}
-  - {id: P01-5, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Ambiente y servicios", if_missing: [NC+AV]}
-  - {id: P01-6, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Lista de espera o tiempo de espera", if_missing: []}
-  - {id: P01-7, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Descorche, propina y cargos", if_missing: [NC+AV]}
-  - {id: P02-1, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Total por cantidad", if_missing: [PREG]}
-  - {id: P02-2, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Armar el pedido (carrito)", if_missing: []}
-  - {id: P02-3, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Modificadores y variantes", if_missing: [NC+AV]}
-  - {id: P02-4, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Dieta y alergias", if_missing: [HUM]}
-  - {id: P02-5, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Promos y combos", if_missing: []}
-  - {id: P02-6, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Cobertura y tiempo de domicilio", if_missing: [PREG, NC+AV]}
-  - {id: P02-7, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "¿Dónde está mi pedido?", if_missing: [HUM]}
-  - {id: P02-8, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Pedido con problema", if_missing: [HUM]}
-  - {id: P02-9, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Precio medio y lo más barato", if_missing: []}
-  - {id: P03-1, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Stock y unidades", if_missing: []}
-  - {id: P03-2, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Especificaciones y variantes", if_missing: []}
-  - {id: P03-3, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Compatibilidad o *fitment*", if_missing: [NC+AV]}
-  - {id: P03-4, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Garantía", if_missing: [NC+AV]}
-  - {id: P03-5, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Devoluciones, cambios y retracto", if_missing: [NC+AV]}
-  - {id: P03-6, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Mis compras: conteo, estado, pago, monto y referencia", if_missing: []}
-  - {id: P03-7, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Envío nacional e internacional", if_missing: [NC+AV]}
-  - {id: P03-8, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Producto con restricción de venta", if_missing: [NC+AV]}
-  - {id: P03-9, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Fotos", if_missing: [NC+AV]}
-  - {id: P03-10, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Apartar o pedido especial", if_missing: [HUM]}
-  - {id: P04-1, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "¿Tienen el medicamento X?", if_missing: [NC+AV]}
-  - {id: P04-2, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "¿Necesito receta?", if_missing: [HUM]}
-  - {id: P04-3, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Enviar la fórmula para cotizar", if_missing: [HUM]}
-  - {id: P04-4, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Recomendación o dosis", if_missing: [HUM, EXT]}
-  - {id: P04-5, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Domicilio y horario 24 h", if_missing: [NC+AV]}
-  - {id: P04-6, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Convenios y descuentos", if_missing: [NC+AV]}
-  - {id: P05-1, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Tarifa por noche y total de la estancia", if_missing: [PREG]}
-  - {id: P05-2, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Check-in, check-out y llegada temprana o tardía", if_missing: [HUM]}
-  - {id: P05-3, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Capacidad y tipo de habitación", if_missing: []}
-  - {id: P05-4, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Amenidades", if_missing: []}
-  - {id: P05-5, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Disponibilidad por fechas", if_missing: [PREG]}
-  - {id: P05-6, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Cargos extra", if_missing: []}
-  - {id: P05-7, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Mascotas, niños y fumadores", if_missing: [NC+AV]}
-  - {id: P05-8, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Cerca de qué está", if_missing: [NC+AV]}
-  - {id: P05-9, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Traslado aeropuerto, tours y servicios extra", if_missing: [NC+AV]}
-  - {id: P05-10, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Mi reserva", if_missing: []}
-  - {id: P05-11, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Documentos y registro de huéspedes", if_missing: [NC+AV]}
-  - {id: P06-1, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Qué incluye o excluye", if_missing: []}
-  - {id: P06-2, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Duración, hora de salida y regreso", if_missing: [NC+AV]}
-  - {id: P06-3, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Punto de encuentro o recogida", if_missing: [PREG]}
-  - {id: P06-4, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Precio por persona y total del grupo", if_missing: [PREG]}
-  - {id: P06-5, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Cupos y capacidad por fecha", if_missing: [PREG]}
-  - {id: P06-6, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Idioma del guía", if_missing: [NC+AV]}
-  - {id: P06-7, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Aptitud: niños, edad, movilidad, salud", if_missing: [NC+AV]}
-  - {id: P06-8, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Comparar tours y destino", if_missing: []}
-  - {id: P06-9, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Política de cambios o cancelación", if_missing: []}
-  - {id: P06-10, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Documentos, visa y seguro", if_missing: []}
-  - {id: P06-11, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Paquete a medida o destinos", if_missing: [PREG, HUM]}
-  - {id: P06-12, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Mi reserva o mi caso", if_missing: []}
-  - {id: P07-1, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "¿Qué inmuebles hay? (con filtros)", if_missing: []}
-  - {id: P07-2, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "¿Venta o arriendo?", if_missing: []}
-  - {id: P07-3, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Precio, moneda y rango", if_missing: []}
-  - {id: P07-4, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Superficie, habitaciones, baños, piso", if_missing: []}
-  - {id: P07-5, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Ubicación exacta, barrio y país", if_missing: []}
-  - {id: P07-6, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Parqueadero y amenidades del edificio", if_missing: []}
-  - {id: P07-7, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Costos adicionales", if_missing: [NC+AV]}
-  - {id: P07-8, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Financiación o hipoteca", if_missing: [HUM]}
-  - {id: P07-9, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Documentos para arrendar o comprar", if_missing: [NC+AV]}
-  - {id: P07-10, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Agendar una visita", if_missing: [HUM]}
-  - {id: P07-11, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Entrega de llaves, disponibilidad y estado", if_missing: [NC+AV]}
-  - {id: P07-12, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Quiero vender o arrendar mi inmueble (captación)", if_missing: [HUM]}
-  - {id: P08-1, layer: "profile:P08", block: "C P08 · Odontología", title: "Tratamientos ofrecidos", if_missing: []}
-  - {id: P08-2, layer: "profile:P08", block: "C P08 · Odontología", title: "Precio y duración por tratamiento", if_missing: []}
-  - {id: P08-3, layer: "profile:P08", block: "C P08 · Odontología", title: "Duración total de un tratamiento", if_missing: []}
-  - {id: P08-4, layer: "profile:P08", block: "C P08 · Odontología", title: "Datos requeridos para la cita", if_missing: []}
-  - {id: P08-5, layer: "profile:P08", block: "C P08 · Odontología", title: "Qué llevar a la primera cita", if_missing: []}
-  - {id: P08-6, layer: "profile:P08", block: "C P08 · Odontología", title: "Seguro, EPS o convenio", if_missing: [PREG, NC+AV]}
-  - {id: P08-7, layer: "profile:P08", block: "C P08 · Odontología", title: "Urgencia o dolor", if_missing: [EXT, HUM]}
-  - {id: P08-8, layer: "profile:P08", block: "C P08 · Odontología", title: "Miedo o ansiedad", if_missing: []}
-  - {id: P08-9, layer: "profile:P08", block: "C P08 · Odontología", title: "Presencial o remoto", if_missing: [NC+AV]}
-  - {id: P08-10, layer: "profile:P08", block: "C P08 · Odontología", title: "Mi plan de tratamiento y próxima cita", if_missing: []}
-  - {id: P09-1, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Especialidades y profesionales", if_missing: []}
-  - {id: P09-2, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Agenda con un profesional o especialidad", if_missing: [HUM]}
-  - {id: P09-3, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "¿Necesito orden o remisión?", if_missing: [NC+AV]}
-  - {id: P09-4, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Resultados de exámenes", if_missing: [HUM]}
-  - {id: P09-5, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Telemedicina", if_missing: [NC+AV]}
-  - {id: P09-6, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Síntomas o urgencia", if_missing: [EXT]}
-  - {id: P09-7, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Certificados, incapacidades y fórmulas", if_missing: [HUM]}
-  - {id: P09-8, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Preparación para un procedimiento", if_missing: [NC+AV, HUM]}
-  - {id: P10-1, layer: "profile:P10", block: "C P10 · Salud mental", title: "Enfoques y profesionales", if_missing: []}
-  - {id: P10-2, layer: "profile:P10", block: "C P10 · Salud mental", title: "Modalidad y privacidad", if_missing: [NC+AV]}
-  - {id: P10-3, layer: "profile:P10", block: "C P10 · Salud mental", title: "Primera sesión y valor", if_missing: [NC+AV]}
-  - {id: P10-4, layer: "profile:P10", block: "C P10 · Salud mental", title: "Crisis o riesgo", if_missing: [EXT, HUM]}
-  - {id: P10-5, layer: "profile:P10", block: "C P10 · Salud mental", title: "Reprogramar o cancelar con discreción", if_missing: []}
-  - {id: P11-1, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Servicio: precio y duración", if_missing: []}
-  - {id: P11-2, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Días y horario de apertura", if_missing: [NC+AV]}
-  - {id: P11-3, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "¿Puedo ir el sábado a las 18 h? (solo saber)", if_missing: []}
-  - {id: P11-4, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Primer hueco libre", if_missing: []}
-  - {id: P11-5, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Profesional preferido", if_missing: [NC+AV]}
-  - {id: P11-6, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Grupo (varias personas)", if_missing: [PREG]}
-  - {id: P11-7, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Recomendación según el cabello", if_missing: [PREG]}
-  - {id: P11-8, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Productos y marcas, alergia", if_missing: [NC+AV]}
-  - {id: P11-9, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Sin cita (walk-in) y espera", if_missing: [NC+AV]}
-  - {id: P11-10, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Mis citas", if_missing: []}
-  - {id: P12-1, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Tratamiento: sesiones, resultados y precio por paquete", if_missing: []}
-  - {id: P12-2, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Contraindicaciones", if_missing: [HUM]}
-  - {id: P12-3, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Cuidados antes y después", if_missing: [NC+AV, HUM]}
-  - {id: P12-4, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Mis sesiones restantes", if_missing: []}
-  - {id: P12-5, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Spa: circuitos, parejas, bonos de regalo", if_missing: [NC+AV]}
-  - {id: P12-6, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Qué llevar y llegar antes", if_missing: [NC+AV]}
-  - {id: P13-1, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Planes y precios", if_missing: [NC+AV]}
-  - {id: P13-2, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Clase de prueba o día gratis", if_missing: []}
-  - {id: P13-3, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Horario de clases y cupos", if_missing: [NC+AV]}
-  - {id: P13-4, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Reservar o cancelar una clase", if_missing: [HUM]}
-  - {id: P13-5, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Congelar, cancelar o cambiar el plan", if_missing: [HUM]}
-  - {id: P13-6, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Mi membresía: vencimiento, pagos y créditos", if_missing: []}
-  - {id: P13-7, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Instalaciones", if_missing: [NC+AV]}
-  - {id: P13-8, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Entrenador personal y nivel", if_missing: [NC+AV]}
-  - {id: P13-9, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Condición de salud o lesión", if_missing: [HUM]}
-  - {id: P14-1, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Programas y niveles", if_missing: [NC+AV]}
-  - {id: P14-2, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Fechas de inicio, horarios y cupos", if_missing: [NC+AV]}
-  - {id: P14-3, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Precio, matrícula y formas de pago", if_missing: [NC+AV]}
-  - {id: P14-4, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Prueba de nivel o clase de prueba", if_missing: [NC+AV]}
-  - {id: P14-5, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Certificado", if_missing: [NC+AV]}
-  - {id: P14-6, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Inscripción", if_missing: [HUM]}
-  - {id: P14-7, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Requisitos (edad, conocimientos)", if_missing: [NC+AV]}
-  - {id: P14-8, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Faltas, recuperación y congelar", if_missing: [NC+AV]}
-  - {id: P14-9, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Autoescuela: categoría de licencia y clases prácticas", if_missing: [NC+AV]}
-  - {id: P14-10, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Online: acceso a la plataforma", if_missing: [HUM]}
-  - {id: P15-1, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Carreras o grados y oferta", if_missing: [NC+AV]}
-  - {id: P15-2, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Proceso y fechas de admisión", if_missing: [NC+AV]}
-  - {id: P15-3, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Documentos y requisitos", if_missing: [NC+AV]}
-  - {id: P15-4, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Costos, becas y financiación", if_missing: [NC+AV]}
-  - {id: P15-5, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Estado de mi solicitud", if_missing: []}
-  - {id: P15-6, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Homologación y transferencia", if_missing: [HUM]}
-  - {id: P16-1, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "¿Cubren mi zona?", if_missing: [PREG, NC+AV]}
-  - {id: P16-2, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Precio o tarifa base", if_missing: []}
-  - {id: P16-3, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Urgencia y tiempo de llegada", if_missing: [EXT, HUM]}
-  - {id: P16-4, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Agendar visita o servicio recurrente", if_missing: [HUM]}
-  - {id: P16-5, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Diagnóstico por foto", if_missing: []}
-  - {id: P16-6, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Garantía de la obra", if_missing: [NC+AV]}
-  - {id: P16-7, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Fumigación: seguridad para niños y mascotas", if_missing: [NC+AV]}
-  - {id: P16-8, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Cerrajería: abrir mi puerta", if_missing: []}
-  - {id: P16-9, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Estado del técnico", if_missing: [HUM]}
-  - {id: P16-10, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Materiales incluidos o no", if_missing: [NC+AV]}
-  - {id: P17-1, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Emergencia", if_missing: [EXT, HUM]}
-  - {id: P17-2, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Servicios y especies atendidas", if_missing: []}
-  - {id: P17-3, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Vacunas y plan de vacunación: precio", if_missing: [NC+AV]}
-  - {id: P17-4, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Agendar consulta", if_missing: [PREG]}
-  - {id: P17-5, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Cirugía o esterilización: precio y preparación", if_missing: [NC+AV]}
-  - {id: P17-6, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Mi mascota hospitalizada: estado", if_missing: [HUM]}
-  - {id: P17-7, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Dosis y medicamentos", if_missing: [HUM, EXT]}
-  - {id: P17-8, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Domicilio veterinario", if_missing: [NC+AV]}
-  - {id: P18-1, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Precio por tamaño o raza", if_missing: [PREG]}
-  - {id: P18-2, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Requisitos: vacunas y comportamiento", if_missing: [NC+AV]}
-  - {id: P18-3, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Recogida a domicilio", if_missing: [NC+AV]}
-  - {id: P18-4, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Paseos: frecuencia, grupo y seguimiento", if_missing: [NC+AV]}
-  - {id: P18-5, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Adiestramiento: programa y sesiones", if_missing: []}
-  - {id: P18-6, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Duración y cuándo recogerlo", if_missing: [NC+AV]}
-  - {id: P19-1, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Precio por noche o día y cupos en fechas", if_missing: [PREG]}
-  - {id: P19-2, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Requisitos de ingreso", if_missing: [NC+AV]}
-  - {id: P19-3, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Alimentación y medicamentos", if_missing: [NC+AV]}
-  - {id: P19-4, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Qué incluye (paseos, fotos, cámara)", if_missing: [NC+AV]}
-  - {id: P19-5, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "¿Cómo está mi perro?", if_missing: [HUM]}
-  - {id: P19-6, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Emergencia durante la estadía", if_missing: [NC+AV]}
-  - {id: P20-1, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Paquetes, precios y qué incluyen", if_missing: [NC+AV]}
-  - {id: P20-2, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "¿Tienen libre mi fecha?", if_missing: []}
-  - {id: P20-3, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Separar la fecha: depósito y contrato", if_missing: [NC+AV, HUM]}
-  - {id: P20-4, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Tiempo de entrega y formato", if_missing: [NC+AV]}
-  - {id: P20-5, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Desplazamiento fuera de la ciudad", if_missing: [NC+AV]}
-  - {id: P20-6, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Portafolio y estilo", if_missing: [NC+AV]}
-  - {id: P20-7, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Fotografía de producto: lote por SKU", if_missing: []}
-  - {id: P20-8, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Derechos de uso de imágenes", if_missing: [HUM]}
-  - {id: P21-1, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Tipos de seguro y qué cubren (en general)", if_missing: [NC+AV]}
-  - {id: P21-2, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Cotizar", if_missing: [PREG, HUM]}
-  - {id: P21-3, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Siniestro: qué hago", if_missing: [EXT, HUM]}
-  - {id: P21-4, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Mi póliza: vigencia, renovación y pago", if_missing: [HUM]}
-  - {id: P21-5, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "¿Mi póliza cubre X?", if_missing: [HUM]}
-  - {id: P21-6, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Estado de mi reclamación", if_missing: [HUM]}
-  - {id: P21-7, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Cancelar o cambiar beneficiarios", if_missing: [HUM]}
-  - {id: P22-1, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "¿Atienden mi tipo de caso?", if_missing: [NC+AV, HUM]}
-  - {id: P22-2, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Honorarios y primera consulta", if_missing: []}
-  - {id: P22-3, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Agendar asesoría", if_missing: [HUM]}
-  - {id: P22-4, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "¿Voy a ganar? ¿Qué hago? (consejo concreto)", if_missing: [HUM]}
-  - {id: P22-5, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Estado de mi caso", if_missing: [HUM]}
-  - {id: P22-6, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Plazos urgentes", if_missing: [HUM]}
-  - {id: P22-7, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Documentos para la consulta", if_missing: [NC+AV]}
-  - {id: P22-8, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Contables: declaración, nómina y facturación", if_missing: [NC+AV]}
-  - {id: P23-1, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Servicios y casos de éxito", if_missing: [NC+AV]}
-  - {id: P23-2, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "¿Cuánto cuesta?", if_missing: [PREG]}
-  - {id: P23-3, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Agendar una demo o reunión", if_missing: []}
-  - {id: P23-4, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Tiempos de implementación o proyecto", if_missing: []}
-  - {id: P23-5, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Integraciones y seguridad de datos", if_missing: [NC+AV]}
-  - {id: P23-6, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Arquitectos: fases, licencias y visitas de obra", if_missing: [NC+AV]}
-  - {id: P23-7, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Estado de mi proyecto", if_missing: [HUM]}
-  - {id: P24-1, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Planes, precios y prueba", if_missing: [NC+AV]}
-  - {id: P24-2, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "No puedo entrar o restablecer el acceso", if_missing: [HUM]}
-  - {id: P24-3, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Error o incidente", if_missing: [HUM]}
-  - {id: P24-4, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Facturación: cobro, factura y cambio de plan", if_missing: [HUM]}
-  - {id: P24-5, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Cancelar la suscripción", if_missing: [HUM]}
-  - {id: P24-6, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Cómo hacer X (uso)", if_missing: [NC+AV]}
-  - {id: P24-7, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Seguridad o privacidad", if_missing: [HUM]}
-  - {id: P25-1, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Productos de crédito: tasa, plazo y monto", if_missing: [NC+AV]}
-  - {id: P25-2, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Simulación de cuota", if_missing: [NC+AV]}
-  - {id: P25-3, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Requisitos y documentos", if_missing: [NC+AV]}
-  - {id: P25-4, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "¿Me aprueban? ¿Estoy reportado?", if_missing: [HUM]}
-  - {id: P25-5, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Estado de la solicitud y desembolso", if_missing: [HUM]}
-  - {id: P25-6, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Saldo, pagos y certificado de deuda", if_missing: [HUM]}
-  - {id: P25-7, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Asesoría: ¿en qué invierto?", if_missing: []}
-  - {id: P25-8, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Fraude o suplantación", if_missing: [EXT, HUM]}
-  - {id: P26-1, layer: "profile:P26", block: "C P26 · Concesionario", title: "Inventario: modelos, versiones y colores", if_missing: [NC+AV]}
-  - {id: P26-2, layer: "profile:P26", block: "C P26 · Concesionario", title: "Precio final, impuestos y trámites", if_missing: [NC+AV]}
-  - {id: P26-3, layer: "profile:P26", block: "C P26 · Concesionario", title: "Financiación y cuota", if_missing: [HUM]}
-  - {id: P26-4, layer: "profile:P26", block: "C P26 · Concesionario", title: "Recibir mi carro en parte de pago (*trade-in*)", if_missing: [HUM]}
-  - {id: P26-5, layer: "profile:P26", block: "C P26 · Concesionario", title: "Prueba de manejo", if_missing: []}
-  - {id: P26-6, layer: "profile:P26", block: "C P26 · Concesionario", title: "Tiempo de entrega, garantía y mantenimientos", if_missing: [NC+AV]}
-  - {id: P27-1, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Servicios y precio estándar", if_missing: [PREG, NC+AV]}
-  - {id: P27-2, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Síntoma: ¿qué tiene mi carro?", if_missing: []}
-  - {id: P27-3, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Agendar la entrada al taller", if_missing: []}
-  - {id: P27-4, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Estado de la reparación", if_missing: [HUM]}
-  - {id: P27-5, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Aprobar un presupuesto adicional", if_missing: [HUM]}
-  - {id: P27-6, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Garantía de la reparación", if_missing: [HUM]}
-  - {id: P27-7, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Grúa o asistencia en carretera", if_missing: [EXT, HUM]}
-  - {id: P28-1, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Tarifa por día y total por fechas", if_missing: [PREG]}
-  - {id: P28-2, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Requisitos del conductor", if_missing: [NC+AV]}
-  - {id: P28-3, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Depósito, deducible y seguro", if_missing: [NC+AV]}
-  - {id: P28-4, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Recogida y devolución en otra sede o aeropuerto", if_missing: [NC+AV]}
-  - {id: P28-5, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Conductor adicional, sillas para niños, GPS", if_missing: [NC+AV]}
-  - {id: P28-6, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Accidente o avería durante el alquiler", if_missing: [EXT, HUM]}
+  - {id: T11, layer: "core", block: "B.7 Intenciones conversacionales transversales (no piden datos del negocio, pero el comportamiento se especifica)", title: "Saludo o charla", if_missing: [], conversational: true, phrases: {es: ["Hola, buenas"], en: ["Hi there"], pt: ["Olá, boa tarde"], fr: ["Bonjour"]}}
+  - {id: P00-1, layer: "profile:P00", block: "C P00 · Genérico", title: "Pedir una cotización a medida", if_missing: [PREG, HUM], phrases: {es: ["Quiero una cotización a medida"], en: ["I would like a custom quote"]}}
+  - {id: P00-2, layer: "profile:P00", block: "C P00 · Genérico", title: "Que me llamen", if_missing: [HUM], phrases: {es: ["¿Me pueden llamar?"], en: ["Can someone call me?"]}}
+  - {id: P01-1, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Reservar mesa", if_missing: [HUM], phrases: {es: ["Quiero reservar una mesa para 4 el viernes"]}}
+  - {id: P01-2, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Eventos y grupos grandes", if_missing: [NC+AV, HUM], phrases: {es: ["¿Hacen eventos para grupos grandes?"]}}
+  - {id: P01-3, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Menú del día, carta y especiales", if_missing: [NC+AV], phrases: {es: ["¿Cuál es el menú del día?"]}}
+  - {id: P01-4, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Alérgenos, dietas e ingredientes", if_missing: [HUM], phrases: {es: ["¿{item} tiene gluten o mariscos?", "Soy alérgico al maní, ¿qué puedo pedir?"]}}
+  - {id: P01-5, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Ambiente y servicios", if_missing: [NC+AV], phrases: {es: ["¿Tienen terraza o zona para niños?"]}}
+  - {id: P01-6, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Lista de espera o tiempo de espera", if_missing: [], phrases: {es: ["¿Cuánto hay que esperar para una mesa?"]}}
+  - {id: P01-7, layer: "profile:P01", block: "C P01 · Restaurante con servicio en sala", title: "Descorche, propina y cargos", if_missing: [NC+AV], phrases: {es: ["¿Cobran descorche o propina?"]}}
+  - {id: P02-1, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Total por cantidad", if_missing: [PREG], phrases: {es: ["¿Cuánto serían 2 de {item}?"], en: ["How much for 2 of {item}?"]}}
+  - {id: P02-2, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Armar el pedido (carrito)", if_missing: [], phrases: {es: ["Quiero pedir {item} para llevar"], en: ["I want to order {item}"]}}
+  - {id: P02-3, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Modificadores y variantes", if_missing: [NC+AV], phrases: {es: ["¿{item} se puede pedir sin cebolla o con extra queso?"], en: ["Can I get {item} without onions?"]}}
+  - {id: P02-4, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Dieta y alergias", if_missing: [HUM], phrases: {es: ["¿{item} tiene gluten?", "Soy alérgico al maní, ¿qué me recomiendas?"], en: ["Does {item} contain nuts?"]}}
+  - {id: P02-5, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Promos y combos", if_missing: [], phrases: {es: ["¿Tienen combos o promos?"], en: ["Do you have any combos?"]}}
+  - {id: P02-6, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Cobertura y tiempo de domicilio", if_missing: [PREG, NC+AV], phrases: {es: ["¿Hacen domicilio a mi barrio? ¿Cuánto tarda?"], en: ["Do you deliver to my area and how long does it take?"]}}
+  - {id: P02-7, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "¿Dónde está mi pedido?", if_missing: [HUM], phrases: {es: ["¿Dónde está mi pedido?"], en: ["Where is my order?"]}}
+  - {id: P02-8, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Pedido con problema", if_missing: [HUM], phrases: {es: ["Mi pedido llegó incompleto"], en: ["My order arrived incomplete"]}}
+  - {id: P02-9, layer: "profile:P02", block: "C P02 · Comida rápida, domicilios y dark kitchen", title: "Precio medio y lo más barato", if_missing: [], phrases: {es: ["¿Qué es lo más barato que tienen?"], en: ["What is the cheapest thing you have?"]}}
+  - {id: P03-1, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Stock y unidades", if_missing: [], phrases: {es: ["¿Les quedan unidades de {item}?"], en: ["Do you have {item} in stock?"]}}
+  - {id: P03-2, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Especificaciones y variantes", if_missing: [], phrases: {es: ["¿Qué especificaciones tiene {item}?"], en: ["What are the specs of {item}?"]}}
+  - {id: P03-3, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Compatibilidad o *fitment*", if_missing: [NC+AV], phrases: {es: ["¿{item} es compatible con mi equipo?"], en: ["Is {item} compatible with my device?"]}}
+  - {id: P03-4, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Garantía", if_missing: [NC+AV], phrases: {es: ["¿Cuánto tiempo de garantía tiene {item}?"], en: ["How long is the warranty on {item}?"]}}
+  - {id: P03-5, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Devoluciones, cambios y retracto", if_missing: [NC+AV], phrases: {es: ["Si no me sirve, ¿lo puedo devolver?"], en: ["Can I return it if it does not work for me?"]}}
+  - {id: P03-6, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Mis compras: conteo, estado, pago, monto y referencia", if_missing: [], phrases: {es: ["¿Cuántas compras he hecho con ustedes?"], en: ["How many purchases have I made?"]}}
+  - {id: P03-7, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Envío nacional e internacional", if_missing: [NC+AV], phrases: {es: ["¿Hacen envíos a otras ciudades?"], en: ["Do you ship nationwide?"]}}
+  - {id: P03-8, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Producto con restricción de venta", if_missing: [NC+AV], phrases: {es: ["¿Necesito algo especial para comprar {item}?"], en: ["Is there any restriction to buy {item}?"]}}
+  - {id: P03-9, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Fotos", if_missing: [NC+AV], phrases: {es: ["¿Me mandan fotos de {item}?"], en: ["Can you send me photos of {item}?"]}}
+  - {id: P03-10, layer: "profile:P03", block: "C P03 · Retail de catálogo", title: "Apartar o pedido especial", if_missing: [HUM], phrases: {es: ["¿Me pueden apartar {item}?"], en: ["Can you hold {item} for me?"]}}
+  - {id: P04-1, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "¿Tienen el medicamento X?", if_missing: [NC+AV], phrases: {es: ["¿Tienen acetaminofén?"]}}
+  - {id: P04-2, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "¿Necesito receta?", if_missing: [HUM], phrases: {es: ["¿Necesito receta para ese medicamento?"]}}
+  - {id: P04-3, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Enviar la fórmula para cotizar", if_missing: [HUM], phrases: {es: ["Les envío la fórmula para que me coticen"]}}
+  - {id: P04-4, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Recomendación o dosis", if_missing: [HUM, EXT], phrases: {es: ["¿Cuánto debo tomar de ibuprofeno?"]}}
+  - {id: P04-5, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Domicilio y horario 24 h", if_missing: [NC+AV], phrases: {es: ["¿Tienen domicilio y abren 24 horas?"]}}
+  - {id: P04-6, layer: "profile:P04", block: "C P04 · Farmacia o droguería", title: "Convenios y descuentos", if_missing: [NC+AV], phrases: {es: ["¿Tienen convenio con mi EPS o descuentos?"]}}
+  - {id: P05-1, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Tarifa por noche y total de la estancia", if_missing: [PREG], phrases: {es: ["¿Cuánto cuesta la noche en {item}?", "¿Cuánto me sale una estancia de 3 noches?"], en: ["How much per night for {item}?"]}}
+  - {id: P05-2, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Check-in, check-out y llegada temprana o tardía", if_missing: [HUM], phrases: {es: ["¿A qué hora es el check-in y el check-out?"], en: ["What time is check-in and check-out?"]}}
+  - {id: P05-3, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Capacidad y tipo de habitación", if_missing: [], phrases: {es: ["¿Cuántas personas caben en {item}?"], en: ["How many guests fit in {item}?"]}}
+  - {id: P05-4, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Amenidades", if_missing: [], phrases: {es: ["¿{item} tiene aire acondicionado y wifi?"], en: ["Does {item} have air conditioning?"]}}
+  - {id: P05-5, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Disponibilidad por fechas", if_missing: [PREG], phrases: {es: ["¿Tienen {item} disponible del 12 al 15?"], en: ["Is {item} available from the 12th to the 15th?"]}}
+  - {id: P05-6, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Cargos extra", if_missing: [], phrases: {es: ["¿Hay cargos extra, como limpieza o impuestos?"], en: ["Are there any extra fees?"]}}
+  - {id: P05-7, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Mascotas, niños y fumadores", if_missing: [NC+AV], phrases: {es: ["¿Aceptan mascotas?"], en: ["Are pets allowed?"]}}
+  - {id: P05-8, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Cerca de qué está", if_missing: [NC+AV], phrases: {es: ["¿Qué hay cerca del hotel?"], en: ["What is near the hotel?"]}}
+  - {id: P05-9, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Traslado aeropuerto, tours y servicios extra", if_missing: [NC+AV], phrases: {es: ["¿Tienen traslado desde el aeropuerto?"], en: ["Do you offer an airport transfer?"]}}
+  - {id: P05-10, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Mi reserva", if_missing: [], phrases: {es: ["¿Me confirman los datos de mi reserva?"], en: ["Can you confirm my reservation details?"]}}
+  - {id: P05-11, layer: "profile:P05", block: "C P05 · Alojamiento (hotel, alquiler vacacional)", title: "Documentos y registro de huéspedes", if_missing: [NC+AV], phrases: {es: ["¿Qué documentos piden al llegar?"], en: ["What documents do I need at check-in?"]}}
+  - {id: P06-1, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Qué incluye o excluye", if_missing: [], phrases: {es: ["¿Qué incluye {item}?"], en: ["What does {item} include?"]}}
+  - {id: P06-2, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Duración, hora de salida y regreso", if_missing: [NC+AV], phrases: {es: ["¿Cuánto dura {item} y a qué hora sale?"], en: ["How long is {item} and when does it leave?"]}}
+  - {id: P06-3, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Punto de encuentro o recogida", if_missing: [PREG], phrases: {es: ["¿Dónde es el punto de encuentro de {item}?"], en: ["Where is the meeting point for {item}?"]}}
+  - {id: P06-4, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Precio por persona y total del grupo", if_missing: [PREG], phrases: {es: ["¿Cuánto cuesta {item} por persona?"], en: ["How much is {item} per person?"]}}
+  - {id: P06-5, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Cupos y capacidad por fecha", if_missing: [PREG], phrases: {es: ["¿Quedan cupos para {item} el sábado?"], en: ["Are there spots left on {item} this Saturday?"]}}
+  - {id: P06-6, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Idioma del guía", if_missing: [NC+AV], phrases: {es: ["¿{item} tiene guía en inglés?"], en: ["Is there an English-speaking guide on {item}?"]}}
+  - {id: P06-7, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Aptitud: niños, edad, movilidad, salud", if_missing: [NC+AV], phrases: {es: ["¿{item} es apto para niños o adultos mayores?"], en: ["Is {item} suitable for children?"]}}
+  - {id: P06-8, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Comparar tours y destino", if_missing: [], phrases: {es: ["¿Qué tour me recomiendas?"], en: ["Which tour do you recommend?"]}}
+  - {id: P06-9, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Política de cambios o cancelación", if_missing: [], phrases: {es: ["¿Puedo cambiar la fecha del tour si llueve?"], en: ["Can I change the tour date?"]}}
+  - {id: P06-10, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Documentos, visa y seguro", if_missing: [], phrases: {es: ["¿Necesito visa o seguro de viaje?"], en: ["Do I need a visa or travel insurance?"]}}
+  - {id: P06-11, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Paquete a medida o destinos", if_missing: [PREG, HUM], phrases: {es: ["Quiero un paquete a medida para mi familia"], en: ["I want a custom package for my family"]}}
+  - {id: P06-12, layer: "profile:P06", block: "C P06 · Tours y agencia de viajes", title: "Mi reserva o mi caso", if_missing: [], phrases: {es: ["¿Cómo va mi reserva del tour?"], en: ["How is my tour booking going?"]}}
+  - {id: P07-1, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "¿Qué inmuebles hay? (con filtros)", if_missing: [], phrases: {es: ["¿Qué inmuebles tienen disponibles?"], en: ["What properties do you have?"]}}
+  - {id: P07-2, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "¿Venta o arriendo?", if_missing: [], phrases: {es: ["¿{item} es para venta o arriendo?"], en: ["Is {item} for sale or for rent?"]}}
+  - {id: P07-3, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Precio, moneda y rango", if_missing: [], phrases: {es: ["¿Cuál es el precio de {item}?"], en: ["What is the price of {item}?"]}}
+  - {id: P07-4, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Superficie, habitaciones, baños, piso", if_missing: [], phrases: {es: ["¿Cuántos metros y habitaciones tiene {item}?"], en: ["How many bedrooms does {item} have?"]}}
+  - {id: P07-5, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Ubicación exacta, barrio y país", if_missing: [], phrases: {es: ["¿En qué barrio queda {item}?"], en: ["Which neighbourhood is {item} in?"]}}
+  - {id: P07-6, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Parqueadero y amenidades del edificio", if_missing: [], phrases: {es: ["¿{item} tiene parqueadero?"], en: ["Does {item} have parking?"]}}
+  - {id: P07-7, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Costos adicionales", if_missing: [NC+AV], phrases: {es: ["¿Cuánto es la administración de {item}?"], en: ["What are the extra costs for {item}?"]}}
+  - {id: P07-8, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Financiación o hipoteca", if_missing: [HUM], phrases: {es: ["¿Puedo financiar la compra?"], en: ["Can I get financing?"]}}
+  - {id: P07-9, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Documentos para arrendar o comprar", if_missing: [NC+AV], phrases: {es: ["¿Qué documentos piden para arrendar?"], en: ["What documents do I need to rent?"]}}
+  - {id: P07-10, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Agendar una visita", if_missing: [HUM], phrases: {es: ["Quiero agendar una visita a {item}"], en: ["I want to schedule a viewing of {item}"]}}
+  - {id: P07-11, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Entrega de llaves, disponibilidad y estado", if_missing: [NC+AV], phrases: {es: ["¿Cuándo entregan las llaves de {item}?"], en: ["When is {item} available to move in?"]}}
+  - {id: P07-12, layer: "profile:P07", block: "C P07 · Inmobiliaria (venta, arriendo, comercial)", title: "Quiero vender o arrendar mi inmueble (captación)", if_missing: [HUM], phrases: {es: ["Quiero vender mi apartamento con ustedes"], en: ["I want to list my apartment with you"]}}
+  - {id: P08-1, layer: "profile:P08", block: "C P08 · Odontología", title: "Tratamientos ofrecidos", if_missing: [], phrases: {es: ["¿Qué tratamientos hacen?"], en: ["What treatments do you offer?"]}}
+  - {id: P08-2, layer: "profile:P08", block: "C P08 · Odontología", title: "Precio y duración por tratamiento", if_missing: [], phrases: {es: ["¿Cuánto cuesta y cuánto dura {item}?"], en: ["How much is {item} and how long does it take?"]}}
+  - {id: P08-3, layer: "profile:P08", block: "C P08 · Odontología", title: "Duración total de un tratamiento", if_missing: [], phrases: {es: ["¿Cuántas sesiones necesita {item}?"], en: ["How many sessions does {item} take?"]}}
+  - {id: P08-4, layer: "profile:P08", block: "C P08 · Odontología", title: "Datos requeridos para la cita", if_missing: [], phrases: {es: ["¿Qué datos necesitan para darme cita?"], en: ["What details do you need to book?"]}}
+  - {id: P08-5, layer: "profile:P08", block: "C P08 · Odontología", title: "Qué llevar a la primera cita", if_missing: [], phrases: {es: ["¿Qué debo llevar a la primera cita?"], en: ["What should I bring to my first appointment?"]}}
+  - {id: P08-6, layer: "profile:P08", block: "C P08 · Odontología", title: "Seguro, EPS o convenio", if_missing: [PREG, NC+AV], phrases: {es: ["¿Atienden con seguro o EPS?"], en: ["Do you accept my insurance?"]}}
+  - {id: P08-7, layer: "profile:P08", block: "C P08 · Odontología", title: "Urgencia o dolor", if_missing: [EXT, HUM], phrases: {es: ["Me duele mucho una muela desde ayer"], en: ["I have a terrible toothache since yesterday"]}}
+  - {id: P08-8, layer: "profile:P08", block: "C P08 · Odontología", title: "Miedo o ansiedad", if_missing: [], phrases: {es: ["Me da mucho miedo el dentista"], en: ["I am very scared of the dentist"]}}
+  - {id: P08-9, layer: "profile:P08", block: "C P08 · Odontología", title: "Presencial o remoto", if_missing: [NC+AV], phrases: {es: ["¿La valoración puede ser virtual?"], en: ["Can the assessment be online?"]}}
+  - {id: P08-10, layer: "profile:P08", block: "C P08 · Odontología", title: "Mi plan de tratamiento y próxima cita", if_missing: [], phrases: {es: ["¿Cuándo es mi próxima cita?"], en: ["When is my next appointment?"]}}
+  - {id: P09-1, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Especialidades y profesionales", if_missing: [], phrases: {es: ["¿Qué especialistas tienen?"]}}
+  - {id: P09-2, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Agenda con un profesional o especialidad", if_missing: [HUM], phrases: {es: ["Quiero cita con medicina general"]}}
+  - {id: P09-3, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "¿Necesito orden o remisión?", if_missing: [NC+AV], phrases: {es: ["¿Necesito orden médica para la consulta?"]}}
+  - {id: P09-4, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Resultados de exámenes", if_missing: [HUM], phrases: {es: ["¿Ya están mis resultados de laboratorio?"]}}
+  - {id: P09-5, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Telemedicina", if_missing: [NC+AV], phrases: {es: ["¿Hacen consultas por videollamada?"]}}
+  - {id: P09-6, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Síntomas o urgencia", if_missing: [EXT], phrases: {es: ["Tengo fiebre alta y dolor en el pecho"]}}
+  - {id: P09-7, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Certificados, incapacidades y fórmulas", if_missing: [HUM], phrases: {es: ["Necesito un certificado médico"]}}
+  - {id: P09-8, layer: "profile:P09", block: "C P09 · Medicina general y especialistas", title: "Preparación para un procedimiento", if_missing: [NC+AV, HUM], phrases: {es: ["¿Cómo me preparo para el procedimiento?"]}}
+  - {id: P10-1, layer: "profile:P10", block: "C P10 · Salud mental", title: "Enfoques y profesionales", if_missing: [], phrases: {es: ["¿Qué enfoques de terapia manejan?"]}}
+  - {id: P10-2, layer: "profile:P10", block: "C P10 · Salud mental", title: "Modalidad y privacidad", if_missing: [NC+AV], phrases: {es: ["¿Las sesiones pueden ser virtuales y son confidenciales?"]}}
+  - {id: P10-3, layer: "profile:P10", block: "C P10 · Salud mental", title: "Primera sesión y valor", if_missing: [NC+AV], phrases: {es: ["¿Cuánto vale la primera sesión?"]}}
+  - {id: P10-4, layer: "profile:P10", block: "C P10 · Salud mental", title: "Crisis o riesgo", if_missing: [EXT, HUM], phrases: {es: ["No me siento bien, estoy pensando en hacerme daño"]}}
+  - {id: P10-5, layer: "profile:P10", block: "C P10 · Salud mental", title: "Reprogramar o cancelar con discreción", if_missing: [], phrases: {es: ["Necesito cancelar mi sesión sin dar explicaciones"]}}
+  - {id: P11-1, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Servicio: precio y duración", if_missing: [], phrases: {es: ["¿Cuánto cuesta y cuánto dura {item}?", "¿Qué precio tiene {item}?"], en: ["How much is {item} and how long does it take?"]}}
+  - {id: P11-2, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Días y horario de apertura", if_missing: [NC+AV], phrases: {es: ["¿Qué días y a qué hora atienden?"], en: ["What days are you open?"]}}
+  - {id: P11-3, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "¿Puedo ir el sábado a las 18 h? (solo saber)", if_missing: [], phrases: {es: ["¿Puedo ir el sábado a las 6 de la tarde?"], en: ["Can I come on Saturday at 6 pm?"]}}
+  - {id: P11-4, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Primer hueco libre", if_missing: [], phrases: {es: ["¿Cuándo es el primer espacio libre para {item}?"], en: ["When is the first free slot for {item}?"]}}
+  - {id: P11-5, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Profesional preferido", if_missing: [NC+AV], phrases: {es: ["¿Puedo pedir a una estilista en particular?"], en: ["Can I ask for a specific stylist?"]}}
+  - {id: P11-6, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Grupo (varias personas)", if_missing: [PREG], phrases: {es: ["Somos 3 personas, ¿nos pueden atender juntas?"], en: ["We are 3 people, can you take us together?"]}}
+  - {id: P11-7, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Recomendación según el cabello", if_missing: [PREG], phrases: {es: ["Tengo el pelo muy seco, ¿qué me recomiendas?"], en: ["My hair is very dry, what do you recommend?"]}}
+  - {id: P11-8, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Productos y marcas, alergia", if_missing: [NC+AV], phrases: {es: ["¿Qué productos usan? Soy alérgica al amoníaco"], en: ["Which products do you use? I am allergic to ammonia"]}}
+  - {id: P11-9, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Sin cita (walk-in) y espera", if_missing: [NC+AV], phrases: {es: ["¿Puedo ir sin cita?"], en: ["Can I walk in without an appointment?"]}}
+  - {id: P11-10, layer: "profile:P11", block: "C P11 · Peluquería y barbería", title: "Mis citas", if_missing: [], phrases: {es: ["¿Qué citas tengo agendadas?"], en: ["What appointments do I have?"]}}
+  - {id: P12-1, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Tratamiento: sesiones, resultados y precio por paquete", if_missing: [], phrases: {es: ["¿Cuántas sesiones necesito y cuánto vale el paquete?"]}}
+  - {id: P12-2, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Contraindicaciones", if_missing: [HUM], phrases: {es: ["¿El tratamiento tiene contraindicaciones si estoy embarazada?"]}}
+  - {id: P12-3, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Cuidados antes y después", if_missing: [NC+AV, HUM], phrases: {es: ["¿Qué cuidados debo tener antes y después?"]}}
+  - {id: P12-4, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Mis sesiones restantes", if_missing: [], phrases: {es: ["¿Cuántas sesiones me quedan?"]}}
+  - {id: P12-5, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Spa: circuitos, parejas, bonos de regalo", if_missing: [NC+AV], phrases: {es: ["¿Tienen circuito de spa para parejas o bonos de regalo?"]}}
+  - {id: P12-6, layer: "profile:P12", block: "C P12 · Estética y spa", title: "Qué llevar y llegar antes", if_missing: [NC+AV], phrases: {es: ["¿Qué debo llevar y con cuánto tiempo llego?"]}}
+  - {id: P13-1, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Planes y precios", if_missing: [NC+AV], phrases: {es: ["¿Qué planes tienen y cuánto cuestan?"]}}
+  - {id: P13-2, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Clase de prueba o día gratis", if_missing: [], phrases: {es: ["¿Tienen clase de prueba gratis?"]}}
+  - {id: P13-3, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Horario de clases y cupos", if_missing: [NC+AV], phrases: {es: ["¿Cuál es el horario de clases?"]}}
+  - {id: P13-4, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Reservar o cancelar una clase", if_missing: [HUM], phrases: {es: ["Quiero reservar la clase de mañana"]}}
+  - {id: P13-5, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Congelar, cancelar o cambiar el plan", if_missing: [HUM], phrases: {es: ["Quiero congelar mi plan un mes"]}}
+  - {id: P13-6, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Mi membresía: vencimiento, pagos y créditos", if_missing: [], phrases: {es: ["¿Cuándo vence mi membresía?"]}}
+  - {id: P13-7, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Instalaciones", if_missing: [NC+AV], phrases: {es: ["¿Tienen duchas y lockers?"]}}
+  - {id: P13-8, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Entrenador personal y nivel", if_missing: [NC+AV], phrases: {es: ["¿Tienen entrenador personal?"]}}
+  - {id: P13-9, layer: "profile:P13", block: "C P13 · Gimnasio y estudio de clases", title: "Condición de salud o lesión", if_missing: [HUM], phrases: {es: ["Tengo una lesión de rodilla, ¿puedo entrenar?"]}}
+  - {id: P14-1, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Programas y niveles", if_missing: [NC+AV], phrases: {es: ["¿Qué cursos y niveles tienen?"]}}
+  - {id: P14-2, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Fechas de inicio, horarios y cupos", if_missing: [NC+AV], phrases: {es: ["¿Cuándo empieza el próximo curso?"]}}
+  - {id: P14-3, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Precio, matrícula y formas de pago", if_missing: [NC+AV], phrases: {es: ["¿Cuánto vale el curso y la matrícula?"]}}
+  - {id: P14-4, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Prueba de nivel o clase de prueba", if_missing: [NC+AV], phrases: {es: ["¿Hacen prueba de nivel?"]}}
+  - {id: P14-5, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Certificado", if_missing: [NC+AV], phrases: {es: ["¿Dan certificado al terminar?"]}}
+  - {id: P14-6, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Inscripción", if_missing: [HUM], phrases: {es: ["Quiero inscribirme"]}}
+  - {id: P14-7, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Requisitos (edad, conocimientos)", if_missing: [NC+AV], phrases: {es: ["¿Hay edad mínima o requisitos para entrar?"]}}
+  - {id: P14-8, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Faltas, recuperación y congelar", if_missing: [NC+AV], phrases: {es: ["Si falto a una clase, ¿la puedo recuperar?"]}}
+  - {id: P14-9, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Autoescuela: categoría de licencia y clases prácticas", if_missing: [NC+AV], phrases: {es: ["¿Qué categoría de licencia puedo sacar?"]}}
+  - {id: P14-10, layer: "profile:P14", block: "C P14 · Academias y cursos libres", title: "Online: acceso a la plataforma", if_missing: [HUM], phrases: {es: ["No puedo entrar a la plataforma del curso"]}}
+  - {id: P15-1, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Carreras o grados y oferta", if_missing: [NC+AV], phrases: {es: ["¿Qué carreras ofrecen?"]}}
+  - {id: P15-2, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Proceso y fechas de admisión", if_missing: [NC+AV], phrases: {es: ["¿Cuándo son las inscripciones?"]}}
+  - {id: P15-3, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Documentos y requisitos", if_missing: [NC+AV], phrases: {es: ["¿Qué documentos piden para la admisión?"]}}
+  - {id: P15-4, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Costos, becas y financiación", if_missing: [NC+AV], phrases: {es: ["¿Cuánto vale el semestre y hay becas?"]}}
+  - {id: P15-5, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Estado de mi solicitud", if_missing: [], phrases: {es: ["¿Cómo va mi solicitud de admisión?"]}}
+  - {id: P15-6, layer: "profile:P15", block: "C P15 · Educación formal y admisiones", title: "Homologación y transferencia", if_missing: [HUM], phrases: {es: ["¿Puedo homologar materias de otra universidad?"]}}
+  - {id: P16-1, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "¿Cubren mi zona?", if_missing: [PREG, NC+AV], phrases: {es: ["¿Cubren mi zona?"]}}
+  - {id: P16-2, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Precio o tarifa base", if_missing: [], phrases: {es: ["¿Cuánto cobran la visita?"]}}
+  - {id: P16-3, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Urgencia y tiempo de llegada", if_missing: [EXT, HUM], phrases: {es: ["Se me inundó la cocina, ¿pueden venir ya?"]}}
+  - {id: P16-4, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Agendar visita o servicio recurrente", if_missing: [HUM], phrases: {es: ["Quiero agendar una limpieza cada 15 días"]}}
+  - {id: P16-5, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Diagnóstico por foto", if_missing: [], phrases: {es: ["Les mando una foto del daño, ¿qué será?"]}}
+  - {id: P16-6, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Garantía de la obra", if_missing: [NC+AV], phrases: {es: ["¿El trabajo tiene garantía?"]}}
+  - {id: P16-7, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Fumigación: seguridad para niños y mascotas", if_missing: [NC+AV], phrases: {es: ["¿La fumigación es segura para niños y mascotas?"]}}
+  - {id: P16-8, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Cerrajería: abrir mi puerta", if_missing: [], phrases: {es: ["Me quedé por fuera de mi casa"]}}
+  - {id: P16-9, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Estado del técnico", if_missing: [HUM], phrases: {es: ["¿A qué hora llega el técnico?"]}}
+  - {id: P16-10, layer: "profile:P16", block: "C P16 · Servicios del hogar", title: "Materiales incluidos o no", if_missing: [NC+AV], phrases: {es: ["¿Los materiales están incluidos?"]}}
+  - {id: P17-1, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Emergencia", if_missing: [EXT, HUM], phrases: {es: ["Mi perro se comió chocolate, ¿qué hago?"]}}
+  - {id: P17-2, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Servicios y especies atendidas", if_missing: [], phrases: {es: ["¿Atienden gatos y conejos?"]}}
+  - {id: P17-3, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Vacunas y plan de vacunación: precio", if_missing: [NC+AV], phrases: {es: ["¿Cuánto vale el plan de vacunación?"]}}
+  - {id: P17-4, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Agendar consulta", if_missing: [PREG], phrases: {es: ["Quiero una cita para mi gato"]}}
+  - {id: P17-5, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Cirugía o esterilización: precio y preparación", if_missing: [NC+AV], phrases: {es: ["¿Cuánto cuesta la esterilización?"]}}
+  - {id: P17-6, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Mi mascota hospitalizada: estado", if_missing: [HUM], phrases: {es: ["¿Cómo sigue mi perro hospitalizado?"]}}
+  - {id: P17-7, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Dosis y medicamentos", if_missing: [HUM, EXT], phrases: {es: ["¿Qué dosis de antibiótico le doy a mi perro?"]}}
+  - {id: P17-8, layer: "profile:P17", block: "C P17 · Veterinaria (clínica, 24 h, exóticos)", title: "Domicilio veterinario", if_missing: [NC+AV], phrases: {es: ["¿Hacen consultas a domicilio?"]}}
+  - {id: P18-1, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Precio por tamaño o raza", if_missing: [PREG], phrases: {es: ["¿Cuánto vale el baño para un perro grande?"]}}
+  - {id: P18-2, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Requisitos: vacunas y comportamiento", if_missing: [NC+AV], phrases: {es: ["¿Qué vacunas piden?"]}}
+  - {id: P18-3, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Recogida a domicilio", if_missing: [NC+AV], phrases: {es: ["¿Recogen a mi perro en la casa?"]}}
+  - {id: P18-4, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Paseos: frecuencia, grupo y seguimiento", if_missing: [NC+AV], phrases: {es: ["¿Cómo funcionan los paseos?"]}}
+  - {id: P18-5, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Adiestramiento: programa y sesiones", if_missing: [], phrases: {es: ["¿Cuántas sesiones tiene el adiestramiento?"]}}
+  - {id: P18-6, layer: "profile:P18", block: "C P18 · Servicios para mascotas (peluquería, paseos, adiestramiento)", title: "Duración y cuándo recogerlo", if_missing: [NC+AV], phrases: {es: ["¿Cuánto tarda y a qué hora lo recojo?"]}}
+  - {id: P19-1, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Precio por noche o día y cupos en fechas", if_missing: [PREG], phrases: {es: ["¿Cuánto vale la noche y tienen cupo el puente?"]}}
+  - {id: P19-2, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Requisitos de ingreso", if_missing: [NC+AV], phrases: {es: ["¿Qué requisitos piden para recibir a mi perro?"]}}
+  - {id: P19-3, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Alimentación y medicamentos", if_missing: [NC+AV], phrases: {es: ["¿Le pueden dar su comida y sus medicamentos?"]}}
+  - {id: P19-4, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Qué incluye (paseos, fotos, cámara)", if_missing: [NC+AV], phrases: {es: ["¿Incluye paseos o cámara para verlo?"]}}
+  - {id: P19-5, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "¿Cómo está mi perro?", if_missing: [HUM], phrases: {es: ["¿Cómo está mi perro?"]}}
+  - {id: P19-6, layer: "profile:P19", block: "C P19 · Hotel y guardería de mascotas", title: "Emergencia durante la estadía", if_missing: [NC+AV], phrases: {es: ["¿Qué pasa si mi perro se enferma durante la estadía?"]}}
+  - {id: P20-1, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Paquetes, precios y qué incluyen", if_missing: [NC+AV], phrases: {es: ["¿Qué paquetes de fotografía tienen y qué incluyen?"]}}
+  - {id: P20-2, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "¿Tienen libre mi fecha?", if_missing: [], phrases: {es: ["¿Tienen libre el 14 de febrero?"]}}
+  - {id: P20-3, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Separar la fecha: depósito y contrato", if_missing: [NC+AV, HUM], phrases: {es: ["¿Cuánto es el anticipo para separar la fecha?"]}}
+  - {id: P20-4, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Tiempo de entrega y formato", if_missing: [NC+AV], phrases: {es: ["¿En cuánto tiempo entregan las fotos?"]}}
+  - {id: P20-5, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Desplazamiento fuera de la ciudad", if_missing: [NC+AV], phrases: {es: ["¿Viajan a otra ciudad?"]}}
+  - {id: P20-6, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Portafolio y estilo", if_missing: [NC+AV], phrases: {es: ["¿Dónde puedo ver su portafolio?"]}}
+  - {id: P20-7, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Fotografía de producto: lote por SKU", if_missing: [], phrases: {es: ["Necesito fotos de 50 productos"]}}
+  - {id: P20-8, layer: "profile:P20", block: "C P20 · Fotografía (bodas, eventos, estudio, producto)", title: "Derechos de uso de imágenes", if_missing: [HUM], phrases: {es: ["¿Puedo usar las fotos para publicidad?"]}}
+  - {id: P21-1, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Tipos de seguro y qué cubren (en general)", if_missing: [NC+AV], phrases: {es: ["¿Qué tipos de seguro manejan?"]}}
+  - {id: P21-2, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Cotizar", if_missing: [PREG, HUM], phrases: {es: ["Quiero cotizar un seguro para mi carro"]}}
+  - {id: P21-3, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Siniestro: qué hago", if_missing: [EXT, HUM], phrases: {es: ["Acabo de chocar, ¿qué hago?"]}}
+  - {id: P21-4, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Mi póliza: vigencia, renovación y pago", if_missing: [HUM], phrases: {es: ["¿Cuándo vence mi póliza?"]}}
+  - {id: P21-5, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "¿Mi póliza cubre X?", if_missing: [HUM], phrases: {es: ["¿Mi póliza cubre robo?"]}}
+  - {id: P21-6, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Estado de mi reclamación", if_missing: [HUM], phrases: {es: ["¿Cómo va mi reclamación?"]}}
+  - {id: P21-7, layer: "profile:P21", block: "C P21 · Seguros (broker, auto, vida, salud, hogar)", title: "Cancelar o cambiar beneficiarios", if_missing: [HUM], phrases: {es: ["Quiero cambiar los beneficiarios"]}}
+  - {id: P22-1, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "¿Atienden mi tipo de caso?", if_missing: [NC+AV, HUM], phrases: {es: ["¿Atienden casos laborales?"]}}
+  - {id: P22-2, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Honorarios y primera consulta", if_missing: [], phrases: {es: ["¿Cuánto cobran la primera consulta?"]}}
+  - {id: P22-3, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Agendar asesoría", if_missing: [HUM], phrases: {es: ["Quiero agendar una asesoría"]}}
+  - {id: P22-4, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "¿Voy a ganar? ¿Qué hago? (consejo concreto)", if_missing: [HUM], phrases: {es: ["¿Voy a ganar la demanda?"]}}
+  - {id: P22-5, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Estado de mi caso", if_missing: [HUM], phrases: {es: ["¿Cómo va mi caso?"]}}
+  - {id: P22-6, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Plazos urgentes", if_missing: [HUM], phrases: {es: ["Tengo un plazo que vence mañana"]}}
+  - {id: P22-7, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Documentos para la consulta", if_missing: [NC+AV], phrases: {es: ["¿Qué documentos llevo a la consulta?"]}}
+  - {id: P22-8, layer: "profile:P22", block: "C P22 · Servicios legales y contables", title: "Contables: declaración, nómina y facturación", if_missing: [NC+AV], phrases: {es: ["¿Me ayudan con la declaración de renta?"]}}
+  - {id: P23-1, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Servicios y casos de éxito", if_missing: [NC+AV], phrases: {es: ["¿Qué servicios ofrecen y con quién han trabajado?"]}}
+  - {id: P23-2, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "¿Cuánto cuesta?", if_missing: [PREG], phrases: {es: ["¿Cuánto cuesta un proyecto?"]}}
+  - {id: P23-3, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Agendar una demo o reunión", if_missing: [], phrases: {es: ["Quiero agendar una demo"]}}
+  - {id: P23-4, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Tiempos de implementación o proyecto", if_missing: [], phrases: {es: ["¿Cuánto tarda la implementación?"]}}
+  - {id: P23-5, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Integraciones y seguridad de datos", if_missing: [NC+AV], phrases: {es: ["¿Se integran con mi sistema y cómo protegen los datos?"]}}
+  - {id: P23-6, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Arquitectos: fases, licencias y visitas de obra", if_missing: [NC+AV], phrases: {es: ["¿Qué fases tiene el diseño y quién tramita la licencia?"]}}
+  - {id: P23-7, layer: "profile:P23", block: "C P23 · Consultoría y proyectos B2B (consultores, arquitectos, desarrollo de software)", title: "Estado de mi proyecto", if_missing: [HUM], phrases: {es: ["¿En qué va mi proyecto?"]}}
+  - {id: P24-1, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Planes, precios y prueba", if_missing: [NC+AV], phrases: {es: ["¿Qué planes tienen y hay prueba gratis?"]}}
+  - {id: P24-2, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "No puedo entrar o restablecer el acceso", if_missing: [HUM], phrases: {es: ["No puedo entrar a mi cuenta"]}}
+  - {id: P24-3, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Error o incidente", if_missing: [HUM], phrases: {es: ["La aplicación me da un error"]}}
+  - {id: P24-4, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Facturación: cobro, factura y cambio de plan", if_missing: [HUM], phrases: {es: ["Me cobraron dos veces este mes"]}}
+  - {id: P24-5, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Cancelar la suscripción", if_missing: [HUM], phrases: {es: ["Quiero cancelar la suscripción"]}}
+  - {id: P24-6, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Cómo hacer X (uso)", if_missing: [NC+AV], phrases: {es: ["¿Cómo exporto mis datos?"]}}
+  - {id: P24-7, layer: "profile:P24", block: "C P24 · SaaS y soporte de software", title: "Seguridad o privacidad", if_missing: [HUM], phrases: {es: ["¿Dónde guardan mis datos?"]}}
+  - {id: P25-1, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Productos de crédito: tasa, plazo y monto", if_missing: [NC+AV], phrases: {es: ["¿Qué tasa y plazo tiene el crédito?"]}}
+  - {id: P25-2, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Simulación de cuota", if_missing: [NC+AV], phrases: {es: ["¿Cuánto pagaría de cuota por 10 millones?"]}}
+  - {id: P25-3, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Requisitos y documentos", if_missing: [NC+AV], phrases: {es: ["¿Qué requisitos piden para el crédito?"]}}
+  - {id: P25-4, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "¿Me aprueban? ¿Estoy reportado?", if_missing: [HUM], phrases: {es: ["¿Me aprueban si estoy reportado?"]}}
+  - {id: P25-5, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Estado de la solicitud y desembolso", if_missing: [HUM], phrases: {es: ["¿Cuándo me desembolsan?"]}}
+  - {id: P25-6, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Saldo, pagos y certificado de deuda", if_missing: [HUM], phrases: {es: ["¿Cuánto debo todavía?"]}}
+  - {id: P25-7, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Asesoría: ¿en qué invierto?", if_missing: [], phrases: {es: ["¿En qué me conviene invertir?"]}}
+  - {id: P25-8, layer: "profile:P25", block: "C P25 · Finanzas: crédito y asesoría", title: "Fraude o suplantación", if_missing: [EXT, HUM], phrases: {es: ["Alguien sacó un crédito a mi nombre"]}}
+  - {id: P26-1, layer: "profile:P26", block: "C P26 · Concesionario", title: "Inventario: modelos, versiones y colores", if_missing: [NC+AV], phrases: {es: ["¿Qué modelos tienen disponibles?"]}}
+  - {id: P26-2, layer: "profile:P26", block: "C P26 · Concesionario", title: "Precio final, impuestos y trámites", if_missing: [NC+AV], phrases: {es: ["¿Cuál es el precio final con trámites?"]}}
+  - {id: P26-3, layer: "profile:P26", block: "C P26 · Concesionario", title: "Financiación y cuota", if_missing: [HUM], phrases: {es: ["¿Cuánto sería la cuota si lo financio?"]}}
+  - {id: P26-4, layer: "profile:P26", block: "C P26 · Concesionario", title: "Recibir mi carro en parte de pago (*trade-in*)", if_missing: [HUM], phrases: {es: ["¿Me reciben mi carro en parte de pago?"]}}
+  - {id: P26-5, layer: "profile:P26", block: "C P26 · Concesionario", title: "Prueba de manejo", if_missing: [], phrases: {es: ["Quiero una prueba de manejo"]}}
+  - {id: P26-6, layer: "profile:P26", block: "C P26 · Concesionario", title: "Tiempo de entrega, garantía y mantenimientos", if_missing: [NC+AV], phrases: {es: ["¿Cuánto tarda la entrega y qué garantía tiene?"]}}
+  - {id: P27-1, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Servicios y precio estándar", if_missing: [PREG, NC+AV], phrases: {es: ["¿Cuánto cuesta un cambio de aceite?"]}}
+  - {id: P27-2, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Síntoma: ¿qué tiene mi carro?", if_missing: [], phrases: {es: ["Mi carro hace un ruido al frenar, ¿qué será?"]}}
+  - {id: P27-3, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Agendar la entrada al taller", if_missing: [], phrases: {es: ["Quiero llevar el carro mañana"]}}
+  - {id: P27-4, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Estado de la reparación", if_missing: [HUM], phrases: {es: ["¿Ya está listo mi carro?"]}}
+  - {id: P27-5, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Aprobar un presupuesto adicional", if_missing: [HUM], phrases: {es: ["Apruebo el presupuesto adicional"]}}
+  - {id: P27-6, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Garantía de la reparación", if_missing: [HUM], phrases: {es: ["¿La reparación tiene garantía?"]}}
+  - {id: P27-7, layer: "profile:P27", block: "C P27 · Taller automotriz", title: "Grúa o asistencia en carretera", if_missing: [EXT, HUM], phrases: {es: ["Me quedé varado en la carretera"]}}
+  - {id: P28-1, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Tarifa por día y total por fechas", if_missing: [PREG], phrases: {es: ["¿Cuánto cuesta alquilar un carro por 3 días?"]}}
+  - {id: P28-2, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Requisitos del conductor", if_missing: [NC+AV], phrases: {es: ["¿Qué necesito para alquilar un carro?"]}}
+  - {id: P28-3, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Depósito, deducible y seguro", if_missing: [NC+AV], phrases: {es: ["¿Cuánto es el depósito y el deducible?"]}}
+  - {id: P28-4, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Recogida y devolución en otra sede o aeropuerto", if_missing: [NC+AV], phrases: {es: ["¿Puedo devolver el carro en el aeropuerto?"]}}
+  - {id: P28-5, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Conductor adicional, sillas para niños, GPS", if_missing: [NC+AV], phrases: {es: ["¿Tienen silla para niños?"]}}
+  - {id: P28-6, layer: "profile:P28", block: "C P28 · Alquiler de vehículos", title: "Accidente o avería durante el alquiler", if_missing: [EXT, HUM], phrases: {es: ["Se me pinchó una llanta del carro alquilado"]}}

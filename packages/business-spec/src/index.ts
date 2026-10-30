@@ -48,3 +48,14 @@ export { generateRequirementsDoc } from './docs';
 export { canonicalJson, sha256, hashOf } from './hash';
 export { formFor, formRequirementIds, screenTargetsFor, hasOwnerForm, parseField, splitTop, FORM_SCHEMA, DURATION_UNITS, WEEK_DAYS } from './forms/descriptor';
 export type { FormDescriptor, FormField, FormFieldKind, FormOption, FormCondition, FormMode } from './forms/descriptor';
+export {
+    generateRehearsal, servedLanguages, seededRandom, REHEARSAL_SCHEMA, REHEARSAL_MAX_CASES, REHEARSAL_LANGUAGES,
+} from './rehearsal/generate';
+export type {
+    RehearsalBank, RehearsalCase, RehearsalCoverage, RehearsalEvent, RehearsalExpectation, RehearsalOptions, RehearsalSkip,
+} from './rehearsal/generate';
+export { gradeCase, needsJudge, summarize, isPass, passHatK, PENDING_TOOL } from './rehearsal/grade';
+export type {
+    RehearsalObservation, RehearsalToolCall, RehearsalOutcome, RehearsalCheck, RehearsalCheckId, RehearsalGrade, RehearsalSummary, JudgeVerdict,
+} from './rehearsal/grade';
+export { figuresOfText, figuresOfValue, figureLabel, hasMoneyFigure } from './rehearsal/figures';

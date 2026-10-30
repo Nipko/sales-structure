@@ -40,6 +40,8 @@ export interface CompileOptions {
 
 const GAP_CAUSES = new Set(['ausente', 'ejemplo', 'sembrado', 'contradictorio', 'parcial', 'caducado', 'hecho_sin_declarar', 'plataforma']);
 const WRITE_MODES = new Set(['direct_commit', 'request_to_business', 'none']);
+/** Idiomas de las frases del ensayo (R7): los cuatro que atiende la plataforma. */
+export const INTENT_LANGUAGES = new Set(['es', 'en', 'pt', 'fr']);
 const LEVEL_WORD = /^(bloqueante|necesario|recomendado)\s*\((R[1-5])\)/i;
 const GENERIC_KINDS: readonly PredicateKind[] = ['confirmed_fields', 'value_or_empty', 'default_accepted', 'count_min', 'platform_pack'];
 
@@ -71,7 +73,18 @@ export function compile(docs: SpecDocs, options: CompileOptions = {}): { spec: C
         intents[id] = {
             id, layer: String(raw.layer ?? ''), block: String(raw.block ?? ''), title: String(raw.title ?? ''),
             ifMissing: Array.isArray(raw.if_missing) ? raw.if_missing.map(String) : [], conversational: raw.conversational === true,
+            phrases: {}, demand: 0,
         };
+        // R7: frases del ensayo por idioma y demanda de B1 §D (ambas opcionales)
+        if (raw.demand !== undefined && !(Number.isInteger(raw.demand) && raw.demand >= 0)) err('INVALID_ENUM', `${id}: demand debe ser un entero ≥ 0`, id);
+        else if (raw.demand !== undefined) intents[id].demand = raw.demand;
+        for (const [lang, list] of Object.entries(raw.phrases ?? {})) {
+            if (!INTENT_LANGUAGES.has(lang)) { err('INVALID_ENUM', `${id}: idioma de frase desconocido ${lang}`, id); continue; }
+            if (!Array.isArray(list) || !list.length || list.some(p => typeof p !== 'string' || !p.trim())) { err('INVALID_ENUM', `${id}: phrases.${lang} debe ser una lista de frases no vacías`, id); continue; }
+            const slots = list.flatMap(p => [...p.matchAll(/\{(\w+)\}/g)].map(m => m[1])).filter(s => s !== 'item');
+            if (slots.length) err('INVALID_ENUM', `${id}: hueco desconocido {${slots[0]}} (solo {item})`, id);
+            intents[id].phrases[lang] = list.map(String);
+        }
     }
 
     // ── objetos ──

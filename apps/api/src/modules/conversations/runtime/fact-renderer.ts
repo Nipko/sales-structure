@@ -306,6 +306,9 @@ const NEGATION = / (?:no|sin|ni|tampoco|ningun|ninguna|not|without|nao|sem|nem|p
  * something is no evidence that it is absent (open world): an absence ASSERTED for a feature the record neither lists nor excludes is
  * unbacked like an affirmation. «La ficha no registra piscina» (what the record says) is not an assertion of absence.
  */
+/** The word a record's field uses for an amenity («parqueadero», «garaje», «estacionamento» are the «parking» of parkingSpots). */
+const PARKING_TERMS = new Set(['parqueadero', 'estacionamiento', 'estacionamento', 'parking', 'garaje', 'garage', 'garagem']);
+const amenityConcept = (term: string): string => (PARKING_TERMS.has(term) ? 'parking' : term);
 const ASSERTED_ABSENCE = / (?:no (?:se )?(?:incluye|incluyen|tiene|tienen|ofrece|ofrecen|cuenta con|dispone de|hay|esta incluid[oa])|(?:does|do|is|are) not (?:include|have|offer|come with|included)|doesn t (?:include|have|offer)|isn t included|there (?:is|are) no|nao (?:inclui|tem|oferece|possui|esta incluid[oa])|nao ha|n inclut pas|ne comprend pas|ne propose pas|n offre pas|ne dispose pas|n y a pas|n a pas) /;
 const LODGING_SUBJECT = /propert|listing|room|accommodation|stay|cabin|cabana/;
 
@@ -686,6 +689,12 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     // What the record EXCLUDES in so many words (a package's «excludes», a listing's exclusions): an absence it backs.
     const backedExclusions = norm(live.filter(fact => fact.kind === 'attribute' && /exclu/i.test(fact.field))
         .map(fact => (Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value))).join(' '));
+    // A field of the record that counts an amenity and is 0 or false (a listing's parkingSpots: 0) backs its absence too. Production
+    // QA 30-oct (real estate, French): «le bien ne dispose pas de parking» with parking_spots = 0 became «la fiche n'indique pas ce
+    // service, je ne peux donc pas le confirmer».
+    const zeroFields = norm(live.filter(fact => fact.kind === 'attribute' && (fact.value === 0 || fact.value === false))
+        .map(fact => fact.field.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ')).join(' '));
+    const absenceBacked = (term: string) => backedExclusions.includes(` ${term} `) || zeroFields.includes(` ${amenityConcept(term)} `);
 
     const sentenceOut = (sentence: string): { text: string; reason?: FallbackReason } => {
         const tokens = [...sentence.matchAll(FACT_TOKEN_RE)];
@@ -724,7 +733,7 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         const plain = norm(stripped);
         const unbackedAmenityTerm = (term: string) => plain.includes(` ${term} `) && !backedAmenities.includes(` ${term} `);
         const assertsUnbackedAbsence = ASSERTED_ABSENCE.test(plain)
-            && AMENITY_TERMS.some(term => unbackedAmenityTerm(term) && !backedExclusions.includes(` ${term} `));
+            && AMENITY_TERMS.some(term => unbackedAmenityTerm(term) && !absenceBacked(term));
         if (lodgingTurn && (assertsUnbackedAbsence || (!NEGATION.test(plain) && AMENITY_TERMS.some(unbackedAmenityTerm)))) {
             return { text: amenityTemplate(stripped), reason: 'unbacked_amenity' };
         }

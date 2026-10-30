@@ -185,6 +185,15 @@ describe('what the model typed itself', () => {
         expect(render('La ficha no registra desayuno.', [nightPrice]).fallbacks).toEqual([]);
         const excludes = fact('attribute', HOTEL, 'excludes', ['desayuno']);
         expect(render('La tarifa no incluye desayuno.', [nightPrice, excludes]).fallbacks).toEqual([]);
+        // Production QA 30-oct: a counted field at 0 backs the absence («parking_spots = 0»), in any of its words.
+        const noParking = fact('attribute', HOTEL, 'parkingSpots', 0);
+        for (const [text, lang] of [['Le bien ne dispose pas de parking.', 'fr'], ['La propiedad no tiene parqueadero.', 'es'],
+            ['The property does not have parking.', 'en']] as const) {
+            expect(render(text, [nightPrice, noParking], lang).fallbacks).toEqual([]);
+        }
+        // A 0 of another field backs nothing about parking, and no field at all still falls back.
+        expect(render('Le bien ne dispose pas de parking.', [nightPrice, fact('attribute', HOTEL, 'bathrooms', 0)], 'fr').fallbacks)
+            .toEqual([{ reason: 'unbacked_amenity' }]);
     });
 
     it('hotel: an amenity the record does not list is never affirmed; a denial and a listed one pass', () => {

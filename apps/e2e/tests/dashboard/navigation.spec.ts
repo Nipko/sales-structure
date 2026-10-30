@@ -465,6 +465,21 @@ async function bootstrapTenantAdmin(
       return;
     }
 
+    // Since R2 the same card reads the business verdict next to the assessment.
+    // Nothing blocking: the menu and the tour are what these tests are about.
+    if (method === "GET" && path === `/readiness/${TENANT_ID}`) {
+      await fulfillSuccess(route, {
+        evaluationId: null, evaluatedAt: "2026-08-13T12:00:00.000Z", trigger: "on_demand", cached: true,
+        result: {
+          specVersion: "1.0.0-rc.1", asOf: "2026-08-13T12:00:00.000Z", resultHash: "e2e-navigation", verdict: "listo",
+          counts: { applicable: 0, blocking: 0, blockingFailing: 0, necessary: 0, necessaryFailing: 0, recommended: 0, recommendedFailing: 0 },
+          requirements: [], blockingGaps: [], necessaryGaps: [], recommendedGaps: [],
+          platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
+        },
+      });
+      return;
+    }
+
     if (
       method === "GET"
       && [

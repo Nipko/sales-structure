@@ -110,7 +110,9 @@ test.describe("recorridos guiados", () => {
     await expect(tourCard(page)).toBeVisible();
     expect((await stepCounter(page)).step).toBe(1);
     // Y llegó a la pantalla del paso, en vez de quedarse explicando el inicio.
-    await expect(page).toHaveURL(/\/admin\/agent/);
+    // Desde R2 el paso del negocio abre /admin/readiness sin recorrido; el
+    // primer «Mostrarme dónde» es el del canal (`connect_channel`).
+    await expect(page).toHaveURL(/\/admin\/channels/);
     await expectHermetic(state);
   });
 

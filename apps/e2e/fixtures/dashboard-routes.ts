@@ -25,6 +25,28 @@ export const disabledAgentTools = (totalAgents = 0): AgentToolConfigurationSumma
   }])) as AgentToolConfigurationSummary['families'],
 });
 
+/**
+ * `GET /readiness/:tenantId` (R2) in the shape the setup card and `/admin/readiness`
+ * read: the engine's result for one tenant. `no_listo` carries one blocking gap
+ * (the regular hours) so the card has a blocker to list and link; `listo` has none.
+ */
+export const readinessCurrent = (verdict: "listo" | "no_listo") => {
+  const failing = verdict === "no_listo";
+  return {
+    evaluationId: null, evaluatedAt: "2026-09-09T12:00:00.000Z", trigger: "on_demand", cached: true,
+    result: {
+      specVersion: "1.0.0-rc.1", asOf: "2026-09-09T12:00:00.000Z", resultHash: `e2e-${verdict}`, verdict,
+      counts: { applicable: 1, blocking: 1, blockingFailing: failing ? 1 : 0, necessary: 0, necessaryFailing: 0, recommended: 0, recommendedFailing: 0 },
+      requirements: [{ id: "CORE.HOURS.REGULAR", title: "Horario", layer: "core", level: "bloqueante", applies: true,
+        result: failing ? "no_cumple" : "cumple", valueState: failing ? "ausente" : "confirmado", platform: false, derived: false,
+        ...(failing ? { gap: { cause: "ausente", message: "Falta el horario de atención", intents: [], uiTarget: "/admin/settings/business-hours",
+          uiToday: "/admin/settings/business-hours", rootOf: [] } } : {}) }],
+      blockingGaps: failing ? ["CORE.HOURS.REGULAR"] : [], necessaryGaps: [], recommendedGaps: [],
+      platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
+    },
+  };
+};
+
 export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // The session heartbeat every authenticated page sends.
   "auth/activity-ping": ok({ ok: true }),
@@ -94,6 +116,11 @@ export const dashboardShell = (tenantId = TENANT): ApiRoutes => ({
   // the honest minimal answer: WhatsApp first, nothing recommended.
   [`verticals/${tenantId}/recipe`]: ok({ industry: null, subType: null, source: "none", recipe: null }),
   [`copilot/assessment/${tenantId}`]: ok({ blockers: [], recommendations: [], ready: false }),
+  // Since R2 the setup card also reads the business verdict (`GET /readiness/:tenantId`)
+  // next to the assessment, for every role that sees the card. A business with
+  // nothing blocking is the honest minimal answer; `pendingAssessment` has the
+  // pending one.
+  [`readiness/${tenantId}`]: ok(readinessCurrent("listo")),
   // An agent lands in the console rather than on the dashboard, so their shell
   // is a different set of calls — all of them tenant-scoped, which is the point
   // the role tests check.
@@ -186,6 +213,12 @@ export const pendingAssessment = (tenantId = TENANT): ApiRoutes => ({
     },
     channels: [],
     tasks: [
+      // The API emits channel before agent (`AGENT_SETUP_TASK_CHECKS` order), so
+      // the card's first «Mostrarme dónde» is this one. A WhatsApp number is
+      // connected (`readyBusiness`) but the channel step is still open, which
+      // is the default pairing: `/admin/channels` and its `connect_channel` tour.
+      { key: "channel", status: "fail", state: "pending", checks: [],
+        href: "/admin/channels", tourId: "connect_channel", dependsOn: ["agent"] },
       { key: "agent", status: "fail", state: "pending", checks: [],
         href: `/admin/agent/${AGENT}?tab=instructions&focus=rules`, tourId: "agent_handoff_rules", dependsOn: ["mission"] },
       // Since R2 the business step is the readiness verdict (C0 §4.2): no tour,
@@ -194,25 +227,13 @@ export const pendingAssessment = (tenantId = TENANT): ApiRoutes => ({
         href: "/admin/readiness", tourId: null, dependsOn: [] },
     ],
     state: "pending",
-    nextTask: "agent",
+    nextTask: "channel",
     requiredTests: [],
     blockers: [],
     recommendations: [],
   }),
   // The verdict the setup card's business step reads (`GET /readiness/:tenantId`).
-  [`readiness/${tenantId}`]: ok({
-    evaluationId: null, evaluatedAt: "2026-09-09T12:00:00.000Z", trigger: "on_demand", cached: true,
-    result: {
-      specVersion: "1.0.0-rc.1", asOf: "2026-09-09T12:00:00.000Z", resultHash: "e2e", verdict: "no_listo",
-      counts: { applicable: 1, blocking: 1, blockingFailing: 1, necessary: 0, necessaryFailing: 0, recommended: 0, recommendedFailing: 0 },
-      requirements: [{ id: "CORE.HOURS.REGULAR", title: "Horario", layer: "core", level: "bloqueante", applies: true,
-        result: "no_cumple", valueState: "ausente", platform: false, derived: false,
-        gap: { cause: "ausente", message: "Falta el horario de atención", intents: [], uiTarget: "/admin/settings/business-hours",
-          uiToday: "/admin/settings/business-hours", rootOf: [] } }],
-      blockingGaps: ["CORE.HOURS.REGULAR"], necessaryGaps: [], recommendedGaps: [],
-      platformGaps: [], qualityWarnings: [], coverage: { byArea: {}, r5Pct: 100 }, limitedIntents: [],
-    },
-  }),
+  [`readiness/${tenantId}`]: ok(readinessCurrent("no_listo")),
 });
 
 /**

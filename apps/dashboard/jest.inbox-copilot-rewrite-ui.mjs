@@ -16,6 +16,8 @@ export default {
     moduleFileExtensions: ['ts', 'tsx', 'js', 'mjs', 'json', 'node'],
     moduleNameMapper: {
         '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+        '^@parallext/business-spec$': '<rootDir>/../../packages/business-spec/src/index.ts',
+        '^@parallext/business-spec/load$': '<rootDir>/../../packages/business-spec/src/load.ts',
         '^@/(.*)$': '<rootDir>/../dashboard/src/$1',
         '^@prisma/client$': apiRequire.resolve('@prisma/client'),
         '^jsdom$': environmentRequire.resolve('jsdom'),

@@ -9,7 +9,12 @@ module.exports = {
         '<rootDir>/src/modules/copilot/assist-content-proposal-deadline.ui.spec.tsx',
     ],
     moduleFileExtensions: ['ts', 'tsx', 'js', 'mjs', 'json', 'node'],
-    moduleNameMapper: { '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts' },
+    moduleNameMapper: {
+        '^@parallext/shared$': '<rootDir>/../../packages/shared/src/index.ts',
+        // CopilotController reaches the readiness engine; load it from source, not the unbuilt dist/.
+        '^@parallext/business-spec$': '<rootDir>/../../packages/business-spec/src/index.ts',
+        '^@parallext/business-spec/load$': '<rootDir>/../../packages/business-spec/src/load.ts',
+    },
     transform: {
         '^.+\\.(t|m?j)sx?$': ['ts-jest', {
             tsconfig: {

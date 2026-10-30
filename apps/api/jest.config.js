@@ -10,6 +10,9 @@ module.exports = {
   moduleNameMapper: {
     "^@parallext/shared$": "<rootDir>/../../packages/shared/src/index.ts",
     "^@parallext/business-spec$": "<rootDir>/../../packages/business-spec/src/index.ts",
+    // `load.js` re-exports `./dist/load`, which only exists after the package is
+    // built; tests read the YAML through the TypeScript source instead.
+    "^@parallext/business-spec/load$": "<rootDir>/../../packages/business-spec/src/load.ts",
     "^@parallext/business-spec/(.*)$": "<rootDir>/../../packages/business-spec/$1",
   },
   testPathIgnorePatterns: ["/node_modules/", "/dist/"],

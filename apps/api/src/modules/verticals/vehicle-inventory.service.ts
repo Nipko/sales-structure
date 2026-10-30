@@ -61,7 +61,14 @@ export class VehicleInventoryService {
                     sold_price_cents INT,
                     buyer_contact_id UUID,
                     created_at TIMESTAMPTZ DEFAULT now(),
-                    updated_at TIMESTAMPTZ DEFAULT now()
+                    updated_at TIMESTAMPTZ DEFAULT now(),
+                    content_status TEXT DEFAULT 'confirmed' CHECK (content_status IN ('confirmed','example','seeded')),
+                    origin TEXT,
+                    confirmed_by UUID,
+                    confirmed_at TIMESTAMPTZ,
+                    source_ref JSONB,
+                    price_type TEXT CHECK (price_type IN ('fijo','desde','a_cotizar','gratis')),
+                    price_status TEXT CHECK (price_status IN ('confirmed','example'))
                 )
             `);
 

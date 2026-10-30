@@ -1,16 +1,17 @@
 import { evaluate, fromLegacyRows } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
-import { SnapshotReader, TENANT_TABLE_COLUMNS, resolveCountryPack, type SqlJsonRunner } from './snapshot-reader';
+import { PROVENANCE_COLUMNS, SnapshotReader, TENANT_TABLE_COLUMNS, columnsFor, resolveCountryPack, type SqlJsonRunner } from './snapshot-reader';
 
 const SCHEMA = 'tenant_spark_qa_dental_03_5f7883f07f09490698006a07dfe82dc7';
 
-function fakeRunner(raw: Record<string, unknown>): SqlJsonRunner & { sql: string[] } {
+function fakeRunner(raw: Record<string, unknown>, columns: Record<string, string[]> = {}): SqlJsonRunner & { sql: string[] } {
     const sql: string[] = [];
     return {
         sql,
         async queryJson<T>(q: string): Promise<T> {
             sql.push(q);
             if (q.includes('information_schema.tables')) return Object.keys(TENANT_TABLE_COLUMNS).filter(t => t !== 'tour_inventory') as T;
+            if (q.includes('information_schema.columns')) return columns as T;
             return raw as T;
         },
     };
@@ -68,7 +69,7 @@ describe('SnapshotReader (solo lectura)', () => {
         const runner = fakeRunner(raw);
         const reader = new SnapshotReader(runner, () => new Date('2026-10-30T12:00:00Z'));
         const rows = await reader.readRows(SCHEMA);
-        expect(runner.sql).toHaveLength(2);
+        expect(runner.sql).toHaveLength(3);
         expect(rows).toMatchObject({ schema: 'business-spec/legacy-rows@1', capturedAt: '2026-10-30T12:00:00.000Z', country_pack: null });
         expect(rows.tenant.subtype).toBe('salud/dental');
         expect(rows.tour_inventory).toEqual([]);
@@ -83,5 +84,30 @@ describe('SnapshotReader (solo lectura)', () => {
         const co = resolveCountryPack('CO');
         expect(co).toMatchObject({ country: 'CO', consumerRights: null });
         expect(co?.emergency?.medical).toBeTruthy();
+    });
+
+    it('R3: lee las columnas de procedencia solo si la tabla ya las tiene, y requirement_values', () => {
+        expect(columnsFor('faqs')).toBe(TENANT_TABLE_COLUMNS.faqs); // tenant sin migrar: igual que antes
+        const cols = columnsFor('services', { services: [...PROVENANCE_COLUMNS] });
+        expect(cols).toMatch(/content_status, origin, confirmed_by::text AS confirmed_by, confirmed_at, source_ref, price_type$/);
+        expect(cols.match(/\bprice_status\b/g)).toHaveLength(1); // services ya leía price_status
+        expect(columnsFor('menu_items', { menu_items: ['origin', 'price_status'] })).toMatch(/, origin, price_status$/);
+        expect(TENANT_TABLE_COLUMNS.requirement_values).toMatch(/requirement_id, scope_key, value, status, origin/);
+        const sql = SnapshotReader.buildSql(SCHEMA, ['requirement_values', 'faqs'], { faqs: ['origin', 'source_ref'] });
+        expect(sql).toContain('FROM "tenant_spark_qa_dental_03_5f7883f07f09490698006a07dfe82dc7"."requirement_values"');
+        expect(sql).toMatch(/is_published, created_at, updated_at, origin, source_ref FROM/);
+        expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE)\b/i);
+    });
+
+    it('R3: con procedencia real vigente la foto la usa; un valor escrito por el dueño manda sobre lo heredado', async () => {
+        const stamped = '2026-10-18 09:22:34';
+        const rows = await new SnapshotReader(fakeRunner({
+            ...raw,
+            services: [{ ...raw.services[0], updated_at: stamped, content_status: 'confirmed', origin: 'owner_form', price_type: 'fijo', price_status: 'confirmed', source_ref: { row_updated_at: '2026-10-18T09:22:34' } }],
+            requirement_values: [{ id: 'rv1', requirement_id: 'CORE.IDENTITY.NAME', scope_key: '', value: { display_name: 'Clínica Sonrisa' }, status: 'confirmed', origin: 'owner_form', confirmed_at: '2026-10-29T10:00:00Z', source_ref: null, spec_version: loadSpec().specVersion, version: 3 }],
+        }, { services: [...PROVENANCE_COLUMNS] }), () => new Date('2026-10-30T12:00:00Z')).readRows(SCHEMA);
+        const snap = fromLegacyRows(rows);
+        expect(snap.items.appointment[0]).toMatchObject({ contentStatus: 'confirmed', origin: 'owner_form', priceType: 'fijo', priceStatus: 'confirmed', legacyRule: null });
+        expect(snap.values['CORE.IDENTITY.NAME']).toEqual([expect.objectContaining({ value: { display_name: 'Clínica Sonrisa' }, origin: 'owner_form', storage: 'requirement_values' })]);
     });
 });

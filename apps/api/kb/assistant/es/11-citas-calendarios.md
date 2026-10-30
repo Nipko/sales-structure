@@ -29,7 +29,7 @@ La pantalla muestra la capacidad actual de servicios; consulta el detalle vigent
 
 ### Precios de ejemplo y precios confirmados
 
-Cuando activas una industria, la receta de tu rubro precarga los servicios con un precio de ejemplo, para que no arranques desde cero. En el formulario del servicio, **Estado del precio** tiene tres opciones: **Precio confirmado** (necesita un monto mayor que 0), **Es gratis** o **Se cotiza según el caso**. Mientras no elijas una, el precio que trajo la receta sigue siendo de ejemplo.
+Cuando activas una industria, la receta de tu rubro precarga servicios de muestra **sin monto**, marcados como ejemplo, para que no arranques desde cero: el precio lo escribes tú. En el formulario del servicio, **Estado del precio** tiene tres opciones: **Precio confirmado** (necesita un monto mayor que 0), **Es gratis** o **Se cotiza según el caso**. Mientras no elijas una, el servicio sigue por confirmar.
 
 El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza: en la lista de servicios y al confirmar una cita, dice que el precio queda "por confirmar" con el negocio, o que se cotiza caso por caso. Solo menciona los precios ya confirmados.
 
@@ -38,7 +38,7 @@ El agente de IA nunca dice en voz alta un precio de ejemplo ni uno que se cotiza
 - Un servicio marcado **Es gratis** se muestra como **Gratis** y el agente le dice al cliente que es gratis. Dejar el monto vacío nunca lo vuelve gratis.
 - No puedes activar una política de pago (depósito o pago completo) en un servicio gratis ni en uno cuyo precio no esté confirmado.
 - Mientras queden precios de ejemplo sin confirmar o servicios sin precio, el panel de preparación del negocio (`/admin/readiness`) lo muestra como un dato por confirmar, con el enlace a la pantalla donde se confirma; el agente no dice un precio sin confirmar. En un gimnasio también cuenta los planes de membresía, que se confirman de la misma forma en **Membresías**.
-- El precio de ejemplo viene **en la moneda de tu país**, no en pesos colombianos. Si tu país es Colombia, México, Argentina, Chile, Perú o Brasil, el servicio nace con un monto de ejemplo redondo en tu moneda; en cualquier otro país nace **sin monto**, con tu moneda puesta, para que escribas el tuyo. Ese monto es solo un orden de magnitud para que la pantalla no arranque vacía: no es una conversión de divisas ni un precio de mercado, y nadie lo dice en voz alta hasta que lo confirmas.
+- El servicio de muestra nace **sin monto** y con **la moneda de tu país** ya puesta, para que escribas el tuyo. Los negocios creados antes de esta versión pueden tener todavía un monto de ejemplo redondo: sigue siendo de ejemplo y nadie lo dice en voz alta hasta que lo confirmas.
 
 ## Cómo definir tu disponibilidad
 

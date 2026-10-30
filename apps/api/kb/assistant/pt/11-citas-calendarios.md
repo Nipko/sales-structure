@@ -29,7 +29,7 @@ A tela mostra a capacidade atual de serviços; confira os detalhes vigentes em *
 
 ### Preços de exemplo e preços confirmados
 
-Quando você ativa um setor, a receita do seu ramo pré-preenche os serviços com um preço de exemplo, para você não começar do zero. No formulário do serviço, **Status do preço** tem três opções: **Preço confirmado** (precisa de um valor maior que 0), **É gratuito** ou **Orçado caso a caso**. Enquanto você não escolher uma, o preço que veio da receita continua sendo de exemplo.
+Quando você ativa um setor, a receita do seu ramo pré-preenche serviços de amostra **sem valor**, marcados como exemplo, para você não começar do zero: o preço é você quem escreve. No formulário do serviço, **Status do preço** tem três opções: **Preço confirmado** (precisa de um valor maior que 0), **É gratuito** ou **Orçado caso a caso**. Enquanto você não escolher uma, o serviço continua a confirmar.
 
 O agente de IA nunca diz em voz alta um preço de exemplo nem um que está sob consulta: na lista de serviços e ao confirmar um agendamento, ele diz que o preço fica "a confirmar" com o negócio, ou que é cotado caso a caso. Ele só menciona preços já confirmados.
 
@@ -38,7 +38,7 @@ O agente de IA nunca diz em voz alta um preço de exemplo nem um que está sob c
 - Um serviço marcado como **É gratuito** aparece como **Gratuito**, e o agente diz ao cliente que é gratuito. Deixar o valor vazio nunca o torna gratuito.
 - Você não pode ativar uma política de pagamento (sinal ou pagamento total) num serviço gratuito nem num serviço cujo preço não esteja confirmado.
 - Enquanto restarem preços de exemplo sem confirmar ou serviços sem preço, o painel de preparação do negócio (`/admin/readiness`) mostra isso como um dado a confirmar, com o link para a tela onde se confirma; o agente não diz um preço sem confirmar. Numa academia, conta também os planos de matrícula, que se confirmam do mesmo jeito em **Matrículas**.
-- O preço de exemplo vem **na moeda do seu país**, não em pesos colombianos. Se o seu país for Colômbia, México, Argentina, Chile, Peru ou Brasil, o serviço nasce com um valor de exemplo redondo na sua moeda; em qualquer outro país nasce **sem valor**, já com a sua moeda, para você escrever o seu. Esse valor é só uma ordem de grandeza para a tela não começar vazia: não é conversão de câmbio nem preço de mercado, e ninguém o diz em voz alta até você confirmar.
+- O serviço de amostra nasce **sem valor** e já com **a moeda do seu país**, para você escrever o seu. Empresas criadas antes desta versão podem ter ainda um valor de exemplo redondo: continua sendo de exemplo e ninguém o diz em voz alta até você confirmar.
 
 ## Como definir sua disponibilidade
 

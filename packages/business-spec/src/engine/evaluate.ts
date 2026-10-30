@@ -9,7 +9,7 @@
 import { compose, type EffectiveRequirement } from '../compose';
 import { resolveFacts } from '../facts';
 import { hashOf } from '../hash';
-import { resolveValue, type ResolvedValue } from '../status';
+import { isInheritedRecord, resolveValue, type ResolvedValue } from '../status';
 import type {
     CompiledSpec, Gap, GapCause, Level, ReadinessResult, RequirementEvaluation, RequirementResult, TenantSnapshot,
 } from '../types';
@@ -104,7 +104,7 @@ export function evaluate(spec: CompiledSpec, snap: TenantSnapshot, now?: Date): 
                 } else levels.add(e.level);
                 counted.set(req.id, levels);
             }
-        } else if (rv.state === 'confirmado' && (rv.record?.legacyRule === 'L6' || rv.record?.legacyRule === 'L7')) {
+        } else if (rv.state === 'confirmado' && isInheritedRecord(rv.record)) {
             qualityWarnings.push({ id: req.id, message: 'dato heredado: confírmalo', uiTarget: req.uiTarget });
         }
         for (const w of outcome.warnings ?? []) qualityWarnings.push({ id: req.id, message: w, uiTarget: req.uiTarget });

@@ -65,7 +65,12 @@ export class FaqsService {
                 "views" INTEGER DEFAULT 0,
                 "search_tsv" TSVECTOR,
                 "created_at" TIMESTAMP DEFAULT NOW(),
-                "updated_at" TIMESTAMP DEFAULT NOW()
+                "updated_at" TIMESTAMP DEFAULT NOW(),
+                "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded')),
+                "origin" TEXT,
+                "confirmed_by" UUID,
+                "confirmed_at" TIMESTAMPTZ,
+                "source_ref" JSONB
             )`,
             `CREATE INDEX IF NOT EXISTS "idx_faqs_published_${schemaName}" ON "${schemaName}"."faqs" ("is_published")`,
             `CREATE INDEX IF NOT EXISTS "idx_faqs_category_${schemaName}" ON "${schemaName}"."faqs" ("category")`,

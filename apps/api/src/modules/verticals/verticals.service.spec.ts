@@ -133,7 +133,7 @@ describe('VerticalsService resumable bootstrap', () => {
     let settings: any;
     let seedPipelineStages: jest.SpyInstance;
     let patchDefaultAgent: jest.SpyInstance;
-    let seedFaqs: jest.SpyInstance;
+    let prepareKnowledge: jest.SpyInstance;
     let seedServices: jest.SpyInstance;
     let assertInvariants: jest.SpyInstance;
 
@@ -192,14 +192,11 @@ describe('VerticalsService resumable bootstrap', () => {
 
         seedPipelineStages = jest.spyOn(service as any, 'seedPipelineStages').mockResolvedValue(undefined);
         patchDefaultAgent = jest.spyOn(service as any, 'patchDefaultAgent').mockResolvedValue(undefined);
-        seedFaqs = jest.spyOn(service as any, 'seedFaqs').mockResolvedValue(undefined);
+        prepareKnowledge = jest.spyOn(service as any, 'prepareKnowledge').mockResolvedValue(undefined);
         seedServices = jest.spyOn(service as any, 'seedServices').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'enableSimpleTool').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'disableSimpleTool').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'restoreAppointmentsTool').mockResolvedValue(undefined);
-        jest.spyOn(service as any, 'seedToursExtras').mockResolvedValue(undefined);
-        jest.spyOn(service as any, 'seedDentalExtras').mockResolvedValue(undefined);
-        jest.spyOn(service as any, 'seedInmobiliariaExtras').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'seedMembershipPlans').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'invalidateRuntimeCaches').mockResolvedValue(undefined);
         jest.spyOn(service as any, 'readQuotaUsage').mockResolvedValue({ stageSlugs: [], serviceNames: [] });
@@ -688,15 +685,15 @@ describe('VerticalsService resumable bootstrap', () => {
     });
 
     it('rolls back the attempt and replays every step after a failure', async () => {
-        seedFaqs.mockRejectedValueOnce(new Error('injected FAQ failure'));
+        prepareKnowledge.mockRejectedValueOnce(new Error('injected knowledge failure'));
 
         await expect(service.bootstrapVertical(tenantId, 'retail', 'moda', 'es'))
-            .rejects.toThrow('injected FAQ failure');
+            .rejects.toThrow('injected knowledge failure');
 
         expect(settings.verticalProvisioning).toMatchObject({
             version: VERTICAL_PROVISIONING_VERSION,
             status: 'failed',
-            failure: { step: 'knowledge', message: 'injected FAQ failure' },
+            failure: { step: 'knowledge', message: 'injected knowledge failure' },
             completedSteps: [],
         });
         expect(seedPipelineStages).toHaveBeenCalledTimes(1);
@@ -706,7 +703,7 @@ describe('VerticalsService resumable bootstrap', () => {
 
         expect(seedPipelineStages).toHaveBeenCalledTimes(2);
         expect(patchDefaultAgent).toHaveBeenCalledTimes(2);
-        expect(seedFaqs).toHaveBeenCalledTimes(2);
+        expect(prepareKnowledge).toHaveBeenCalledTimes(2);
         expect(settings.verticalProvisioning.status).toBe('complete');
         expect(settings.verticalProvisioning.completedSteps).toContain('invariants');
         expect(settings.verticalProvisioning.attempt).toBe(2);
@@ -761,8 +758,8 @@ describe('VerticalsService resumable bootstrap', () => {
             args[4]('TEST_MUTATION:pipeline'));
         patchDefaultAgent.mockImplementation(async (...args: any[]) =>
             args[4]('TEST_MUTATION:persona'));
-        seedFaqs.mockImplementation(async (...args: any[]) =>
-            args[3]('TEST_MUTATION:faqs'));
+        prepareKnowledge.mockImplementation(async (...args: any[]) =>
+            args[1]('TEST_MUTATION:faqs'));
         seedServices.mockImplementation(async (...args: any[]) =>
             args[3]('TEST_MUTATION:services'));
         jest.spyOn(service as any, 'seedAvailability').mockImplementation(async (...args: any[]) =>
@@ -845,7 +842,7 @@ describe('VerticalsService resumable bootstrap', () => {
 
         expect(seedPipelineStages).toHaveBeenCalledTimes(2);
         expect(patchDefaultAgent).toHaveBeenCalledTimes(2);
-        expect(seedFaqs).toHaveBeenCalledTimes(2);
+        expect(prepareKnowledge).toHaveBeenCalledTimes(2);
         expect(settings.verticalProvisioning.status).toBe('complete');
         expect(settings.verticalProvisioning.attempt).toBe(2);
         expect(settings.verticalConfig.manifestVersion).toBe(VERTICAL_CAPABILITY_MANIFEST_VERSION);
@@ -853,7 +850,7 @@ describe('VerticalsService resumable bootstrap', () => {
     });
 
     it('fences the bootstrap when ownership is lost before a stage commit', async () => {
-        seedFaqs.mockImplementationOnce(async () => {
+        prepareKnowledge.mockImplementationOnce(async () => {
             redis.renewLockToken.mockResolvedValue(false);
         });
 
@@ -862,7 +859,7 @@ describe('VerticalsService resumable bootstrap', () => {
                 response: expect.objectContaining({ error: 'vertical_provisioning_lock_lost' }),
             });
 
-        expect(seedFaqs).toHaveBeenCalledTimes(1);
+        expect(prepareKnowledge).toHaveBeenCalledTimes(1);
         expect(seedServices).not.toHaveBeenCalled();
         expect(settings.verticalProvisioning.status).not.toBe('complete');
     });

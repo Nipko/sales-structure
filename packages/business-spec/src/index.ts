@@ -11,10 +11,21 @@ export { compose, composeFor } from './compose';
 export type { EffectiveRequirement } from './compose';
 export { resolveFacts, RESERVABLE_OBJECTS } from './facts';
 export type { TenantFacts } from './facts';
-export { resolveValue, isAffirmable, isTextWithoutData, extractFigures } from './status';
+export { resolveValue, isAffirmable, isTextWithoutData, extractFigures, isInheritedRecord, isInheritedItem } from './status';
 export type { ResolvedValue } from './status';
-export { fromLegacyRows, normalizeHours, rowStatus, hoursFromAgenda, inferCovers, FAQ_COVERS_RULES } from './legacy-status';
-export type { LegacyTenantRows } from './legacy-status';
+export {
+    fromLegacyRows, normalizeHours, rowStatus, hoursFromAgenda, inferCovers, FAQ_COVERS_RULES, legacyRowProvenance, rowProvenance, legacyContextOf,
+} from './legacy-status';
+export type { LegacyTenantRows, LegacyContext } from './legacy-status';
+export {
+    PROVENANCE_ORIGINS, MIGRATION_ORIGINS, PROVENANCE_TABLES, BACKFILL_MARK, PRICE_TYPES, STORED_STATUSES,
+    realRowProvenance, applyRequirementValues, valueRecordFromRow, valueFingerprint, migratedRef,
+} from './provenance';
+export type { ProvenanceOrigin, ProvenanceTable, RowProvenance, MigratedSourceRef } from './provenance';
+export { validateRequirementValue, isValueRequirement, MAX_VALUE_BYTES } from './validate-value';
+export type { ValueIssue, ValueWriteInput } from './validate-value';
+export { planProvenanceBackfill, applyBackfillPlan } from './backfill';
+export type { BackfillPlan, PlannedValue, PlannedRow, SkippedValue } from './backfill';
 export { emptySnapshot, SNAPSHOT_SCHEMA } from './snapshot';
 export { evaluate, gapMessageFor } from './engine/evaluate';
 export { CUSTOM_EVALUATORS, CUSTOM_EVALUATOR_IDS, GENERIC_EVALUATORS } from './engine/evaluators';

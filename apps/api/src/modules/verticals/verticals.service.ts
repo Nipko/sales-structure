@@ -867,10 +867,11 @@ export class VerticalsService {
                     ));
                 await this.runProvisioningStep(provisioningState, 'persona', assertLockOwned, () =>
                     this.patchDefaultAgent(schemaName, definition, subType, l, query));
-                await this.runProvisioningStep(provisioningState, 'knowledge', assertLockOwned, async () => {
-                    await this.seedFaqs(schemaName, definition, l, query);
-                    await this.enableSimpleTool(schemaName, 'faqs', query);
-                });
+                // R3 (C0 §4.3, D5): el alta ya no siembra FAQs de plantilla. El negocio arranca sin FAQs y la
+                // herramienta queda encendida para las que escriba el dueño: una FAQ de plantilla «sin dato» nunca
+                // contó para la preparación y el agente la recitaba como si fuera del negocio.
+                await this.runProvisioningStep(provisioningState, 'knowledge', assertLockOwned, () =>
+                    this.prepareKnowledge(schemaName, query));
                 await this.runProvisioningStep(provisioningState, 'agenda', assertLockOwned, async () => {
                     if (selectedServices.length > 0) {
                         await this.seedServices(
@@ -1172,15 +1173,6 @@ export class VerticalsService {
         // Which families the business owns comes from the capability manifest
         // (see vertical-tool-seed-plan.ts). Only the content that has to exist
         // before the agent can use a family is seeded here by hand.
-        if (industry === 'turismo' && (subType === 'tours' || subType === 'agencia_viajes')) {
-            await this.seedToursExtras(tenantId, schemaName, lang, executor);
-        }
-        if (industry === 'salud' && subType === 'dental') {
-            await this.seedDentalExtras(tenantId, schemaName, lang, executor);
-        }
-        if (industry === 'inmobiliaria') {
-            await this.seedInmobiliariaExtras(tenantId, schemaName, lang, executor);
-        }
         const plan = planVerticalToolSeed(
             this.resolveCapabilityManifest(industry, subType),
             bootstrapMode?.extraTools,
@@ -1257,9 +1249,6 @@ export class VerticalsService {
                 (SELECT COUNT(*)::int FROM availability_slots WHERE is_active = true) AS slots,
                 (SELECT COUNT(*)::int FROM faqs WHERE is_published = true) AS faqs`,
         );
-        const faqRows = await executor<Array<{ question: string }>>(
-            `SELECT question FROM faqs WHERE is_published = true`,
-        );
         const agents = await executor<Array<{ config_json: any }>>(
             `SELECT config_json FROM agent_personas WHERE is_active = true`,
         );
@@ -1309,17 +1298,6 @@ export class VerticalsService {
         const counts = countsRows[0] || { slots: 0, faqs: 0 };
         const slots = Number(counts.slots || 0);
         const faqs = Number(counts.faqs || 0);
-        if (faqs < definition.faqs.length) {
-            throw new Error(`Invariant failed: only ${faqs}/${definition.faqs.length} vertical FAQs are published`);
-        }
-        const actualFaqQuestions = new Set(faqRows.map((row) => row.question));
-        for (const faq of definition.faqs) {
-            const acceptedQuestions = [...new Set(Object.values(faq.question).filter(Boolean))];
-            if (!acceptedQuestions.some((question) => actualFaqQuestions.has(question))) {
-                const expectedQuestion = faq.question[lang] || faq.question.es;
-                throw new Error(`Invariant failed: missing vertical FAQ "${expectedQuestion}"`);
-            }
-        }
         if (agents.length === 0) throw new Error('Invariant failed: no active agent persona exists');
         if (effectiveBooking && (serviceCount === 0 || slots === 0)) {
             throw new Error(`Invariant failed: booking requires services and slots (services=${serviceCount}, slots=${slots})`);
@@ -1384,8 +1362,9 @@ export class VerticalsService {
      * Cached in Redis for 10 minutes.
      */
     /**
-     * Re-siembra SOLO el contenido de la vertical (FAQs y servicios) para un
-     * tenant que ya existe.
+     * Re-siembra SOLO el contenido de la vertical (servicios de muestra) para un
+     * tenant que ya existe. Desde R3 (C0 §4.3, D5) no siembra FAQs: `faqs` del
+     * resultado queda en 0 por compatibilidad con quien lo lee.
      *
      * El bootstrap corre una única vez, al crear el tenant, así que cada FAQ o
      * servicio que se agrega después a `vertical-definitions.ts` no le llega a
@@ -1419,8 +1398,6 @@ export class VerticalsService {
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         const seedCountry = await this.resolveSeedCountry(tenantId);
 
-        await this.seedFaqs(schemaName, definition, lang);
-
         // El mismo criterio del bootstrap: un sub-tipo que no agenda no recibe
         // servicios, o le volveríamos a llenar la agenda de cosas que no hace.
         const agendaSeed = resolveVerticalAgendaSeedContract(definition, config?.subType);
@@ -1449,7 +1426,7 @@ export class VerticalsService {
         this.logger.log(`Reseeded vertical content for tenant ${tenantId} (${industry})`);
         return {
             industry,
-            faqs: definition.faqs.length,
+            faqs: 0,
             services: servicesToSeed.length,
         };
     }
@@ -2051,21 +2028,6 @@ export class VerticalsService {
         return merged;
     }
 
-    private async seedFaqs(
-        schemaName: string,
-        definition: VerticalDefinition,
-        lang: string,
-        executor?: TenantQueryExecutor,
-    ): Promise<void> {
-        try {
-            await this.seedLocalizedFaqRecords(schemaName, definition.faqs, lang, executor);
-            this.logger.debug(`Seeded ${definition.faqs.length} FAQs`);
-        } catch (error: any) {
-            this.logger.warn(`Failed to seed FAQs: ${error.message}`);
-            throw error;
-        }
-    }
-
     /**
      * D17: la fila nace en la moneda del negocio.
      *
@@ -2077,8 +2039,12 @@ export class VerticalsService {
      * de escribir el suyo, y mientras tanto es lo que ve en su catalogo.
      *
      * D10 sigue mandando: todo lo sembrado nace `example` (o `quote` cuando la
-     * receta declara que ese servicio se cotiza), asi que ninguno de estos
-     * numeros llega jamas a un cliente sin que el dueno lo confirme.
+     * receta declara que ese servicio se cotiza).
+     *
+     * R3 (C0 §4.3, D5): el servicio de muestra ya NO lleva monto de ejemplo. Nace
+     * sin precio, en la moneda del pais y con `price_status = example`: un numero
+     * inventado nunca conto como confirmado y el dueno tenia que borrarlo antes de
+     * escribir el suyo. El precio lo pone el dueno.
      */
     private async seedServices(
         schemaName: string,
@@ -2095,7 +2061,7 @@ export class VerticalsService {
                     const name = svc.name[lang] || svc.name['es'];
                     const description = svc.description[lang] || svc.description['es'];
                     const translatedNames = [...new Set(Object.values(svc.name).filter(Boolean))];
-                    const seeded = recipeSeedPrice(svc.price, country);
+                    const seeded = { price: null, currency: recipeSeedPrice(svc.price, country).currency };
                     // Un servicio que el negocio cotiza caso por caso no tiene
                     // monto que confirmar: decir "precio pendiente" de una
                     // visita de plomeria es prometer un numero que no existe.
@@ -2131,41 +2097,6 @@ export class VerticalsService {
             this.logger.warn(`Failed to seed services: ${error.message}`);
             throw error;
         }
-    }
-
-    /**
-     * Seed localized FAQs by semantic record, not by the currently selected
-     * translation. A retry/reseed in another language must not create a second
-     * copy of the same FAQ and exceed the tenant quota.
-     */
-    private async seedLocalizedFaqRecords(
-        schemaName: string,
-        faqs: Array<{
-            question: Record<string, string>;
-            answer: Record<string, string>;
-            category: string;
-        }>,
-        lang: string,
-        executor?: TenantQueryExecutor,
-    ): Promise<void> {
-        await this.withTenantQuery(schemaName, executor, async (query) => {
-            await query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))::text AS lock_acquired`, [`vertical-faqs:${schemaName}`]);
-            for (const faq of faqs) {
-                const question = faq.question[lang] || faq.question.es;
-                const answer = faq.answer[lang] || faq.answer.es;
-                const translatedQuestions = [...new Set(Object.values(faq.question).filter(Boolean))];
-                await query(
-                    `INSERT INTO faqs
-                        (question, answer, category, is_published, search_tsv)
-                     SELECT $1, $2, $3, true, to_tsvector('simple', $1 || ' ' || $2)
-                      WHERE NOT EXISTS (
-                          SELECT 1 FROM faqs WHERE question = ANY($4::text[])
-                      )
-                     ON CONFLICT (question) DO NOTHING`,
-                    [question, answer, faq.category, translatedQuestions],
-                );
-            }
-        });
     }
 
     /**
@@ -2335,302 +2266,19 @@ export class VerticalsService {
     }
 
     /**
-     * Tours / agencia_viajes specific FAQs covering the operational questions
-     * customers always ask before booking an experience or package.
-     */
-    private async seedToursExtras(
-        tenantId: string,
-        schemaName: string,
-        lang: string,
-        executor?: TenantQueryExecutor,
-    ): Promise<void> {
-        try {
-            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
-                {
-                    question: {
-                        es: '¿Incluye traslado desde el hotel?',
-                        en: 'Does it include hotel transfer?',
-                        pt: 'Inclui traslado do hotel?',
-                        fr: 'Le transfert depuis l\'hôtel est-il inclus?',
-                    },
-                    answer: {
-                        es: 'En la mayoría de tours sí está incluido el traslado desde hoteles del centro. Para zonas alejadas puede aplicar un costo extra. Confírmamelo y te cotizo.',
-                        en: 'Most tours include transfer from downtown hotels. Outlying areas may have an extra fee. Confirm your hotel and I\'ll quote.',
-                        pt: 'A maioria dos tours inclui traslado de hotéis do centro. Áreas distantes podem ter custo extra.',
-                        fr: 'La plupart des tours incluent le transfert depuis les hôtels du centre. Zones éloignées : supplément possible.',
-                    },
-                    category: 'tours',
-                },
-                {
-                    question: {
-                        es: '¿Hay descuento para niños?',
-                        en: 'Is there a discount for children?',
-                        pt: 'Há desconto para crianças?',
-                        fr: 'Y a-t-il une réduction pour les enfants?',
-                    },
-                    answer: {
-                        es: 'Las tarifas para niños dependen del paquete y de la edad. Cuéntame cuántos van y qué edades tienen, y te confirmo el precio exacto.',
-                        en: 'Child rates depend on the package and the age. Tell me how many children and their ages, and I\'ll confirm the exact price.',
-                        pt: 'As tarifas para crianças dependem do pacote e da idade. Me diga quantas vão e as idades, e confirmo o preço exato.',
-                        fr: 'Les tarifs enfants dépendent du forfait et de l\'âge. Dites-moi combien d\'enfants et leurs âges, et je vous confirme le prix exact.',
-                    },
-                    category: 'tours',
-                },
-                {
-                    question: {
-                        es: '¿En qué idiomas se hace el tour?',
-                        en: 'What languages is the tour offered in?',
-                        pt: 'Em quais idiomas é o passeio?',
-                        fr: 'Dans quelles langues le tour est-il offert?',
-                    },
-                    answer: {
-                        es: 'Depende del tour y de la disponibilidad de guías. Dime qué idioma prefieres y te confirmo si lo tenemos para la fecha que buscas.',
-                        en: 'It depends on the tour and guide availability. Tell me your preferred language and I\'ll confirm whether we have it for your date.',
-                        pt: 'Depende do passeio e da disponibilidade de guias. Me diga o idioma que prefere e confirmo se temos para a sua data.',
-                        fr: 'Cela dépend du tour et de la disponibilité des guides. Dites-moi la langue que vous préférez et je vous confirme pour votre date.',
-                    },
-                    category: 'tours',
-                },
-                {
-                    question: {
-                        es: '¿Cuál es la política de cancelación?',
-                        en: 'What is the cancellation policy?',
-                        pt: 'Qual é a política de cancelamento?',
-                        fr: 'Quelle est la politique d\'annulation?',
-                    },
-                    answer: {
-                        es: 'Tenemos condiciones de cancelación según cuánto falte para la salida. Cuéntame la fecha de tu reserva y te confirmo exactamente cómo aplica en tu caso.',
-                        en: 'Cancellation terms depend on how far ahead of departure you cancel. Tell me your booking date and I\'ll confirm exactly how it applies to you.',
-                        pt: 'As condições de cancelamento dependem de quanto falta para a saída. Me diga a data da sua reserva e confirmo exatamente como se aplica.',
-                        fr: 'Les conditions d\'annulation dépendent du délai avant le départ. Dites-moi la date de votre réservation et je vous confirme ce qui s\'applique.',
-                    },
-                    category: 'politicas',
-                },
-                {
-                    question: {
-                        es: '¿Dónde es el punto de encuentro?',
-                        en: 'Where is the meeting point?',
-                        pt: 'Onde é o ponto de encontro?',
-                        fr: 'Où est le point de rencontre?',
-                    },
-                    answer: {
-                        es: 'Te enviaré el punto exacto al confirmar la reserva. Generalmente recogemos en hoteles del centro 15 minutos antes de la salida.',
-                        en: 'I\'ll send the exact location once your booking is confirmed. We usually pick up at downtown hotels 15 minutes before departure.',
-                        pt: 'Enviarei o ponto exato ao confirmar a reserva. Geralmente buscamos em hotéis do centro 15 minutos antes.',
-                        fr: 'J\'enverrai le point exact à la confirmation. Généralement ramassage dans les hôtels du centre 15 minutes avant.',
-                    },
-                    category: 'logistica',
-                },
-            ];
-
-            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
-            this.logger.debug(`Seeded ${faqs.length} tours-specific FAQs`);
-        } catch (error: any) {
-            this.logger.warn(`Failed to seed tours FAQs: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Dental-specific FAQs covering the operational questions patients ask
-     * before booking with a dental clinic.
-     */
-    private async seedDentalExtras(
-        tenantId: string,
-        schemaName: string,
-        lang: string,
-        executor?: TenantQueryExecutor,
-    ): Promise<void> {
-        try {
-            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
-                {
-                    question: {
-                        es: '¿Trabajan con mi seguro / EPS / convenio?',
-                        en: 'Do you work with my insurance / health plan?',
-                        pt: 'Trabalham com meu plano de saúde?',
-                        fr: 'Travaillez-vous avec mon assurance santé?',
-                    },
-                    answer: {
-                        es: 'Trabajamos con varios convenios. Cuéntame cuál es el tuyo y la doctora confirma cobertura específica al momento de la valoración.',
-                        en: 'We work with several plans. Let me know yours and the doctor will confirm specific coverage at your assessment.',
-                        pt: 'Trabalhamos com vários planos. Me diga qual é o seu para confirmar a cobertura na avaliação.',
-                        fr: 'Nous travaillons avec plusieurs plans. Dites-moi le vôtre et la docteure confirmera à l\'évaluation.',
-                    },
-                    category: 'seguros',
-                },
-                {
-                    question: {
-                        es: '¿Cuánto cuesta una limpieza dental?',
-                        en: 'How much does a dental cleaning cost?',
-                        pt: 'Quanto custa uma limpeza dental?',
-                        fr: 'Combien coûte un détartrage?',
-                    },
-                    answer: {
-                        es: 'El costo varía según el tipo de limpieza (rutinaria o profunda). Te lo confirmamos en la valoración previa. ¿Quieres que te agende una?',
-                        en: 'The cost depends on the type of cleaning (routine or deep). We\'ll confirm it at the initial assessment. Want me to book you one?',
-                        pt: 'O custo varia conforme o tipo de limpeza (rotina ou profunda). Confirmamos na avaliação prévia. Quer que eu agende uma?',
-                        fr: 'Le coût dépend du type de nettoyage (routine ou profond). Nous le confirmons lors de l\'évaluation. Voulez-vous que je vous en réserve une ?',
-                    },
-                    category: 'costos',
-                },
-                {
-                    question: {
-                        es: '¿Cómo manejan el dolor o miedo al dentista?',
-                        en: 'How do you handle dental anxiety or pain?',
-                        pt: 'Como lidam com a dor ou medo do dentista?',
-                        fr: 'Comment gérez-vous la peur du dentiste ou la douleur?',
-                    },
-                    answer: {
-                        es: 'Es una preocupación muy común y la tenemos en cuenta. Las opciones de manejo del dolor y de la ansiedad las evalúa la profesional según tu caso — agenda una valoración y lo conversan.',
-                        en: 'It\'s a very common concern and we take it seriously. Pain and anxiety management options are assessed case by case — book an assessment and you can discuss it.',
-                        pt: 'É uma preocupação muito comum e levamos a sério. As opções de manejo da dor e da ansiedade são avaliadas caso a caso — agende uma avaliação para conversar.',
-                        fr: 'C\'est une préoccupation très courante et nous en tenons compte. Les options de gestion de la douleur et de l\'anxiété s\'évaluent au cas par cas — réservez une évaluation pour en parler.',
-                    },
-                    category: 'dolor',
-                },
-                {
-                    question: {
-                        es: '¿Cuánto tiempo dura un tratamiento de ortodoncia?',
-                        en: 'How long does orthodontic treatment take?',
-                        pt: 'Quanto tempo dura o tratamento ortodôntico?',
-                        fr: 'Combien de temps dure un traitement d\'orthodontie?',
-                    },
-                    answer: {
-                        es: 'Depende de tu caso, pero generalmente entre 12 y 24 meses con citas mensuales. Si ya tienes ortodoncia con nosotros, puedo consultarte el progreso de tu plan.',
-                        en: 'Depends on your case — typically 12-24 months with monthly visits. If you already have orthodontics with us, I can show your plan progress.',
-                        pt: 'Depende do caso — geralmente entre 12 e 24 meses com visitas mensais.',
-                        fr: 'Dépend du cas — généralement entre 12 et 24 mois avec visites mensuelles.',
-                    },
-                    category: 'ortodoncia',
-                },
-                {
-                    question: {
-                        es: '¿Atienden urgencias dentales?',
-                        en: 'Do you handle dental emergencies?',
-                        pt: 'Atendem emergências dentárias?',
-                        fr: 'Traitez-vous les urgences dentaires?',
-                    },
-                    answer: {
-                        es: 'Si tienes dolor intenso, un golpe o sangrado abundante, te conecto YA con la clínica para que lo vean cuanto antes. No esperes a que pase.',
-                        en: 'If you have severe pain, an injury or heavy bleeding, I\'ll connect you with the clinic right now so they can see you as soon as possible. Don\'t wait it out.',
-                        pt: 'Se você está com dor intensa, uma pancada ou sangramento abundante, conecto você AGORA com a clínica para atenderem o quanto antes. Não espere passar.',
-                        fr: 'Si vous avez une douleur intense, un choc ou un saignement abondant, je vous mets en relation avec la clinique tout de suite. N\'attendez pas que ça passe.',
-                    },
-                    category: 'urgencias',
-                },
-            ];
-
-            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
-            this.logger.debug(`Seeded ${faqs.length} dental-specific FAQs`);
-        } catch (error: any) {
-            this.logger.warn(`Failed to seed dental FAQs: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Real-estate-specific FAQs covering the operational questions buyers
-     * and renters always ask before scheduling a viewing.
-     */
-    private async seedInmobiliariaExtras(
-        tenantId: string,
-        schemaName: string,
-        lang: string,
-        executor?: TenantQueryExecutor,
-    ): Promise<void> {
-        try {
-            const faqs: Array<{ question: Record<string, string>; answer: Record<string, string>; category: string }> = [
-                {
-                    question: {
-                        es: '¿Tienen opciones con financiación / crédito hipotecario?',
-                        en: 'Do you offer financing / mortgage options?',
-                        pt: 'Têm opções com financiamento / crédito hipotecário?',
-                        fr: 'Avez-vous des options de financement / prêt hypothécaire?',
-                    },
-                    answer: {
-                        es: 'La financiación depende de cada propiedad y de tu perfil. Cuéntame el rango de precio y la zona que te interesa, y reviso qué opciones aplican en tu caso.',
-                        en: 'Financing depends on the property and your profile. Tell me your price range and the area you\'re after, and I\'ll check which options apply.',
-                        pt: 'O financiamento depende de cada imóvel e do seu perfil. Me diga a faixa de preço e a região, e verifico quais opções se aplicam.',
-                        fr: 'Le financement dépend du bien et de votre profil. Dites-moi votre budget et le quartier, et je vérifie les options possibles.',
-                    },
-                    category: 'financiacion',
-                },
-                {
-                    question: {
-                        es: '¿Cómo agendo una visita a la propiedad?',
-                        en: 'How do I schedule a viewing?',
-                        pt: 'Como agendo uma visita ao imóvel?',
-                        fr: 'Comment puis-je planifier une visite?',
-                    },
-                    answer: {
-                        es: 'Te muestro las propiedades disponibles según tu interés y agendamos visita con el asesor de zona. ¿Qué presupuesto manejas y en qué zona te interesa?',
-                        en: 'I\'ll show you matching properties and book the viewing with the zone agent. What\'s your budget and target area?',
-                        pt: 'Eu mostro os imóveis disponíveis conforme seu interesse e agendamos a visita.',
-                        fr: 'Je vous montre les propriétés correspondantes et organise la visite avec l\'agent de zone.',
-                    },
-                    category: 'visitas',
-                },
-                {
-                    question: {
-                        es: '¿Cuánto cobran de comisión / honorarios?',
-                        en: 'What is your commission / fee?',
-                        pt: 'Qual é a comissão / honorário?',
-                        fr: 'Quelle est votre commission / honoraires?',
-                    },
-                    answer: {
-                        es: 'Los honorarios dependen de si es arriendo o venta y del inmueble. Te los confirma el asesor sobre la propiedad concreta que te interese, antes de cualquier compromiso.',
-                        en: 'Fees depend on whether it\'s a rental or a sale, and on the property. The agent confirms them for the specific listing you\'re interested in, before any commitment.',
-                        pt: 'Os honorários dependem de ser aluguel ou venda e do imóvel. O corretor confirma para o imóvel específico que te interessa, antes de qualquer compromisso.',
-                        fr: 'Les honoraires dépendent s\'il s\'agit d\'une location ou d\'une vente, et du bien. Le conseiller vous les confirme pour le bien qui vous intéresse, avant tout engagement.',
-                    },
-                    category: 'comisiones',
-                },
-                {
-                    question: {
-                        es: '¿Qué documentos necesito para arrendar / comprar?',
-                        en: 'What documents do I need to rent / buy?',
-                        pt: 'Quais documentos preciso para alugar / comprar?',
-                        fr: 'Quels documents pour louer / acheter?',
-                    },
-                    answer: {
-                        es: 'Arriendo: cédula, certificado laboral, extractos bancarios y codeudor (depende del inmueble). Compra: capacidad crediticia y separación. Te detallo cuando definamos el inmueble.',
-                        en: 'Rent: ID, employment letter, bank statements, co-signer if required. Sale: credit capacity check + earnest money. We detail once we pick the property.',
-                        pt: 'Aluguel: documento, comprovante de renda e fiador. Compra: capacidade de crédito + sinal. Detalhamos no imóvel escolhido.',
-                        fr: 'Location: pièce d\'identité, justificatifs de revenus, garant. Achat : vérification de solvabilité + acompte.',
-                    },
-                    category: 'documentos',
-                },
-                {
-                    question: {
-                        es: '¿La administración / cuota de condominio está incluida en el precio?',
-                        en: 'Is the HOA fee included in the price?',
-                        pt: 'A taxa de condomínio está incluída no preço?',
-                        fr: 'Les charges sont-elles incluses dans le prix?',
-                    },
-                    answer: {
-                        es: 'En arriendo: la administración generalmente NO está incluida y se paga aparte. En venta: el precio publicado es del inmueble; la administración mensual se informa en la visita.',
-                        en: 'Rent: HOA is usually paid separately on top of rent. Sale: listed price is property only; monthly HOA disclosed at viewing.',
-                        pt: 'Aluguel: o condomínio geralmente NÃO está incluído. Venda: preço é só do imóvel.',
-                        fr: 'Location : les charges sont en général séparées. Vente : prix du bien uniquement.',
-                    },
-                    category: 'costos',
-                },
-            ];
-
-            await this.seedLocalizedFaqRecords(schemaName, faqs, lang, executor);
-            this.logger.debug(`Seeded ${faqs.length} inmobiliaria-specific FAQs`);
-        } catch (error: any) {
-            this.logger.warn(`Failed to seed inmobiliaria FAQs: ${error.message}`);
-            throw error;
-        }
-    }
-
-    /**
      * Generic tool-enabler for Tier 3 verticals. Each just flips a
      * config.tools.* flag on the default agent — no domain-specific
      * extras needed since these verticals reuse the existing services
      * + appointments + service_requests infrastructure.
      */
+    /**
+     * Paso `knowledge` del alta: deja la herramienta de FAQs encendida, sin FAQs. Desde R3 (C0 §4.3, D5) no siembra
+     * FAQs de plantilla: las escribe el dueño (o las aprueba desde una propuesta del copiloto, R6).
+     */
+    private async prepareKnowledge(schemaName: string, executor?: TenantQueryExecutor): Promise<void> {
+        await this.enableSimpleTool(schemaName, 'faqs', executor);
+    }
+
     private async enableSimpleTool(
         schemaName: string,
         toolKey: string,
@@ -2914,24 +2562,19 @@ export class VerticalsService {
                 for (let index = 0; index < PLANS.length; index++) {
                     if (existingPlanIndexes.has(index)) continue;
                     const p = PLANS[index];
-                    // Mismo criterio que los servicios: el precio del plan es
-                    // una referencia, no una tarifa. Un gimnasio chileno abria
-                    // "Mensual 150.000 COP" y tenia que corregir las tres.
-                    const seeded = recipeSeedPrice(p.price, country);
-                    // `price` es NOT NULL en esta tabla (en `services` NO lo es),
-                    // asi que fuera de los seis paises con monto de ejemplo va un
-                    // cero — y `price_status = 'example'` es lo que impide que
-                    // ese cero se lea como "membresia gratis". Un NULL aca
-                    // reventaba el alta entera de todo gimnasio cuyo pais no
-                    // tuviera ejemplo, incluido el caso mas comun: el que
-                    // todavia no declaro pais.
+                    // R3 (C0 §4.3, D5): el plan de muestra no lleva monto de
+                    // ejemplo; el precio lo pone el dueno. `price` es NOT NULL en
+                    // esta tabla (en `services` NO lo es), asi que va un cero, y
+                    // `price_status = 'example'` es lo que impide que ese cero se
+                    // lea como "membresia gratis". La moneda sigue siendo la del pais.
+                    const seeded = { price: 0, currency: recipeSeedPrice(p.price, country).currency };
                     await query(
                         `INSERT INTO membership_plans
                             (name, description, duration_days, price, currency,
                              class_credits_per_period, personal_training_credits,
                              guest_passes, freeze_allowance_days, sort_order, price_status)
                          VALUES ($1, $2, $3, $4, $10, $5, $6, $7, $8, $9, 'example')`,
-                        [L(p.name), L(p.description), p.durationDays, seeded.price ?? 0,
+                        [L(p.name), L(p.description), p.durationDays, seeded.price,
                             p.credits, p.pt, p.guests, p.freeze, p.order, seeded.currency],
                     );
                     inserted++;

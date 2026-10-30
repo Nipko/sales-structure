@@ -2,8 +2,13 @@
  * Estado de los datos heredados (schema §7.5, reglas L1–L7): filas de las tablas de hoy → TenantSnapshot.
  *
  * Puro. La lectura la hace SnapshotReader (apps/api/src/modules/readiness) y entrega `LegacyTenantRows`.
- * Las reglas se retiran tabla por tabla cuando exista la procedencia real (C0 §2.9, K4).
+ * Desde R3 la foto usa la procedencia real cuando existe (`provenance.ts`: columnas de §2.2 y `requirement_values`)
+ * y estas reglas deciden solo lo que no la tiene. Se retiran tabla por tabla cuando la procedencia real cubra la tabla
+ * y ningún editor la escriba sin ella (C0 §2.9, K4; estado por regla en docs/domain/business-readiness-runtime.md).
  */
+import {
+    PROVENANCE_TABLES, applyRequirementValues, realRowProvenance, toMs, type RowProvenance,
+} from './provenance';
 import { emptySnapshot } from './snapshot';
 import type {
     CountryPackInfo, ItemRecord, LegacyRule, PriceType, StoredStatus, TenantSnapshot, TextRecord, ValueRecord,
@@ -52,18 +57,15 @@ export interface LegacyTenantRows {
     availability_slots: Row[];
     staff_members: Row[];
     agent_personas: Row[];
+    /** R3: filas de `requirement_values` (vacío o ausente si el tenant aún no tiene la tabla). */
+    requirement_values?: Row[];
     users: { id: string; role: string; is_active: boolean; email_verified: boolean; handoff_notifications: boolean }[];
     payment_provider_configured: boolean;
     /** Pack de país resuelto por el lector (emergencias de packages/shared); null si no hay país. */
     country_pack: CountryPackInfo | null;
 }
 
-/** Marca de tiempo de Postgres; sin zona = UTC (la base corre en UTC). */
-export function toMs(s: unknown): number {
-    if (s === null || s === undefined || s === '') return NaN;
-    const t = String(s).replace(' ', 'T');
-    return Date.parse(/[zZ]$|[+-]\d\d:?\d\d$/.test(t) ? t : `${t}Z`);
-}
+export { toMs };
 const iso = (s: unknown): string | null => (Number.isFinite(toMs(s)) ? new Date(toMs(s)).toISOString() : null);
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -154,12 +156,53 @@ export function rowStatus(row: Row, ctx: LegacyContext): { status: StoredStatus;
     return inWindow && unedited ? { status: 'seeded', rule: 'L3' } : { status: 'confirmed', rule: 'L6' };
 }
 
+/**
+ * L1 (precio con `price_status`), L3/L6 (estado de la fila) y L7 (precio > 0 sin estado ni tipo → fijo inferido) para
+ * una fila de una tabla con procedencia (§2.2). Es lo único que aplica la migración a ítems y textos, así que lectura
+ * y migración no pueden divergir. El estado del contenido manda sobre la regla de precio (un ítem sembrado sigue
+ * sembrado).
+ */
+export function legacyRowProvenance(table: string, row: Row, ctx: LegacyContext): RowProvenance {
+    const st = rowStatus(row, ctx);
+    const base: RowProvenance = {
+        contentStatus: st.status, origin: st.status === 'seeded' ? 'platform_seed' : 'legacy', priceType: null, priceStatus: null, legacyRule: st.rule,
+    };
+    const cfg = PROVENANCE_TABLES[table];
+    if (!cfg || cfg.kind === 'text' || !cfg.price) return base;
+    const price = num(row[cfg.price]);
+    // `example` manda en cualquier tabla que tenga `price_status`: un precio de ejemplo nunca es confirmado. `quote` y
+    // `confirmed` solo son del estado heredado (services, membership_plans); en las demás tablas manda el precio (L7).
+    const ps = str(row.price_status);
+    let p: Partial<RowProvenance>;
+    if (ps === 'example') p = { priceStatus: 'example', priceType: null, legacyRule: 'L1' };
+    else if (cfg.legacyPriceStatus && ps === 'quote') p = { priceStatus: 'confirmed', priceType: 'a_cotizar', legacyRule: 'L1' };
+    else if (cfg.legacyPriceStatus && ps === 'confirmed') p = { priceStatus: 'confirmed', priceType: null, legacyRule: 'L1' };
+    else if (price !== null && price > 0) p = { priceStatus: 'confirmed', priceType: 'fijo', origin: 'legacy_inferred', legacyRule: 'L7' };
+    else p = {};
+    return {
+        ...base, priceType: p.priceType ?? null, priceStatus: p.priceStatus ?? null,
+        legacyRule: base.contentStatus === 'seeded' ? base.legacyRule : p.legacyRule ?? base.legacyRule,
+        origin: base.contentStatus === 'seeded' ? base.origin : p.origin ?? base.origin,
+    };
+}
+
+/** Procedencia real si la fila la tiene vigente; si no, las reglas L. */
+export const rowProvenance = (table: string, row: Row, ctx: LegacyContext): RowProvenance =>
+    realRowProvenance(table, row) ?? legacyRowProvenance(table, row, ctx);
+
 const AUDIENCE: Record<string, string> = { b2c: 'B2C', b2b: 'B2B' };
 const POLICY_TYPES: Record<string, string> = {
     cancellation: 'CORE.POLICY.CANCELLATION_CHANGES', cancelacion: 'CORE.POLICY.CANCELLATION_CHANGES',
     return: 'CORE.POLICY.REFUND_RETURNS', returns: 'CORE.POLICY.REFUND_RETURNS', refund: 'CORE.POLICY.REFUND_RETURNS',
     warranty: 'CORE.POLICY.WARRANTY', privacy: 'CORE.PRIVACY.NOTICE', shipping: 'CORE.DELIVERY.TERMS', delivery: 'CORE.DELIVERY.TERMS',
 };
+
+/** Ventana de aprovisionamiento del tenant (L3): de `tenants.created_at` a `settings.verticalProvisioning.completedAt`. */
+export function legacyContextOf(rows: Pick<LegacyTenantRows, 'tenant'>): LegacyContext {
+    const t = rows.tenant;
+    const completedAt = t.settings?.verticalProvisioning?.completedAt ?? null;
+    return { windowStart: toMs(t.created_at), windowEnd: Number.isFinite(toMs(completedAt)) ? toMs(completedAt) : toMs(t.created_at) + 60_000 };
+}
 
 export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     const t = rows.tenant;
@@ -168,7 +211,7 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     snap.tenant = { ref: t.ref, slug: t.slug, name: t.name };
     const completedAt = settings.verticalProvisioning?.completedAt ?? null;
     snap.provisioningWindow = { tenantCreatedAt: iso(t.created_at), completedAt: iso(completedAt) };
-    const ctx: LegacyContext = { windowStart: toMs(t.created_at), windowEnd: Number.isFinite(toMs(completedAt)) ? toMs(completedAt) : toMs(t.created_at) + 60_000 };
+    const ctx = legacyContextOf(rows);
     snap.source = { kind: 'legacy', notes: [
         'L5 aproximada: la plantilla de persona vive en código; toda configuración de persona con template_id se trata como sembrada.',
         'L4 extendida a valores por defecto de columna equivalentes (companies.country, properties.check_in/out, products.requires_prescription, real_estate_listings.financing_available = false, listas jsonb vacías).',
@@ -281,36 +324,24 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
         add('CORE.PAYMENT.TIMING_DEPOSIT', { ...legacyRec({ when: r.payment_policy, deposit: { percent: num(r.deposit_percent), amount: num(r.deposit_amount) } }, rowStatus(r, ctx), 'payment_policy por ítem', r), scopeKey: `item:${r.id}` });
     }
 
-    // ítems por objeto
-    const item = (row: Row, fields: Row, extra: Partial<ItemRecord> = {}): ItemRecord => {
-        const st = rowStatus(row, ctx);
+    // ítems por objeto: procedencia real si la hay (§2.2), si no L1/L3/L6/L7 (legacyRowProvenance)
+    let realRows = 0;
+    const item = (table: string, row: Row, fields: Row, activeRow: Row = row): ItemRecord => {
+        const p = rowProvenance(table, row, ctx);
+        if (p.legacyRule === null) realRows++;
         return {
-            id: String(row.id), active: row.is_active !== false && row.active !== false && row.status !== 'archived',
-            fields, contentStatus: st.status, origin: st.status === 'seeded' ? 'platform_seed' : 'legacy', legacyRule: st.rule,
-            createdAt: iso(row.created_at), updatedAt: iso(row.updated_at), ...extra,
+            id: String(row.id), active: activeRow.is_active !== false && activeRow.active !== false && activeRow.status !== 'archived',
+            fields, contentStatus: p.contentStatus, origin: p.origin, legacyRule: p.legacyRule,
+            createdAt: iso(row.created_at), updatedAt: iso(row.updated_at),
+            priceStatus: p.priceStatus, priceType: p.priceType,
         };
     };
-    /** L1 (price_status) y L7 (precio > 0 sin price_status ni price_type → fijo inferido). */
-    const priceOf = (row: Row, price: number | null, hasPriceStatus: boolean): Partial<ItemRecord> => {
-        const ps = hasPriceStatus ? str(row.price_status) : null;
-        if (ps === 'example') return { priceStatus: 'example', priceType: null, legacyRule: 'L1' };
-        if (ps === 'quote') return { priceStatus: 'confirmed', priceType: 'a_cotizar' as PriceType, legacyRule: 'L1' };
-        if (ps === 'confirmed') return { priceStatus: 'confirmed', priceType: null, legacyRule: 'L1' };
-        if (price !== null && price > 0) return { priceStatus: 'confirmed', priceType: 'fijo', origin: 'legacy_inferred', legacyRule: 'L7' };
-        return { priceStatus: null, priceType: null };
-    };
-    const keepRule = (base: ItemRecord, price: Partial<ItemRecord>): ItemRecord => ({
-        ...base, ...price,
-        // el estado del contenido manda sobre la regla de precio (un ítem sembrado sigue sembrado)
-        legacyRule: base.contentStatus === 'seeded' ? base.legacyRule : price.legacyRule ?? base.legacyRule,
-        origin: base.contentStatus === 'seeded' ? base.origin : price.origin ?? base.origin,
-    });
     const listStatus = (v: unknown, base: StoredStatus): StoredStatus => (jsonList(v).length ? base : 'seeded');
 
     const staffByService = new Map<string, string[]>();
     for (const s of rows.service_staff) staffByService.set(String(s.service_id), [...(staffByService.get(String(s.service_id)) ?? []), String(s.user_id)]);
     if (rows.services.length) snap.items.appointment = rows.services.map(r => {
-        const base = item(r, {
+        const base = item('services', r, {
             name: r.name, description: str(r.description), category: str(r.category),
             duration: num(r.duration_minutes) ? { min: num(r.duration_minutes), unit: 'min' } : null,
             price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null, currency: r.currency,
@@ -318,30 +349,30 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             // R1.1 F5: datos que el motor de reservas exige para este servicio (WRITE_MODE.required_fields por ítem)
             required_fields: jsonList(r.required_fields).map(String),
         });
-        return keepRule({
+        return {
             ...base,
             fieldStatus: { staff_ids: base.contentStatus, required_fields: listStatus(r.required_fields, base.contentStatus) },
             ...(str(r.price_status) ? { priceMarker: true } : {}),
-        }, priceOf(r, num(r.price), true));
+        };
     });
     const categories = new Map(rows.menu_categories.map(c => [String(c.id), c.name]));
     if (rows.menu_items.length) snap.items.food_order = rows.menu_items.map(r => {
-        const base = item(r, {
+        const base = item('menu_items', r, {
             name: r.name, category: r.category_id ? categories.get(String(r.category_id)) ?? null : null,
             price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null, active: r.is_active !== false,
             description: str(r.description), allergens: jsonList(r.allergens), diet_tags: jsonList(r.tags), available: r.is_available !== false,
         });
-        return keepRule({ ...base, fieldStatus: { allergens: listStatus(r.allergens, base.contentStatus), diet_tags: listStatus(r.tags, base.contentStatus) } }, priceOf(r, num(r.price), false));
+        return { ...base, fieldStatus: { allergens: listStatus(r.allergens, base.contentStatus), diet_tags: listStatus(r.tags, base.contentStatus) } };
     });
     const catalog: ItemRecord[] = [
         ...rows.products.map(r => {
-            const base = item({ ...r, is_active: r.is_available !== false }, {
+            const base = item('products', r, {
                 name: r.name, category: str(r.category), price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null,
                 active: r.is_available !== false, description: str(r.description), requires_prescription: r.requires_prescription,
                 // R1.1 F4: unidades en existencia (dato de disponibilidad del ítem; resource_model = stock)
                 stock: num(r.stock),
-            });
-            return keepRule({ ...base, fieldStatus: { requires_prescription: r.requires_prescription === true ? base.contentStatus : 'seeded' } }, priceOf(r, num(r.price), false));
+            }, { ...r, is_active: r.is_available !== false });
+            return { ...base, fieldStatus: { requires_prescription: r.requires_prescription === true ? base.contentStatus : 'seeded' } };
         }),
         ...rows.ecommerce_products.map(r => ({
             id: String(r.id), active: r.status === 'active', contentStatus: 'confirmed' as const, origin: 'integration',
@@ -352,12 +383,12 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     if (catalog.length) snap.items.catalog_order = catalog;
     if (rows.properties.length) {
         snap.items.lodging_booking = rows.properties.map(r => {
-            const base = item(r, {
+            const base = item('properties', r, {
                 unit_name: r.name, max_guests: num(r.max_guests), beds: num(r.bedrooms), description: str(r.description),
                 price_per_night: num(r.night_price) && num(r.night_price)! > 0 ? num(r.night_price) : null, min_nights: num(r.min_nights),
                 amenities: jsonList(r.amenities),
             });
-            return keepRule(base, priceOf(r, num(r.night_price), false));
+            return base;
         });
         const p = rows.properties.find(x => x.is_active !== false) ?? rows.properties[0];
         const isDefault = String(p.check_in_time ?? '').startsWith('15:00') && String(p.check_out_time ?? '').startsWith('11:00');
@@ -370,7 +401,7 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
         departuresByPackage.set(String(d.package_id), [...(departuresByPackage.get(String(d.package_id)) ?? []), d]);
     }
     if (rows.tour_packages.length) snap.items.tour_booking = rows.tour_packages.map(r => {
-        const base = item(r, {
+        const base = item('tour_packages', r, {
             name: r.name, destination: str(r.destination), description: str(r.description),
             duration: num(r.duration_value) ? { min: num(r.duration_value), unit: r.duration_type } : null,
             price_per_passenger_type: num(r.price) && num(r.price)! > 0 ? { adulto: num(r.price) } : null,
@@ -381,17 +412,17 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             departures: (departuresByPackage.get(String(r.id)) ?? []).map(d => ({ date: String(d.departure_date).slice(0, 10), seats_left: num(d.available_seats) })),
         });
         const deps = departuresByPackage.get(String(r.id)) ?? [];
-        return keepRule({
+        return {
             ...base,
             fieldStatus: {
                 includes: listStatus(r.includes, base.contentStatus), excludes: listStatus(r.excludes, base.contentStatus),
                 guide_languages: listStatus(r.languages, base.contentStatus),
                 ...(deps.length ? { departures: deps.every(d => rowStatus(d, ctx).status === 'seeded') ? 'seeded' as const : 'confirmed' as const } : {}),
             },
-        }, priceOf(r, num(r.price), false));
+        };
     });
     if (rows.real_estate_listings.length) snap.items.real_estate = rows.real_estate_listings.map(r => {
-        const base = item(r, {
+        const base = item('real_estate_listings', r, {
             operation: str(r.transaction_type), property_type: str(r.property_kind), price: num(r.price), currency: r.currency,
             zone: str(r.neighborhood), city: str(r.city), country: r.country && r.country !== 'CO' ? r.country : t.operating_country,
             bedrooms: num(r.bedrooms), bathrooms: num(r.bathrooms), area_m2: num(r.area_m2), status: str(r.status),
@@ -400,7 +431,7 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             address_privacy: ADDRESS_PRIVACY.has(String(r.address_privacy ?? '')) ? String(r.address_privacy) : null,
             admin_fee: num(r.hoa_fee), description: str(r.description),
         });
-        return keepRule(base, priceOf(r, num(r.price), false));
+        return base;
     });
     // R1.1 F3: financiación por listado. `false` es el valor por defecto de la columna (L4): no es un «no» confirmado.
     for (const r of rows.real_estate_listings.filter(x => typeof x.financing_available === 'boolean')) {
@@ -426,18 +457,20 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     // textos
     const texts: TextRecord[] = [
         ...rows.faqs.map(f => {
-            const st = rowStatus(f, ctx);
+            const p = rowProvenance('faqs', f, ctx);
+            if (p.legacyRule === null) realRows++;
             const covers = inferCovers(String(f.question ?? ''));
             return {
                 id: String(f.id), kind: 'faq' as const, title: String(f.question ?? ''), body: String(f.answer ?? ''), published: f.is_published !== false,
-                status: st.status, origin: st.status === 'seeded' ? 'platform_seed' : 'legacy', legacyRule: st.rule, ...(covers.length ? { covers } : {}),
+                status: p.contentStatus, origin: p.origin, legacyRule: p.legacyRule, ...(covers.length ? { covers } : {}),
             };
         }),
         ...rows.knowledge_documents.map(d => {
-            const st = rowStatus(d, ctx);
+            const p = rowProvenance('knowledge_documents', d, ctx);
+            if (p.legacyRule === null) realRows++;
             return {
                 id: String(d.id), kind: 'document' as const, title: String(d.title ?? ''), body: String(d.excerpt ?? ''), published: true,
-                status: st.status, origin: 'legacy', legacyRule: st.rule, accessible: !/fail|error/i.test(String(d.status ?? '')), validTo: iso(d.valid_to),
+                status: p.contentStatus, origin: p.origin, legacyRule: p.legacyRule, accessible: !/fail|error/i.test(String(d.status ?? '')), validTo: iso(d.valid_to),
             };
         }),
     ];
@@ -448,5 +481,12 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     snap.staff = { activeBookable: rows.staff_members.filter(s => s.is_active !== false).length + slotUsers.size };
     snap.integrations = { paymentProvider: rows.payment_provider_configured };
     snap.platform = { countryPack: rows.country_pack, followUpRegistry: false };
+
+    // valores con procedencia real (requirement_values): mandan sobre lo que dedujeron las reglas L (provenance.ts)
+    const rv = applyRequirementValues(snap, rows.requirement_values);
+    if (realRows || rv.used || rv.stale) {
+        snap.source.notes?.push(`Procedencia real (R3): ${realRows} filas de ítems y textos, ${rv.used} valores de requirement_values`
+            + (rv.stale ? `; ${rv.stale} valores migrados ignorados porque su almacenamiento de hoy cambió después de la migración` : '') + '.');
+    }
     return snap;
 }

@@ -23,7 +23,7 @@ Welcome to Parallly! This guide walks you from creating your account to your AI 
 
 Trial terms, prices, and payment options appear during registration and under **Administration → Plan & Billing**. That screen is the current source of truth for your account and country.
 
-When you finish, Parallly pre-configures your workspace based on your industry: a sales funnel with tailored stages, a suggested AI agent with a name and tone, base FAQs for your sector, and the tools specific to your line of business (menu, properties, tours, etc., as applicable).
+When you finish, Parallly pre-configures your workspace based on your industry: a sales funnel with tailored stages, a suggested AI agent with a name and tone, and the tools specific to your line of business (menu, properties, tours, etc., as applicable). FAQs are not pre-filled: you write them.
 
 ## Verifying your email (when it applies)
 
@@ -108,7 +108,7 @@ What always shows is a real delivery failure. If a channel you connected cannot 
 1. **Confirm your agent** in the wizard and test it in the test chat.
 2. **Connect the channel your customers write to you on** (the wizard puts the one your industry recommends on top). From that moment the agent is assigned and answers there; on WhatsApp, confirm the billing time zone if the screen asks for it.
 3. **Send a message from another phone** and confirm both the reply and conversation in **Conversations**.
-4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog. Also confirm the example prices of your services under **Appointments** → **Services** so the agent can state them.
+4. **Complete the business information and knowledge**: website, documents, policies, FAQs, and the relevant catalog. Also type the price of your services under **Appointments** → **Services** (sample services arrive with no amount) so the agent can state it.
 5. **Adjust the agent whenever you want**: tone, rules, greeting, tools, and channel assignment. Saving applies the change immediately; test it in the test chat.
 6. **Invite your team** from **Users** and assign roles: administrator, supervisor, or agent.
 

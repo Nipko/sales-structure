@@ -11,7 +11,7 @@ import { compose, type EffectiveRequirement } from '../compose';
 import { evaluate } from '../engine/evaluate';
 import { resolveFacts } from '../facts';
 import { hashOf } from '../hash';
-import { resolveValue, textEvidenceFor } from '../status';
+import { isInheritedItem, resolveValue, textEvidenceFor } from '../status';
 import type { CompiledSpec, ItemRecord, StoredStatus, TenantSnapshot, ValueState } from '../types';
 
 export type ExpectedCode = 'AFIRMA' | 'NIEGA' | 'COTIZA' | 'NC+AV' | 'PREG' | 'HUM' | 'EXT' | 'GAP' | 'CUENTA' | 'CONVERSACIONAL' | 'N/A';
@@ -78,7 +78,7 @@ export function itemFieldState(item: ItemRecord, field: string): ValueState {
     const v = item.fields[field];
     if (blank(v)) return 'ausente';
     const own = item.fieldStatus?.[field];
-    if (Array.isArray(v) && v.length === 0 && item.legacyRule != null && own !== 'confirmed') return 'ausente';
+    if (Array.isArray(v) && v.length === 0 && isInheritedItem(item) && own !== 'confirmed') return 'ausente';
     if (PRICE_FIELDS.has(field)) {
         if (item.priceStatus === 'example') return 'ejemplo';
         if (item.priceStatus === 'confirmed' && item.priceMarker) return 'confirmado';

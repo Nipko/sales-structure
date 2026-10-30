@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import { VerticalsService } from './verticals.service';
 import { VerticalMigrationService } from './vertical-migration.service';
@@ -71,9 +73,10 @@ describe('recipe seeds carry the example mark', () => {
 });
 
 /**
- * D17: la moneda y el monto salen del país del negocio, no de la semilla.
+ * D17: la moneda sale del país del negocio, no de la semilla.
+ * R3 (C0 §4.3, D5): el servicio de muestra ya no lleva monto de ejemplo en ningún país; el precio lo pone el dueño.
  */
-describe('the seeded amount belongs to the country of the business', () => {
+describe('the seeded sample service: country currency, never an example amount', () => {
     async function seedFor(country: string | null) {
         const service = Object.create(VerticalsService.prototype);
         service.logger = new Logger('seed-price-status.spec');
@@ -92,15 +95,12 @@ describe('the seeded amount belongs to the country of the business', () => {
         return { price: insert[1][3], currency: insert[1][4] };
     }
 
-    it('un negocio mexicano nace con pesos mexicanos, no colombianos', async () => {
-        const seeded = await seedFor('MX');
-        expect(seeded.currency).toBe('MXN');
-        expect(seeded.price).toBeGreaterThan(0);
-        expect(seeded.price).toBeLessThan(80_000);
+    it('un negocio mexicano nace con pesos mexicanos y sin monto', async () => {
+        expect(await seedFor('MX')).toEqual({ price: null, currency: 'MXN' });
     });
 
-    it('Colombia se queda con la referencia tal cual', async () => {
-        expect(await seedFor('CO')).toEqual({ price: 80_000, currency: 'COP' });
+    it('Colombia tampoco recibe la referencia de la receta como precio', async () => {
+        expect(await seedFor('CO')).toEqual({ price: null, currency: 'COP' });
     });
 
     it('fuera de los seis países la fila nace sin monto y con su moneda', async () => {
@@ -114,5 +114,29 @@ describe('the seeded amount belongs to the country of the business', () => {
         // La columna tiene DEFAULT 'COP': pasar null explícito es lo único que
         // impide que el peso colombiano vuelva a entrar por la puerta de atrás.
         expect(await seedFor(null)).toEqual({ price: null, currency: null });
+    });
+});
+
+/**
+ * R3 (C0 §4.3, D5): un tenant nuevo arranca sin FAQs de plantilla y sus ítems de muestra sin monto de ejemplo, tanto
+ * en el alta como al cambiar de vertical.
+ */
+describe('R3: no template FAQs and no example amounts in provisioning', () => {
+    const read = (f: string) => readFileSync(join(__dirname, f), 'utf8');
+
+    it('ni el alta ni el cambio de vertical insertan FAQs', () => {
+        for (const f of ['verticals.service.ts', 'vertical-migration.service.ts']) expect(read(f)).not.toMatch(/INSERT INTO faqs/i);
+    });
+
+    it('cambiar de vertical no propone FAQs y sus servicios de muestra nacen sin monto', () => {
+        const service = Object.create(VerticalMigrationService.prototype);
+        const seeds = (service as any).targetSeeds({ industry: 'salud', subType: 'dental' }, 'es', 'CO');
+        expect(seeds.faqs).toEqual([]);
+        expect(seeds.services.length).toBeGreaterThan(0);
+        for (const s of seeds.services) {
+            expect(s.price).toBeNull();
+            expect(s.currency).toBe('COP');
+            expect(['example', 'quote']).toContain(s.priceStatus);
+        }
     });
 });

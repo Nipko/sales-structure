@@ -53,7 +53,7 @@ Not every business of a type receives every module: effective capabilities, busi
 
 ### Your industry's recipe
 
-Everything that appears already written when you turn on an industry comes from a **recipe**: the agent's name and greeting, the frequently asked questions, the services with their example price, the vocabulary of the trade, and the reasons the agent hands a conversation to a person.
+Everything that appears already written when you turn on an industry comes from a **recipe**: the agent's name and greeting, the sample services (with no price), the vocabulary of the trade, and the reasons the agent hands a conversation to a person. Frequently asked questions are not pre-filled: you write them under **Knowledge** → **FAQs**, so the agent never presents a template answer as yours.
 
 Not every industry has its own recipe. Only six do: fashion and beauty, healthcare, restaurants, retail, education, and home services; education also adds a layer per business type for dance and music or art academies, private lessons, and driving schools. The other industries start from the base definition, with no recipe. If you choose **Other**, Parallly proposes a recipe written with AI from the sentence you entered at sign-up about what your business does; it appears as a suggestion and never replaces what you already changed. If generation fails, the account keeps the generic definition.
 

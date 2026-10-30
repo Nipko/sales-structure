@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:49:16.778Z",
+  "capturedAt": "2026-10-30T11:53:28.669Z",
   "tenant": {
     "ref": "tienda-qa-electronica",
     "name": "Tienda QA Electrónica",
@@ -72,7 +72,7 @@
       "currency": "COP",
       "created_at": "2026-10-02T21:52:50.869224",
       "updated_at": "2026-10-10T02:26:56.335346",
-      "description": "Producto ficticio de prueba: audífono inalámbrico QA Aurora, color azul. Precio 119900 COP, dos unidades iniciales. No corresponde a inventario real.",
+      "description": "Audífono inalámbrico Aurora, color azul, con estuche de carga y almohadillas de repuesto.",
       "is_available": true,
       "deposit_amount": null,
       "payment_policy": "none",
@@ -88,7 +88,7 @@
       "currency": "COP",
       "created_at": "2026-10-20T18:05:34.662314",
       "updated_at": "2026-10-20T18:10:55.022112",
-      "description": "Producto sintético exclusivo de QA para verificar cambios del catálogo a través del agente.",
+      "description": "Kit de limpieza para audífonos: cepillo, paño de microfibra y solución limpiadora.",
       "is_available": false,
       "deposit_amount": null,
       "payment_policy": "none",

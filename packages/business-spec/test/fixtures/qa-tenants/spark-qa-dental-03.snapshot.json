@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:49:10.109Z",
+  "capturedAt": "2026-10-30T11:53:21.909Z",
   "tenant": {
     "ref": "spark-qa-dental-03",
     "name": "Spark QA Dental 03",

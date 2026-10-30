@@ -1,7 +1,7 @@
 # B2 · Requisitos del NÚCLEO (aplican a todo negocio)
 # Formato: ver schema.md. Intenciones: B1 §B (C01–C33, T01–T11) y §C (Pnn-k).
 # storage_today se leyó del worktree lang-ubicado-4300 (6f79b0db); en v0.2 los «verificar» se resolvieron contra la BD y el commit 97bc0dcb: ver schema.md §12 y validacion-dental-comida.md §4.
-spec_version: 1.0.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1)
+spec_version: 1.1.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1) + evidencia de texto en WARRANTY y REFUND_RETURNS (R1.1, menor)
 layer: core
 requirements:
 
@@ -653,7 +653,7 @@ requirements:
     example: {returns: {deadline: {min: 30, unit: días}, condition: "sin uso, con empaque"}, refunds: {medio: "mismo medio", plazo: "10 días hábiles"}}
   criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) en catalog_order con write_mode = direct_commit", when: [{if: "direct_commit(catalog_order)", level: bloqueante, rule: R2}]}
   when_missing: {code: NC+AV, behavior: "NC+AV + derechos legales del país si aplican (retracto, garantía legal).", never: ["negar devolución sin política"]}
-  sources: {allowed: [owner_form, copilot_approved]}
+  sources: {allowed: [owner_form, copilot_approved], accepts_text_evidence: true}
   collection: {channels: [form], ui_today: /admin/settings/policies, storage_today: "policies.type = return (texto)", storage_status: parcial}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {any_of: [[returns.deadline, refunds], [not_applicable]]}, predicate: "returns.deadline y refunds confirmados (o 'no aplica' confirmado)", gap_message: "Define tu política de devoluciones y reembolsos."}
   qa_truth: "C25: AFIRMA plazo y condición; menciona el derecho legal si el pack lo exige."
@@ -672,11 +672,11 @@ requirements:
     example: {duration: {min: 12, unit: meses}, coverage: "defectos de fábrica", scope: categoría}
   criticality: {level: necesario, rule: R4}
   when_missing: {code: NC+AV, behavior: "Garantía legal del país si aplica + NC+AV para la del negocio.", never: ["inventar meses de garantía"]}
-  sources: {allowed: [owner_form, import]}
+  sources: {allowed: [owner_form, import], accepts_text_evidence: true}
   collection: {channels: [form, import], ui_today: /admin/settings/policies, storage_today: "policies.type = warranty (texto)", storage_status: parcial}
   readiness: {predicate_kind: custom, predicate: "duration confirmada para cada categoría activa (o global)", gap_message: "Indica la garantía de tus productos o trabajos."}
   qa_truth: "C26: AFIRMA la garantía más específica; si no hay, la legal + NC+AV."
-  notes: "v0.2: ya no aplica por sells_goods (validación con comida: un pedido de comida no tiene garantía; su reclamo es CORE.COMPLAINT.PROCEDURE)."
+  notes: "v0.2: ya no aplica por sells_goods (validación con comida: un pedido de comida no tiene garantía; su reclamo es CORE.COMPLAINT.PROCEDURE). 1.1 (R1.1): acepta evidencia de texto: una FAQ confirmada y con dato sobre la garantía cumple."
 
 - id: CORE.POLICY.HOUSE_RULES
   title: Reglas de admisión (menores, mascotas, fumar, código de vestimenta, sin cita)

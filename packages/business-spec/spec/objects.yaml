@@ -2,7 +2,7 @@
 # Estructura: (1) plantilla OBJ.* con 6 requisitos que se instancian por objeto (OBJ.<OBJETO>.<NOMBRE>);
 #             (2) por objeto: parámetros de la plantilla + requisitos extra propios.
 # Formato de requisito: schema.md. Intenciones: B1. storage_today: ver schema.md §12.
-spec_version: 1.0.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1)
+spec_version: 1.1.0-rc.1  # B2 v0.2 aprobada (D1–D15) + predicate_kind y criticality.when (R1) + evidencia de texto en WARRANTY y REFUND_RETURNS (R1.1, menor)
 
 # Diccionario común de modos de escritura (lo usa OBJ.*.WRITE_MODE)
 write_modes:

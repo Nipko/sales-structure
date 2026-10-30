@@ -1,6 +1,6 @@
 {
   "schema": "business-spec/legacy-rows@1",
-  "capturedAt": "2026-10-30T08:49:13.377Z",
+  "capturedAt": "2026-10-30T11:53:25.178Z",
   "tenant": {
     "ref": "spark-qa-hotel-09",
     "name": "Spark QA Hotel 09",
@@ -77,7 +77,7 @@
       "max_guests": 2,
       "min_nights": 1,
       "updated_at": "2026-10-21T08:19:21.351285",
-      "description": "Habitacion sintetica para QA, no comercializar.",
+      "description": "Habitación doble con baño privado, ideal para dos personas.",
       "house_rules": null,
       "night_price": 150000,
       "cleaning_fee": 0,

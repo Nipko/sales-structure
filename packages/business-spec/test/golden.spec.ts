@@ -3,11 +3,14 @@
  * con SELECT de solo lectura y contactos anonimizados; test/fixtures/qa-tenants/*.snapshot.json).
  *
  * #2 Dental y comida reproducen validacion-dental-comida.md (corregida a v0.2): mismo veredicto y mismo conjunto
- *    de bloqueantes que fallan. Diferencias intencionales con la validación manual (documentadas en el informe R1):
+ *    de bloqueantes que fallan. Diferencias intencionales con la validación manual (documentadas en el informe R1 y en R1.1):
  *    - aplicables: dental 57 (= 56 + CORE.KNOWLEDGE.AGENT_INSTRUCTIONS, nuevo en v0.2); comida 56 (−WARRANTY por D-13,
  *      +AGENT_INSTRUCTIONS).
  *    - CORE.SAFETY.EMERGENCY_BASE (dental) sigue fallando y bloqueando, pero su hueco se muestra en
  *      CORE.IDENTITY.REGION (causa raíz, D-17).
+ *    - R1.1 F1: CORE.HOURS.REGULAR (dental) sigue bloqueando, pero con causa «sembrado» (agenda de la plantilla del alta)
+ *      en vez de «ausente». Fotos re-exportadas el 30-oct (F9: 5 descripciones con marcas internas reemplazadas en la BD;
+ *      F3: dirección y financiación del listado).
  */
 import * as fs from 'node:fs';
 import { evaluate } from '../src/engine/evaluate';
@@ -43,7 +46,8 @@ describe('golden: validación manual dental y comida', () => {
         const emergency = r.requirements.find(x => x.id === 'CORE.SAFETY.EMERGENCY_BASE');
         expect(emergency?.gap?.rootCause).toBe('CORE.IDENTITY.REGION');
         expect(r.requirements.find(x => x.id === 'CORE.IDENTITY.REGION')?.gap?.rootOf).toContain('CORE.SAFETY.EMERGENCY_BASE');
-        expect(r.requirements.find(x => x.id === 'CORE.HOURS.REGULAR')?.gap?.message).toBe('Confirma tu horario de cada día.'); // D-12
+        // D-12 + R1.1 F1: el horario ya no está ausente; se lee la agenda que sembró la plantilla del alta (L3) → mensaje de «sembrado»
+        expect(r.requirements.find(x => x.id === 'CORE.HOURS.REGULAR')?.gap).toMatchObject({ cause: 'sembrado', message: 'El horario cargado es de ejemplo del alta: confírmalo o cámbialo.' });
         expect(r.requirements.find(x => x.id === 'CORE.OFFER.ITEMS')?.gap?.cause).toBe('sembrado');
         expect(r.requirements.find(x => x.id === 'CORE.OFFER.PRICE_MODEL')?.gap?.message).toMatch(/^3 precios siguen siendo de ejemplo/);
         expect(r.requirements.find(x => x.id === 'PROF.P09.PREPARATIONS')?.result).toBe('no_cumple'); // D-10: ya no cumple vacuamente

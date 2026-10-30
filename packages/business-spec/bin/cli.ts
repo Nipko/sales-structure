@@ -5,7 +5,7 @@ import { generateRequirementsDoc } from '../src/docs';
 import { evaluate } from '../src/engine/evaluate';
 import { fromLegacyRows, type LegacyTenantRows } from '../src/legacy-status';
 import { readSpecDocs } from '../src/load';
-import { qaTruth } from '../src/qa/truth';
+import { qaTruth, requirementsForIntent } from '../src/qa/truth';
 import { renderReportMarkdown } from '../src/report';
 import type { CompiledSpec, TenantSnapshot } from '../src/types';
 
@@ -90,7 +90,12 @@ export function main(argv: string[]): number {
         }
         if (cmd === 'qa-truth') {
             const query = { intent: arg(argv, '--intent'), requirementId: arg(argv, '--requirement'), itemId: arg(argv, '--item') };
-            if (!query.intent && !query.requirementId) throw new Error('indica --intent <ID> o --requirement <ID>');
+            if (!query.intent && !query.requirementId) throw new Error('indica --requirement <ID> [--item <ID>] (o --intent <ID> para listar sus requisitos)');
+            // R1.1 F10: la verdad se consulta por requisito (+ ítem); una intención sola lista los requisitos candidatos
+            if (!query.requirementId && query.intent && !spec.intents[query.intent]?.conversational) {
+                process.stdout.write(`${JSON.stringify({ intent: query.intent, requirements: requirementsForIntent(spec, snap, query.intent, now) }, null, 2)}\n`);
+                return 0;
+            }
             process.stdout.write(`${JSON.stringify(qaTruth(spec, snap, query, now), null, 2)}\n`);
             return 0;
         }

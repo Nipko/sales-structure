@@ -38,6 +38,7 @@ import { QualityModule } from './modules/quality/quality.module';
 import { ReadinessModule } from './modules/readiness/readiness.module';
 import { PendingKnowledgeModule } from './modules/pending-knowledge/pending-knowledge.module';
 import { RehearsalModule } from './modules/rehearsal/rehearsal.module';
+import { OnboardingCopilotModule } from './modules/onboarding-copilot/onboarding-copilot.module';
 import { TraceModule } from './modules/trace/trace.module';
 import { KbHealthModule } from './modules/kb-health/kb-health.module';
 import { SimulationModule } from './modules/simulation/simulation.module';
@@ -227,6 +228,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         ReadinessModule,
         PendingKnowledgeModule,
         RehearsalModule,
+        OnboardingCopilotModule,
         TraceModule,
         KbHealthModule,
         SimulationModule,

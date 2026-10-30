@@ -13,6 +13,7 @@ import type {
 } from "@/lib/readiness-forms";
 import type { NotifySummary, PendingFilter, PendingList, PendingQuestion, PendingStoreResponse } from "@/lib/pending-knowledge";
 import type { RehearsalRun, RehearsalRunDetail } from "@/lib/rehearsal";
+import type { CopilotApproveResponse, CopilotFilter, CopilotProposal, CopilotProposalList, CopilotRunSummary } from "@/lib/onboarding-copilot";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
@@ -1725,6 +1726,17 @@ export const api = {
     acceptBusinessFactDefaults: (tenantId: string, ids: string[], specVersion: string) =>
         apiPost<{ specVersion: string; accepted: string[]; skipped: { id: string; reason: string }[] }>(`/readiness/${tenantId}/business-facts/defaults/accept`, { ids, specVersion }),
     /** Bandeja de conocimiento pendiente (R5): `status` = active (gap + open) | answered | stored | dismissed | all. */
+    /** Copiloto de onboarding (R6): «Analizar mis fuentes» (tope diario por negocio). */
+    runCopilotExtraction: (tenantId: string) =>
+        apiPost<CopilotRunSummary>(`/readiness/${tenantId}/copilot/run`, {}),
+    /** Propuestas del copiloto: `status` = open (abiertas) | applied | rejected | superseded | expired | all. */
+    getCopilotProposals: (tenantId: string, status: CopilotFilter = "open") =>
+        apiGet<CopilotProposalList>(`/readiness/${tenantId}/copilot/proposals?status=${status}`),
+    /** Aprobar (con `value` = editar y aprobar): escribe el dato con procedencia copilot y responde como el cajón. */
+    approveCopilotProposal: (tenantId: string, id: string, body: { value?: unknown; expectedVersion?: number } = {}) =>
+        apiPost<CopilotApproveResponse>(`/readiness/${tenantId}/copilot/proposals/${encodeURIComponent(id)}/approve`, body),
+    rejectCopilotProposal: (tenantId: string, id: string, note?: string) =>
+        apiPost<CopilotProposal>(`/readiness/${tenantId}/copilot/proposals/${encodeURIComponent(id)}/reject`, note ? { note } : {}),
     getPendingQuestions: (tenantId: string, status: PendingFilter = "active") =>
         apiGet<PendingList>(`/readiness/${tenantId}/pending?status=${status}`),
     /** «Responder solo esta vez»: texto puntual, no cambia la preparación; avisa a los clientes que esperan. */

@@ -1760,19 +1760,23 @@ export class KnowledgeService {
 
         await this.invalidateHasKnowledgeCache(tenantId);
 
+        // R6 (ADR 0012): quien aprueba una FAQ de Assist estampa la procedencia en el documento ingerido, así que se
+        // devuelve su id (`document_id`, null si la ingesta falló).
+        let documentId: string | null = null;
         if (data.content) {
             try {
-                await this.ingestDocument(tenantId, {
+                const ingested: any = await this.ingestDocument(tenantId, {
                     name: data.title,
                     content: data.content,
                     mimeType: 'text/plain',
                 });
+                documentId = ingested?.id ?? null;
             } catch (e: any) {
                 this.logger.warn(`Auto-ingest failed for resource ${rows[0]?.id}: ${e.message}`);
             }
         }
 
-        return rows[0];
+        return { ...rows[0], document_id: documentId };
     }
 
     async deleteResource(schemaName: string, resourceId: string) {

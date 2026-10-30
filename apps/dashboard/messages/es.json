@@ -15880,6 +15880,8 @@
     "pendingLink": "Conocimiento pendiente",
     "pendingLinkCount": "Conocimiento pendiente ({count})",
     "rehearsalLink": "Ensayo",
+    "copilotLink": "Propuestas del copiloto",
+    "copilotLinkCount": "Propuestas del copiloto ({count})",
     "goLive": {
       "title": "Atención a clientes reales",
       "state": {
@@ -16379,5 +16381,65 @@
       "rehearsal_deadline": "El ensayo llegó a su tiempo máximo y se detuvo.",
       "process_restarted": "El ensayo se interrumpió por un reinicio del servicio."
     }
+  },
+  "readinessCopilot": {
+    "title": "Propuestas del copiloto",
+    "subtitle": "El copiloto lee tu web, tus documentos y tus preguntas frecuentes y te propone los datos que faltan, cada uno con la cita que lo respalda.",
+    "promise": "Nada se guarda sin tu aprobación: el copiloto solo propone. Una propuesta sin una cita literal de tu web o documento, o con una cifra que no está en la cita, se descarta sola.",
+    "back": "Volver a la preparación",
+    "loading": "Cargando…",
+    "tenantRequired": "Elige un negocio.",
+    "error": "No se pudieron cargar las propuestas.",
+    "empty": "No hay propuestas en esta vista.",
+    "readOnly": "Solo un administrador del negocio puede aprobar o rechazar.",
+    "run": "Analizar mis fuentes",
+    "running": "Analizando…",
+    "runDone": "{proposed, plural, =0 {Ningún dato nuevo} one {# dato propuesto} other {# datos propuestos}} · {contradictions, plural, =0 {sin contradicciones} one {# contradicción} other {# contradicciones}} · {questions, plural, =0 {sin preguntas} one {# pregunta} other {# preguntas}}{discarded, plural, =0 {} one { · # propuesta descartada por no tener una cita verificable} other { · # propuestas descartadas por no tener una cita verificable}}",
+    "runNote": {
+      "no_sources": "No hay fuentes para analizar: sube tu web o tus documentos en la base de conocimiento.",
+      "nothing_missing": "No falta ningún dato que el copiloto pueda proponer.",
+      "malformed_response": "El copiloto no devolvió una respuesta legible. Vuelve a intentarlo.",
+      "llm_unavailable": "El copiloto no está disponible en este momento. Vuelve a intentarlo más tarde."
+    },
+    "dailyCap": "Ya analizaste tus fuentes varias veces hoy. Vuelve a intentarlo mañana.",
+    "notOpen": "Esta propuesta ya no está abierta (se decidió, se reemplazó o caducó).",
+    "filters": {
+      "open": "Por revisar",
+      "applied": "Aprobadas",
+      "rejected": "Rechazadas",
+      "superseded": "Reemplazadas",
+      "expired": "Caducadas",
+      "all": "Todas"
+    },
+    "status": {
+      "proposed": "por revisar",
+      "applied": "aprobada",
+      "expired": "caducada",
+      "rejected": "rechazada",
+      "superseded": "reemplazada"
+    },
+    "kind": {
+      "value": "Dato propuesto",
+      "contradiction": "Contradicción",
+      "question": "Pregunta"
+    },
+    "proposed": "Propuesta",
+    "current": "Lo que dice hoy",
+    "alternative": "Versión {n}",
+    "evidence": "Evidencia",
+    "approve": "Aprobar",
+    "editApprove": "Editar y aprobar",
+    "useThis": "Usar esta versión",
+    "reject": "Rechazar",
+    "dismiss": "Descartar",
+    "answer": "Responder en el formulario",
+    "openFaqs": "Abrir preguntas frecuentes",
+    "genericFaq": "La pregunta frecuente «{question}» {reason, select, seeded {es de plantilla} example {es de ejemplo} other {no dice nada concreto}}: complétala o elimínala para que el agente no la use.",
+    "expires": "Caduca el {date}",
+    "decided": "Decidida el {date}",
+    "edited": "con cambios",
+    "approved": "Aprobado: el dato quedó confirmado.",
+    "rejected": "Listo.",
+    "drawerNotice": "Propuesta del copiloto. Revisa la evidencia, corrige lo que haga falta y guarda para aprobarla."
   }
 }

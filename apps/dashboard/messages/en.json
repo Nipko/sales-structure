@@ -15880,6 +15880,8 @@
     "pendingLink": "Pending knowledge",
     "pendingLinkCount": "Pending knowledge ({count})",
     "rehearsalLink": "Rehearsal",
+    "copilotLink": "Copilot proposals",
+    "copilotLinkCount": "Copilot proposals ({count})",
     "goLive": {
       "title": "Serving real customers",
       "state": {
@@ -16379,5 +16381,65 @@
       "rehearsal_deadline": "The rehearsal reached its time limit and stopped.",
       "process_restarted": "The rehearsal was interrupted by a service restart."
     }
+  },
+  "readinessCopilot": {
+    "title": "Copilot proposals",
+    "subtitle": "The copilot reads your website, documents and FAQs and proposes the missing data, each item with the quote that backs it.",
+    "promise": "Nothing is saved without your approval: the copilot only proposes. A proposal without a literal quote from your website or document, or with a figure that is not in the quote, is discarded automatically.",
+    "back": "Back to readiness",
+    "loading": "Loading…",
+    "tenantRequired": "Choose a business.",
+    "error": "Proposals could not be loaded.",
+    "empty": "No proposals in this view.",
+    "readOnly": "Only a business administrator can approve or reject.",
+    "run": "Analyze my sources",
+    "running": "Analyzing…",
+    "runDone": "{proposed, plural, =0 {No new data} one {# item proposed} other {# items proposed}} · {contradictions, plural, =0 {no contradictions} one {# contradiction} other {# contradictions}} · {questions, plural, =0 {no questions} one {# question} other {# questions}}{discarded, plural, =0 {} one { · # proposal discarded for lacking a verifiable quote} other { · # proposals discarded for lacking a verifiable quote}}",
+    "runNote": {
+      "no_sources": "There are no sources to analyze: upload your website or documents in the knowledge base.",
+      "nothing_missing": "Nothing is missing that the copilot can propose.",
+      "malformed_response": "The copilot did not return a readable answer. Try again.",
+      "llm_unavailable": "The copilot is not available right now. Try again later."
+    },
+    "dailyCap": "You already analyzed your sources several times today. Try again tomorrow.",
+    "notOpen": "This proposal is no longer open (it was decided, replaced or expired).",
+    "filters": {
+      "open": "To review",
+      "applied": "Approved",
+      "rejected": "Rejected",
+      "superseded": "Replaced",
+      "expired": "Expired",
+      "all": "All"
+    },
+    "status": {
+      "proposed": "to review",
+      "applied": "approved",
+      "expired": "expired",
+      "rejected": "rejected",
+      "superseded": "replaced"
+    },
+    "kind": {
+      "value": "Proposed data",
+      "contradiction": "Contradiction",
+      "question": "Question"
+    },
+    "proposed": "Proposal",
+    "current": "What it says today",
+    "alternative": "Version {n}",
+    "evidence": "Evidence",
+    "approve": "Approve",
+    "editApprove": "Edit and approve",
+    "useThis": "Use this version",
+    "reject": "Reject",
+    "dismiss": "Dismiss",
+    "answer": "Answer in the form",
+    "openFaqs": "Open FAQs",
+    "genericFaq": "The FAQ “{question}” {reason, select, seeded {is template content} example {is an example} other {says nothing specific}}: complete it or delete it so the agent does not use it.",
+    "expires": "Expires on {date}",
+    "decided": "Decided on {date}",
+    "edited": "with changes",
+    "approved": "Approved: the data is now confirmed.",
+    "rejected": "Done.",
+    "drawerNotice": "Copilot proposal. Check the evidence, fix what is needed and save to approve it."
   }
 }

@@ -89,6 +89,8 @@ export const readinessPanelRoutes = (tenantId = TENANT): ApiRoutes => ({
   [`readiness/${tenantId}/pending`]: ok({ items: [], counts: { gap: 0, open: 0, answered: 0, stored: 0, closed: 0, dismissed: 0, overdue: 0 } }),
   // R7: the rehearsal page (`/admin/readiness/rehearsal`) lists the runs; none yet. The panel only links to it.
   [`readiness/${tenantId}/rehearsal/runs`]: ok([]),
+  // R6: the copilot-proposals link counter on the panel and the proposals screen (`/admin/readiness/copilot`), empty.
+  [`readiness/${tenantId}/copilot/proposals`]: ok({ items: [], counts: { proposed: 0, applied: 0, expired: 0, rejected: 0, superseded: 0 } }),
   // R4: the go-live card under the verdict (not published, gate in shadow mode, nothing recorded yet).
   [`readiness/${tenantId}/go-live`]: ok({
     state: "off", at: null, by: null, specVersion: null, ack: null, mode: "shadow",

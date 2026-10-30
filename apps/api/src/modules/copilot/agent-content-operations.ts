@@ -46,7 +46,21 @@ export interface ContentOperationContext {
 export interface CreatedContentObject {
     id: string;
     label: string;
+    /**
+     * The row that carries the business provenance columns (C0 §2.2), when it is not the object itself: an Assist FAQ
+     * is a `knowledge_resources` row whose content the agent reads from the `knowledge_documents` row ingested from it.
+     */
+    provenanceRow?: { table: string; id: string } | null;
 }
+
+/**
+ * R6 (C0 §4.3, ADR 0012): an Assist creation that feeds a readiness requirement is a proposal WITH that requirement,
+ * and applying it stamps provenance (`origin=copilot`, `confirmed_by` = the person who applied it, `source_ref` = the
+ * proposal) instead of leaving a row the readiness engine has to guess about with the legacy rules.
+ */
+export const ASSIST_OPERATION_REQUIREMENTS: Partial<Record<AgentExecutableOperationKey, { requirementId: string; targetRef: string }>> = {
+    'knowledge.faq.create': { requirementId: 'CORE.KNOWLEDGE.SOURCES', targetRef: 'knowledge_documents' },
+};
 
 export interface ContentOperationHandler<K extends AgentExecutableOperationKey> {
     /**
@@ -91,7 +105,10 @@ export const AGENT_CONTENT_OPERATION_HANDLERS: {
                 type: 'faq',
                 content: input.content,
             });
-            return { id: row.id, label: row.title };
+            return {
+                id: row.id, label: row.title,
+                provenanceRow: row.document_id ? { table: 'knowledge_documents', id: row.document_id } : null,
+            };
         },
         read: async (context, id) => {
             const rows = await context.prisma.executeInTenantSchema<any[]>(context.schemaName,

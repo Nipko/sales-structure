@@ -59,3 +59,8 @@ export type {
     RehearsalObservation, RehearsalToolCall, RehearsalOutcome, RehearsalCheck, RehearsalCheckId, RehearsalGrade, RehearsalSummary, JudgeVerdict,
 } from './rehearsal/grade';
 export { figuresOfText, figuresOfValue, figureLabel, hasMoneyFigure } from './rehearsal/figures';
+export {
+    checkCopilotProposal, normalizeQuoteText, quoteAppearsIn, valueFigures, figuresWithoutQuote, isCopilotRequirement, sameCopilotValue,
+    genericTextReason, MIN_QUOTE_CHARS, MAX_QUOTE_CHARS, MAX_EVIDENCE,
+} from './copilot';
+export type { CopilotEvidence, CopilotSource, CopilotCheck, CopilotRejection, CopilotRejectionCode } from './copilot';

@@ -350,6 +350,38 @@ const recallContactRevision = async (
 };
 
 /**
+ * La respuesta a una consulta pendiente (C0 §1.5, rebanada R5, ADR 0011) es sobre UNA espera: un cliente que aceptó
+ * «lo averiguo». El aviso sigue siendo verdad mientras la consulta esté respondida (o guardada como dato) con el mismo
+ * texto y la espera no se haya descartado; si el dueño cambia la respuesta, o la descarta, el aviso preparado queda
+ * viejo y el procesador lo suprime. El estado de la consulta NO entra en la huella: cerrarla después de avisar no
+ * vuelve falso lo que ya se preparó.
+ */
+const pendingAnswerRevision = async (
+    query: RevisionQuery, _schema: string, entityId: string, context?: ProactiveRevisionContext,
+): Promise<string | null> => {
+    const [row] = await query<any[]>(
+        `SELECT w.id, w.conversation_id, w.contact_id, w.language, w.notify_status,
+                q.id AS question_id, q.status, q.answer_text
+           FROM pending_question_waiters w
+           JOIN pending_questions q ON q.id = w.pending_question_id
+          WHERE w.id = $1::uuid FOR SHARE OF w`, [entityId]);
+    if (!row) return null;
+    if (!['answered', 'stored', 'closed'].includes(String(row.status))) return null;
+    if (!String(row.answer_text ?? '').trim()) return null;
+    if (!['waiting', 'sent'].includes(String(row.notify_status))) return null;
+    if (context && await isRecipientOptedOut(query, {
+        channel: context.channelType, ids: [row.contact_id, context.contactId],
+    })) return RECIPIENT_OPTED_OUT_CODE;
+    return revisionHash({
+        questionId: row.question_id,
+        answerText: row.answer_text,
+        conversationId: row.conversation_id ?? null,
+        contactId: row.contact_id ?? null,
+        language: row.language ?? null,
+    });
+};
+
+/**
  * ═══ THE CLOSED REGISTRY ═══
  *
  * A producer that is not here cannot obtain an authority, and therefore cannot
@@ -403,6 +435,11 @@ export const PROACTIVE_POLICIES: Readonly<Record<string, ProactivePolicy>> = Obj
         producer: 'recall_reminder',
         describes: 'un mensaje de reactivación',
         revision: recallContactRevision,
+    }),
+    pending_answer_ready: Object.freeze({
+        producer: 'pending_answer_ready',
+        describes: 'la respuesta del negocio a una consulta pendiente',
+        revision: pendingAnswerRevision,
     }),
 });
 

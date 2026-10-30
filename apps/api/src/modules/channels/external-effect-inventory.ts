@@ -1190,6 +1190,39 @@ producer({
     }),
 
     producer({
+        id: 'readiness.pending_answer',
+        effect: 'The business\'s answer to a question the customer agreed to wait for («lo averiguo»), sent '
+            + 'once per waiter when the owner answers it or saves it as data (R5, ADR 0011)',
+        lane: 'dispatch_outbox',
+        status: 'live',
+        derivation: 'census',
+        source: 'modules/pending-knowledge/pending-answer-notifier.service.ts',
+        symbol: 'PendingAnswerNotifier',
+        egress: 'ProactiveDispatchService.send commits an `agent_dispatch_outbox` row with a `text` item '
+            + 'inside the 24-hour window; outside it nothing is sent (the `pending_answer_ready` template '
+            + 'is not approved yet) and the waiter records `template_required`',
+        reach: {
+            class: 'customer_message', audience: 'contact', personalData: true,
+            channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
+        },
+        properties: {
+            authority: durable('the processor admits the row through the spend gate before the POST, '
+                + 'under a `pending_answer_ready` authority read from the waiter row: a changed or '
+                + 'dismissed answer, or an opt-out, makes the prepared row stale and it is suppressed'),
+            idempotency: durable('the origin is derived from the waiter id, and a waiter leaves '
+                + '`waiting` only once, so answering twice cannot send twice'),
+            receipt: durable('the outbox row carries the provider id and the history row it wrote in '
+                + 'the same transaction'),
+            uncertainOutcome: durable('a timeout leaves the row admitted with its lease; the lease '
+                + 'sweep moves it to reconciliation rather than sending again'),
+            erasure: durable('the outbox payload is cleared by the GDPR fan-out like every other '
+                + 'dispatch row; the waiter rows are deleted by the memory erasure'),
+            recovery: durable('the recovery pass republishes any row nothing ever published; a '
+                + 'deferred commit leaves the waiter `waiting` and the inbox retries it'),
+        },
+    }),
+
+    producer({
         id: 'broadcast.campaign',
         effect: 'Every message of a campaign a tenant launched — WhatsApp template, email or SMS, one '
             + 'job per recipient',

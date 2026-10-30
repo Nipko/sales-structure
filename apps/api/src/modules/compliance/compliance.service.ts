@@ -477,7 +477,8 @@ export class ComplianceService {
             const tables=await query<any[]>(`SELECT to_regclass('tool_execution_ledger')::text AS ledger,
                 to_regclass('tool_approval_tickets')::text AS tickets,to_regclass('tool_approval_outbox')::text AS outbox,
                 to_regclass('kb_retrieval_log')::text AS kb_log,to_regclass('kb_unanswered_queries')::text AS kb_queries,
-                to_regclass('kb_feedback')::text AS kb_feedback,
+                to_regclass('kb_feedback')::text AS kb_feedback,to_regclass('pending_questions')::text AS pending_q,
+                to_regclass('pending_question_waiters')::text AS pending_w,
                 to_regclass('conversation_quality_scores')::text AS quality_scores,
                 to_regclass('quality_sampling_items')::text AS quality_sampling`);
             if(tables[0]?.ledger)await query(`UPDATE tool_execution_ledger SET request_payload='{}'::jsonb,
@@ -491,9 +492,23 @@ export class ComplianceService {
             if(tables[0]?.outbox)await query(`UPDATE tool_approval_outbox SET payload='{}'::jsonb,status='published',
                 lease_token=NULL,lease_expires_at=NULL,last_error=NULL,updated_at=NOW() WHERE ticket_id IN
                 (SELECT id FROM tool_approval_tickets WHERE contact_id=ANY($1::uuid[]))`,[contactIds]);
+            // Pending knowledge (R5, ADR 0011): the customer's waits go (the question keeps its demand count), and a
+            // question whose sample text came from their conversation loses the words. Before kb_retrieval_log is cleared.
+            if (tables[0]?.pending_w) {
+                const waits = await query<any[]>(`DELETE FROM pending_question_waiters
+                    WHERE contact_id=ANY($1::uuid[]) OR conversation_id IN (SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))
+                    RETURNING pending_question_id`, [contactIds]);
+                const affected = [...new Set(waits.map(w => String(w.pending_question_id)))];
+                if (affected.length && tables[0]?.pending_q) await query(`UPDATE pending_questions q
+                    SET waiters_count=(SELECT count(*)::int FROM pending_question_waiters w WHERE w.pending_question_id=q.id)
+                    WHERE q.id=ANY($1::uuid[])`, [affected]);
+            }
+            if (tables[0]?.pending_q) await query(`UPDATE pending_questions SET sample_question='[borrado]',sample_conversation_id=NULL
+                WHERE sample_conversation_id IN (SELECT id FROM conversations WHERE contact_id=ANY($1::uuid[]))`, [contactIds]);
             // Retrieval and response attribution use the shared privacy lock.
             // Delete query text/hashes and response-derived hashes while holding
             // the exclusive lock, so a late response cannot recreate analytics.
+            // kb_unanswered_queries has no writer since R5 (ADR 0011) but keeps old rows until the owner drops it.
             if (tables[0]?.kb_log && tables[0]?.kb_queries) await query(`DELETE FROM kb_unanswered_queries u
                 USING kb_retrieval_log l,conversations c WHERE l.conversation_id=c.id
                     AND c.contact_id=ANY($1::uuid[]) AND u.query=l.query`, [contactIds]);

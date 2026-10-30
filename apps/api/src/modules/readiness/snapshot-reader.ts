@@ -1,6 +1,8 @@
 /**
  * SnapshotReader (C0 §1.1): lee de SOLO LECTURA las tablas de hoy de un tenant y entrega las filas
- * que @parallext/business-spec convierte en TenantSnapshot con las reglas L1–L7 (schema §7.5).
+ * que @parallext/business-spec convierte en TenantSnapshot. Desde R3 lee también la procedencia real
+ * (`requirement_values` y las columnas de C0 §2.2 cuando la tabla ya las tiene); el paquete la usa donde vale y decide
+ * el resto con las reglas L1–L7 (schema §7.5).
  *
  * Desde R2 la imagen de la API empaqueta @parallext/business-spec, así que las filas usan el tipo del paquete
  * (`LegacyTenantRows`) en lugar de una copia local.
@@ -40,7 +42,24 @@ export const TENANT_TABLE_COLUMNS: Readonly<Record<string, string>> = {
     availability_slots: 'id, user_id, day_of_week, start_time, end_time, is_active, created_at',
     staff_members: 'id, is_active, created_at, updated_at',
     agent_personas: "id, template_id, is_active, is_default, schedule_mode, created_at, updated_at, jsonb_build_object('hours', config_json::jsonb->'hours', 'behavior', config_json::jsonb->'behavior', 'llm', jsonb_build_object('memory', config_json::jsonb->'llm'->'memory')) AS config_json",
+    // R3: valores del negocio con procedencia (C0 §2.1)
+    requirement_values: 'id::text AS id, requirement_id, scope_key, value, status, origin, confirmed_by::text AS confirmed_by, confirmed_at, source_ref, valid_until, spec_version, version, updated_at',
 };
+
+/**
+ * Columnas de procedencia (C0 §2.2, R3). Se leen solo si la tabla del tenant ya las tiene (un tenant sin migrar sigue
+ * leyéndose con las reglas L): `readRows` pregunta a information_schema cuáles existen.
+ */
+export const PROVENANCE_COLUMNS: readonly string[] = ['content_status', 'origin', 'confirmed_by', 'confirmed_at', 'source_ref', 'price_type', 'price_status'];
+
+/** Columnas de una tabla: las de negocio más las de procedencia que existan y no estén ya en la lista. */
+export function columnsFor(table: string, existingColumns: Readonly<Record<string, readonly string[]>> = {}): string {
+    const base = TENANT_TABLE_COLUMNS[table];
+    const listed = new Set(base.split(',').map(c => c.trim().split(/\s+/).pop()));
+    const extra = PROVENANCE_COLUMNS.filter(c => (existingColumns[table] ?? []).includes(c) && !listed.has(c))
+        .map(c => (c === 'confirmed_by' ? 'confirmed_by::text AS confirmed_by' : c));
+    return extra.length ? `${base}, ${extra.join(', ')}` : base;
+}
 
 const SCHEMA_NAME = /^tenant_[a-z0-9_]+$/;
 const quoteLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
@@ -62,11 +81,11 @@ export class SnapshotReader {
     constructor(private readonly runner: SqlJsonRunner, private readonly clock: () => Date = () => new Date()) {}
 
     /** SQL de solo lectura que arma las filas de un tenant en un único JSON. */
-    static buildSql(schemaName: string, existingTables: readonly string[]): string {
+    static buildSql(schemaName: string, existingTables: readonly string[], existingColumns: Readonly<Record<string, readonly string[]>> = {}): string {
         if (!SCHEMA_NAME.test(schemaName)) throw new Error(`nombre de esquema inválido: ${schemaName}`);
         const tenantFilter = `(SELECT id FROM public.tenants WHERE schema_name = ${quoteLiteral(schemaName)})`;
-        const parts = Object.entries(TENANT_TABLE_COLUMNS).map(([table, columns]) => existingTables.includes(table)
-            ? `'${table}', (SELECT coalesce(json_agg(x), '[]'::json) FROM (SELECT ${columns} FROM "${schemaName}"."${table}") x)`
+        const parts = Object.keys(TENANT_TABLE_COLUMNS).map(table => existingTables.includes(table)
+            ? `'${table}', (SELECT coalesce(json_agg(x), '[]'::json) FROM (SELECT ${columnsFor(table, existingColumns)} FROM "${schemaName}"."${table}") x)`
             : `'${table}', '[]'::json`);
         return `SELECT json_build_object(
   'tenant', (SELECT row_to_json(x) FROM (SELECT id::text AS ref, slug, name, industry, language, created_at, settings,
@@ -85,7 +104,11 @@ export class SnapshotReader {
         if (!SCHEMA_NAME.test(schemaName)) throw new Error(`nombre de esquema inválido: ${schemaName}`);
         const tables = await this.runner.queryJson<string[] | null>(
             `SELECT coalesce(json_agg(table_name), '[]'::json) FROM information_schema.tables WHERE table_schema = ${quoteLiteral(schemaName)}`);
-        const raw = await this.runner.queryJson<Row>(SnapshotReader.buildSql(schemaName, tables ?? []));
+        const columns = await this.runner.queryJson<Record<string, string[]> | null>(
+            `SELECT coalesce(json_object_agg(table_name, cols), '{}'::json) FROM (SELECT table_name, json_agg(column_name::text) AS cols
+               FROM information_schema.columns WHERE table_schema = ${quoteLiteral(schemaName)}
+                AND column_name IN (${PROVENANCE_COLUMNS.map(quoteLiteral).join(', ')}) GROUP BY table_name) c`);
+        const raw = await this.runner.queryJson<Row>(SnapshotReader.buildSql(schemaName, tables ?? [], columns ?? {}));
         if (!raw?.tenant) throw new Error(`tenant no encontrado para el esquema ${schemaName}`);
         const t = raw.tenant;
         const settings = t.settings ?? {};

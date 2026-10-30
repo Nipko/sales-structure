@@ -6488,3 +6488,139 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."readiness_evaluations" (
 CREATE INDEX IF NOT EXISTS idx_readiness_evaluations_created
         ON "{{SCHEMA_NAME}}"."readiness_evaluations" (created_at DESC);
 -- END READINESS EVALUATIONS
+
+-- BEGIN BUSINESS FACTS
+-- Valores del negocio con procedencia (C0 §2.1, rebanada R3): una fila por requisito de la especificación
+-- (@parallext/business-spec) y alcance. `value` tiene la forma de `data.structure` del requisito; `[]` es «no hay»,
+-- confirmado. Solo escribe BusinessFactsService (business-facts.service.ts), que valida contra la especificación, sube
+-- `version` y deja la versión en `requirement_value_versions`; business-facts-writes.spec.ts falla si otro código
+-- escribe aquí. La migración 20261030140000_add_business_facts_provenance crea lo mismo en los tenants que ya
+-- existen, y business-facts-schema.spec.ts exige que las definiciones coincidan.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."requirement_values" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        requirement_id TEXT NOT NULL,
+        scope_key TEXT NOT NULL DEFAULT '',
+        value JSONB,
+        status TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        confirmed_by UUID,
+        confirmed_at TIMESTAMPTZ,
+        source_ref JSONB,
+        valid_until TIMESTAMPTZ,
+        spec_version TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        CONSTRAINT requirement_values_status CHECK (status IN ('confirmed','example','seeded')),
+        CONSTRAINT requirement_values_origin CHECK (origin IN ('owner_form','copilot','import','integration','country_pack','default_accepted','pending_answer','onboarding','platform_seed','legacy','legacy_inferred')),
+        CONSTRAINT requirement_values_key UNIQUE (requirement_id, scope_key)
+    );
+-- Historial append-only (auditoría y reproducción QA): una fila por escritura, con quién la hizo.
+CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."requirement_value_versions" (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        value_id UUID NOT NULL,
+        requirement_id TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        value JSONB,
+        status TEXT NOT NULL,
+        origin TEXT NOT NULL,
+        confirmed_by UUID,
+        confirmed_at TIMESTAMPTZ,
+        source_ref JSONB,
+        valid_until TIMESTAMPTZ,
+        spec_version TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        actor JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+        CONSTRAINT requirement_value_versions_key UNIQUE (value_id, version)
+    );
+CREATE INDEX IF NOT EXISTS idx_requirement_value_versions_requirement
+        ON "{{SCHEMA_NAME}}"."requirement_value_versions" (requirement_id, scope_key, created_at DESC);
+-- END BUSINESS FACTS
+
+-- BEGIN PROVENANCE COLUMNS
+-- Juego estándar de columnas de procedencia en los catálogos y los textos (C0 §2.2, rebanada R3). Solo se agregan
+-- columnas (expand). `content_status` nace 'confirmed' por default de columna y por eso NO prueba nada: la lectura
+-- (packages/business-spec/src/provenance.ts) exige `origin` y la estampa `source_ref.row_updated_at`, y sin ellas
+-- decide con las reglas L1–L7. services y membership_plans ya tienen `price_status` (confirmed|example|quote, lo
+-- escriben sus pantallas de hoy): solo reciben `price_type`. Los paquetes de fotografía y el catálogo de servicios del
+-- hogar viven en `services`. La misma lista está en PROVENANCE_TABLES y en la migración
+-- 20261030140000_add_business_facts_provenance (business-facts-schema.spec.ts).
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."menu_items" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."products" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."tour_packages" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."properties" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."real_estate_listings" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."membership_plans" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."insurance_plans" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "price_type" TEXT CHECK ("price_type" IN ('fijo','desde','a_cotizar','gratis'));
+ALTER TABLE "{{SCHEMA_NAME}}"."vehicles" ADD COLUMN IF NOT EXISTS "price_status" TEXT CHECK ("price_status" IN ('confirmed','example'));
+ALTER TABLE "{{SCHEMA_NAME}}"."faqs" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."faqs" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."faqs" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."faqs" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."faqs" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "content_status" TEXT DEFAULT 'confirmed' CHECK ("content_status" IN ('confirmed','example','seeded'));
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "origin" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "confirmed_by" UUID;
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "confirmed_at" TIMESTAMPTZ;
+ALTER TABLE "{{SCHEMA_NAME}}"."knowledge_documents" ADD COLUMN IF NOT EXISTS "source_ref" JSONB;
+-- END PROVENANCE COLUMNS

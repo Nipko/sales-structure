@@ -170,7 +170,7 @@ describe('ReadinessController', () => {
 
     it('responde con el sobre { success, data } y pasa refresh=1', async () => {
         const service = { getCurrent: jest.fn(async () => ({ result: { verdict: 'listo' } })), getHistory: jest.fn(async () => []) };
-        const controller = new ReadinessController(service as any);
+        const controller = new ReadinessController(service as any, {} as any);
         await expect(controller.current(TENANT, '1')).resolves.toEqual({ success: true, data: { result: { verdict: 'listo' } } });
         expect(service.getCurrent).toHaveBeenCalledWith(TENANT, { refresh: true });
         await controller.current(TENANT);

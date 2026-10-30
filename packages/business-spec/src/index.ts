@@ -34,3 +34,5 @@ export type { QaTruth, QaTruthCase, QaTruthQuery, ExpectedCode } from './qa/trut
 export { renderReportMarkdown, renderTenantMarkdown, renderSummaryMarkdown } from './report';
 export { generateRequirementsDoc } from './docs';
 export { canonicalJson, sha256, hashOf } from './hash';
+export { formFor, formRequirementIds, hasOwnerForm, parseField, splitTop, FORM_SCHEMA, DURATION_UNITS, WEEK_DAYS } from './forms/descriptor';
+export type { FormDescriptor, FormField, FormFieldKind, FormOption, FormCondition, FormMode } from './forms/descriptor';

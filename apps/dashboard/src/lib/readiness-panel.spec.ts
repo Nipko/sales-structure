@@ -2,12 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { evaluate } from "../../../../packages/business-spec/src/engine/evaluate";
 import { fromLegacyRows, type LegacyTenantRows } from "../../../../packages/business-spec/src/legacy-status";
+import { formRequirementIds, screenTargetsFor } from "../../../../packages/business-spec/src/forms/descriptor";
 import { loadSpec } from "../../../../packages/business-spec/src/load";
 import type { ReadinessResult } from "../../../../packages/business-spec/src/types";
 import {
     buildReadinessPanel,
     gapAction,
     navigableTarget,
+    panelFormHref,
     topBlockingGaps,
     type ReadinessCurrentResponse,
     type ReadinessResultView,
@@ -32,6 +34,8 @@ const responseFor = (result: ReadinessResult): ReadinessCurrentResponse => ({
     evaluationId: "e1", evaluatedAt: result.asOf, trigger: "refresh", cached: false, result: asView(result),
 });
 const owner = { role: "tenant_admin", impersonating: false };
+/** Lo que agrega la API (ReadinessService.screenTargets): la pantalla de catálogo del primer objeto habilitado. */
+const screenTargets = (result: ReadinessResult) => screenTargetsFor(spec, result.config.objects.map(o => o.object));
 const supervisor = { role: "tenant_supervisor", impersonating: false };
 
 /** ¿Hay una página de Next para esta ruta? (`/admin/x?tab=y` → `app/admin/x/page.tsx`). */
@@ -98,6 +102,31 @@ describe("panel de preparación: forma de los datos", () => {
         expect(navigableTarget("/admin/listings/[listingId]")).toBe("/admin/listings");
         expect(navigableTarget("/admin/appointments?tab=services")).toBe("/admin/appointments?tab=services");
         expect(gapAction("/admin/properties/[propertyId]", owner)).toEqual({ kind: "link", href: "/admin/properties" });
+    });
+
+    it.each(slugs)("%s (R3): cada bloqueante se arregla desde el panel: cajón o pantalla, nunca «próximamente»", slug => {
+        const result = resultFor(slug);
+        const response = { ...responseFor(result), formRequirementIds: formRequirementIds(spec), screenTargets: screenTargets(result) };
+        const panel = buildReadinessPanel(response, owner);
+        for (const gap of [...panel.blocking, ...panel.quality]) {
+            expect({ id: gap.id, kind: gap.action.kind }).not.toEqual({ id: gap.id, kind: "none" });
+            if (gap.action.kind === "form") expect(gap.action.requirementId).toBe(gap.id);
+        }
+        // los ítems de catálogo siguen en su pantalla
+        for (const gap of panel.blocking.filter(g => g.id === "CORE.OFFER.ITEMS" || g.id.endsWith(".CATALOG"))) expect(gap.action.kind).toBe("link");
+    });
+
+    it("dental (R3): los huecos con formulario abren el cajón y la tarjeta de Inicio enlaza al panel con el cajón abierto", () => {
+        const response = { ...responseFor(resultFor("spark-qa-dental-03")), formRequirementIds: formRequirementIds(spec) };
+        const panel = buildReadinessPanel(response, owner);
+        const withForm = panel.blocking.filter(g => g.action.kind === "form");
+        expect(withForm.length).toBeGreaterThan(0);
+        for (const gap of topBlockingGaps(response, owner)) {
+            expect(gap.action.kind).toBe("link");
+            if (withForm.some(g => g.id === gap.id) && gap.action.kind === "link") expect(gap.action.href).toBe(panelFormHref(gap.id));
+        }
+        // sin la lista (API anterior) todo vuelve a enlazar a su pantalla
+        expect(buildReadinessPanel(responseFor(resultFor("spark-qa-dental-03")), owner).blocking.some(g => g.action.kind === "form")).toBe(false);
     });
 
     it("un hueco que nace de otro se muestra una vez, en su raíz", () => {

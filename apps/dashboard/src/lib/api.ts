@@ -7,6 +7,9 @@
 
 import type { VerticalDefinitions } from "./vertical-catalog";
 import type { ReadinessCurrentResponse, ReadinessHistoryEntry } from "@/lib/readiness-panel";
+import type {
+    BusinessFactDefault, BusinessFactVersion, BusinessFactWriteResponse, RequirementDetailResponse,
+} from "@/lib/readiness-forms";
 import type { AgentAssessment, AgentConfigurationChange, AgentConfigurationProposal, AgentContentProposal, AppliedAgentConfiguration, AppliedAgentContentObject, AgentOperationAvailability, AgentQualityAttentionSummary, AgentQualityOverview, AgentQualitySignal, GuidedTourId, AgentConfigurationWorkspace, SaveAgentDraftRequest, SavedAgentDraft } from "@parallext/shared";
 import type { QualityAssistantTarget } from "@/lib/quality-assistant-contract";
 import type { LearningImport, LearningReviewHistory, LearningWorkspaceData } from "@/lib/agent-learning";
@@ -1698,6 +1701,18 @@ export const api = {
         apiGet<ReadinessCurrentResponse>(`/readiness/${tenantId}${refresh ? '?refresh=1' : ''}`),
     getReadinessHistory: (tenantId: string, limit = 30) =>
         apiGet<ReadinessHistoryEntry[]>(`/readiness/${tenantId}/history?limit=${limit}`),
+    /** Lo que abre el cajón de un hueco: definición, descriptor de formulario, valor actual y fila guardada (R3). */
+    getReadinessRequirement: (tenantId: string, requirementId: string) =>
+        apiGet<RequirementDetailResponse>(`/readiness/${tenantId}/requirements/${encodeURIComponent(requirementId)}`),
+    getBusinessFactVersions: (tenantId: string, requirementId: string, limit = 20) =>
+        apiGet<BusinessFactVersion[]>(`/readiness/${tenantId}/business-facts/${encodeURIComponent(requirementId)}/versions?limit=${limit}`),
+    /** Escribe el valor (`origin=owner_form`); `expectedVersion` evita pisar otra escritura (409). */
+    putBusinessFact: (tenantId: string, requirementId: string, body: { value: unknown; expectedVersion?: number }) =>
+        apiPut<BusinessFactWriteResponse>(`/readiness/${tenantId}/business-facts/${encodeURIComponent(requirementId)}`, body),
+    getBusinessFactDefaults: (tenantId: string) =>
+        apiGet<{ specVersion: string; items: BusinessFactDefault[] }>(`/readiness/${tenantId}/business-facts/defaults`),
+    acceptBusinessFactDefaults: (tenantId: string, ids: string[], specVersion: string) =>
+        apiPost<{ specVersion: string; accepted: string[]; skipped: { id: string; reason: string }[] }>(`/readiness/${tenantId}/business-facts/defaults/accept`, { ids, specVersion }),
     getAgentAssessment: (tenantId: string, agentId?: string) =>
         apiGet<AgentAssessment>(`/copilot/assessment/${tenantId}${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
     getAgentQualityOverview: (tenantId: string, agentId: string) =>
@@ -2992,7 +3007,8 @@ export interface ApiEnvelope<T> {
 }
 
 function readFieldErrors(json: any): ApiFieldError[] | undefined {
-    const raw = json?.fields;
+    // `business-facts` (R3) answers a rejected value with `issues`: [{path, code, message}], the same field list.
+    const raw = json?.fields ?? json?.issues;
     if (!Array.isArray(raw)) return undefined;
     const fields = raw
         // `agent_invalid` sends its fields as plain paths ("behavior.rules");
@@ -3042,7 +3058,7 @@ async function apiPut<T = any>(endpoint: string, body: any): Promise<ApiEnvelope
             body: JSON.stringify(body),
         });
         const json = await res.json();
-        if (!res.ok) return { success: false, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
+        if (!res.ok) return { success: false, httpStatus: res.status, error: json.message || `Error ${res.status}`, errorCode: json.error, fields: readFieldErrors(json) };
         return json;
     } catch (err) {
         return { success: false, error: "Error de conexión" };

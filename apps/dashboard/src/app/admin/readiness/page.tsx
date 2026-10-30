@@ -1,20 +1,22 @@
 "use client";
 
 /**
- * Panel de preparación del negocio (C0 §1.6, rebanada R2): de solo lectura.
+ * Panel de preparación del negocio (C0 §1.6, rebanadas R2 y R3).
  *
- * Muestra lo que decidió el motor en la API: veredicto, huecos por nivel con su mensaje y el enlace a la
- * pantalla donde se arreglan hoy, cobertura por área e historial. Los formularios en el propio panel llegan en R3.
+ * Muestra lo que decidió el motor en la API: veredicto, huecos por nivel con su mensaje, cobertura por área e
+ * historial. Cada hueco con formulario abre el cajón (R3) donde se completa y se guarda; los demás enlazan a la
+ * pantalla del objeto (catálogos). `?open=ID` abre el cajón de ese requisito (lo usa la tarjeta de Inicio).
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { AlertTriangle, CheckCircle2, ClipboardCheck, History, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardCheck, History, ListChecks, Loader2, RefreshCw, XCircle } from "lucide-react";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/ui/page-header";
+import { RequirementDrawer } from "@/components/readiness/RequirementDrawer";
 import {
     buildReadinessPanel,
     type GapAction,
@@ -22,6 +24,7 @@ import {
     type ReadinessCurrentResponse,
     type ReadinessHistoryEntry,
     type ReadinessVerdict,
+    type ScreenAction,
 } from "@/lib/readiness-panel";
 
 const VERDICT_STYLE: Record<ReadinessVerdict, { box: string; icon: typeof CheckCircle2 }> = {
@@ -30,16 +33,27 @@ const VERDICT_STYLE: Record<ReadinessVerdict, { box: string; icon: typeof CheckC
     listo: { box: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-100", icon: CheckCircle2 },
 };
 
-function ActionLink({ action }: { action: GapAction }) {
+/** Abre el cajón de un requisito (lo provee la página). */
+type OpenForm = (requirementId: string, screen: ScreenAction) => void;
+
+function ActionLink({ action, onOpen }: { action: GapAction; onOpen: OpenForm }) {
     const t = useTranslations("readinessPanel");
+    if (action.kind === "form") {
+        return (
+            <button type="button" onClick={() => onOpen(action.requirementId, action.screen)}
+                className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                {t("action.fix")}
+            </button>
+        );
+    }
     if (action.kind === "link") {
         return <Link href={action.href} className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">{t("action.fix")}</Link>;
     }
     if (action.kind === "ask_admin") return <span className="text-sm text-neutral-500 dark:text-neutral-400">{t("action.askAdmin")}</span>;
-    return <span className="text-sm text-neutral-500 dark:text-neutral-400">{t("action.comingSoon")}</span>;
+    return <span className="text-sm text-neutral-500 dark:text-neutral-400">{t("action.noAction")}</span>;
 }
 
-function GapRow({ gap }: { gap: PanelGap }) {
+function GapRow({ gap, onOpen }: { gap: PanelGap; onOpen: OpenForm }) {
     const t = useTranslations("readinessPanel");
     const intents = gap.intents.slice(0, 4);
     return (
@@ -66,7 +80,7 @@ function GapRow({ gap }: { gap: PanelGap }) {
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
                         {t.has(`cause.${gap.cause}`) ? t(`cause.${gap.cause}`) : gap.cause}
                     </span>
-                    <ActionLink action={gap.action} />
+                    <ActionLink action={gap.action} onOpen={onOpen} />
                 </div>
             </div>
         </li>
@@ -96,6 +110,10 @@ export default function ReadinessPage() {
     const [history, setHistory] = useState<ReadinessHistoryEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [drawer, setDrawer] = useState<{ id: string; screen: ScreenAction | null } | null>(null);
+    // Escribe el dueño; el supervisor ve el formulario sin poder guardar (la API exige tenant_admin).
+    const canWrite = role === "tenant_admin" || (role === "super_admin" && impersonating);
+    const openForm = useCallback<OpenForm>((id, screen) => setDrawer({ id, screen }), []);
 
     // Al abrir se reevalúa: el dueño suele volver aquí después de arreglar algo en otra pantalla.
     const load = useCallback(async (refresh: boolean) => {
@@ -111,6 +129,12 @@ export default function ReadinessPage() {
 
     useEffect(() => { void load(true); }, [load]);
 
+    // `?open=ID` (tarjeta de Inicio): abre el cajón al llegar. Se lee de window para no exigir Suspense en la página.
+    useEffect(() => {
+        const id = new URLSearchParams(window.location.search).get("open");
+        if (id) setDrawer({ id, screen: null });
+    }, []);
+
     const model = useMemo(() => (current ? buildReadinessPanel(current, { role, impersonating }) : null), [current, role, impersonating]);
     const formatDate = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 
@@ -118,11 +142,17 @@ export default function ReadinessPage() {
     if (!activeTenantId) return <p>{t("tenantRequired")}</p>;
 
     const refreshButton = (
+        <div className="flex flex-wrap items-center gap-2">
+        <Link href="/admin/readiness/defaults"
+            className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
+            <ListChecks size={14} />{t("defaultsLink")}
+        </Link>
         <button type="button" onClick={() => void load(true)} disabled={loading}
             className="inline-flex items-center gap-2 rounded-lg border border-neutral-200 px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             {t("refresh")}
         </button>
+        </div>
     );
 
     return (
@@ -150,12 +180,12 @@ export default function ReadinessPage() {
                         </div>
 
                         <Section title={t("groups.blocking.title")} description={t("groups.blocking.description")} count={model.blocking.length} tone="red">
-                            {model.blocking.length ? <ul className="space-y-3">{model.blocking.map(g => <GapRow key={g.id} gap={g} />)}</ul>
+                            {model.blocking.length ? <ul className="space-y-3">{model.blocking.map(g => <GapRow key={g.id} gap={g} onOpen={openForm} />)}</ul>
                                 : <p className="text-sm text-neutral-500">{t("groups.blocking.empty")}</p>}
                         </Section>
 
                         <Section title={t("groups.necessary.title")} description={t("groups.necessary.description")} count={model.necessary.length} tone="amber">
-                            {model.necessary.length ? <ul className="space-y-3">{model.necessary.map(g => <GapRow key={g.id} gap={g} />)}</ul>
+                            {model.necessary.length ? <ul className="space-y-3">{model.necessary.map(g => <GapRow key={g.id} gap={g} onOpen={openForm} />)}</ul>
                                 : <p className="text-sm text-neutral-500">{t("groups.necessary.empty")}</p>}
                             {model.limitedIntents.length > 0 && (
                                 <details className="mt-3 rounded-lg border border-amber-200 p-3 text-sm dark:border-amber-900/60">
@@ -171,7 +201,7 @@ export default function ReadinessPage() {
                             {model.recommended.length > 0 && (
                                 <details className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
                                     <summary className="cursor-pointer text-sm font-medium">{t("groups.recommended.show")}</summary>
-                                    <ul className="mt-3 space-y-3">{model.recommended.map(g => <GapRow key={g.id} gap={g} />)}</ul>
+                                    <ul className="mt-3 space-y-3">{model.recommended.map(g => <GapRow key={g.id} gap={g} onOpen={openForm} />)}</ul>
                                 </details>
                             )}
                         </Section>
@@ -182,7 +212,7 @@ export default function ReadinessPage() {
                                     {model.quality.map((w, i) => (
                                         <li key={`${w.id}:${i}`} className="flex flex-col gap-1 rounded-lg border border-neutral-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between dark:border-neutral-800">
                                             <span><span className="font-medium">{w.title}</span>: {w.message}</span>
-                                            <ActionLink action={w.action} />
+                                            <ActionLink action={w.action} onOpen={openForm} />
                                         </li>
                                     ))}
                                 </ul>
@@ -230,6 +260,12 @@ export default function ReadinessPage() {
                     </ol>
                 ) : <p className="text-sm text-neutral-500">{t("history.empty")}</p>}
             </Section>
+
+            <RequirementDrawer tenantId={activeTenantId} requirementId={drawer?.id ?? null} screen={drawer?.screen ?? null}
+                viewer={{ role, impersonating }} canWrite={canWrite}
+                onClose={() => setDrawer(null)}
+                // guardar reevalúa en la API; el panel recarga el veredicto y los huecos
+                onSaved={() => { void load(false); }} />
         </div>
     );
 }

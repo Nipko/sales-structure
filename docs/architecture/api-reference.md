@@ -61,7 +61,7 @@
 | Widget | `modules/widget/` | 13 + WS | Web chat widget embebible + triggers + Socket.IO `/widget` |
 | Dashboard Analytics | `modules/dashboard-analytics/` | 1 | Estadísticas resolución IA |
 | Quality | `modules/quality/` | 9 | QA, Centro de calidad y señales proactivas por agente |
-| Readiness | `modules/readiness/` | 9 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA; valores del negocio con procedencia (`business-facts`, R3) |
+| Readiness | `modules/readiness/` | 10 | Preparación del negocio con el motor de `@parallext/business-spec`: veredicto, huecos, historial y foto para QA; valores del negocio con procedencia (`business-facts`, R3) |
 
 ### Servicio WhatsApp (puerto 3002) — `apps/whatsapp`
 
@@ -206,14 +206,15 @@ El veredicto y los huecos los decide el motor de `@parallext/business-spec`; la 
 
 | Método | Ruta | Roles | Descripción |
 |--------|------|-------|-------------|
-| GET | `/readiness/:tenantId` | Super admin/Admin/Supervisor | Última evaluación; `?refresh=1` reevalúa |
+| GET | `/readiness/:tenantId` | Super admin/Admin/Supervisor | Última evaluación; `?refresh=1` reevalúa. Suma `formRequirementIds` (huecos que abren el cajón) y `screenTargets` (pantalla de catálogo del objeto del tenant) |
 | GET | `/readiness/:tenantId/history` | Super admin/Admin/Supervisor | Historial (`limit` máximo 100) |
-| GET | `/readiness/:tenantId/requirements/:requirementId` | Super admin/Admin/Supervisor | Definición del requisito y su evaluación actual |
+| GET | `/readiness/:tenantId/requirements/:requirementId` | Super admin/Admin/Supervisor | Lo que abre el cajón: definición, evaluación, descriptor de formulario (`form`, `formFor`), valor que lee el motor (`current`) y fila guardada con su versión (`fact`) |
 | GET | `/readiness/:tenantId/snapshot` | Super admin | Foto `business-spec/tenant-snapshot@1` para `business-spec qa-truth` |
 | GET | `/readiness/:tenantId/business-facts` | Super admin/Admin/Supervisor | Valores del negocio con procedencia |
 | GET | `/readiness/:tenantId/business-facts/:requirementId` | Super admin/Admin/Supervisor | Un valor (`?scope=` para otro alcance) |
 | GET | `/readiness/:tenantId/business-facts/:requirementId/versions` | Super admin/Admin/Supervisor | Versiones del valor con su actor |
 | PUT | `/readiness/:tenantId/business-facts/:requirementId` | Super admin (suplantando)/Admin | `{value, scopeKey?, expectedVersion?}`: valida contra la especificación (400), concurrencia optimista (409); devuelve el valor y el delta del veredicto |
+| GET | `/readiness/:tenantId/business-facts/defaults` | Super admin/Admin/Supervisor | Valores por defecto del tenant: qué hace la plataforma y si están aceptados, configurados o por decidir |
 | POST | `/readiness/:tenantId/business-facts/defaults/accept` | Super admin (suplantando)/Admin | `{ids[], specVersion}`: acepta los valores por defecto (C0 §2.5) |
 
 ### Settings (`/api/v1/settings`)

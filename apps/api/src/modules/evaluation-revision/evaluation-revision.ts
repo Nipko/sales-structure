@@ -56,6 +56,9 @@ export const EVALUATION_OUTPUT_TABLES = new Set([
     'pending_questions', 'pending_question_waiters',
     // The rehearsal (R7) stores its own results while it runs on a frozen agent snapshot: counting them would invalidate it.
     'rehearsal_runs', 'rehearsal_results',
+    // Readiness writes its own history while a turn runs (R2/R4: the turn contract evaluates on a cache miss) and the
+    // go-live gate logs its shadow decision per inbound (R4). Both are derived from tables that stay dependencies.
+    'readiness_evaluations', 'go_live_decisions',
     'knowledge_conflict_scans',
     'quality_sampling_runs', 'quality_sampling_items',
     // Active cases remain dependencies: a newly approved case must invalidate an older evaluation.

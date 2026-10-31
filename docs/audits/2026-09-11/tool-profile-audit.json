@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "4b8b9d95a052b501c294b782485a9153505ac127",
+  "sourceRevision": "4b1865b9340d0bf83086230f696b4224490ef364",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -65,7 +65,7 @@
     "apps/api/src/modules/conversations/tools/vacation-rental-tools.ts": "320bfa74829c4f4fe4aecb640fc3dd1dc7dab4e137055c5bbb9b3fca15891162",
     "apps/api/src/modules/conversations/tools/vehicle-tools.ts": "a7a54336bc3d85b2c01eac5413885ab433505e94f3d74140f0e6d42bbd37876e",
     "apps/api/src/modules/conversations/tools/vertical-integration-tools.ts": "3eb4ac82c4c0c24e40612670eddb70bacbd77e9101fe4af88baed40419f952fb",
-    "apps/api/src/modules/evaluation-revision/evaluation-revision.ts": "34b2d07dc0badd0314783a78f52d16550b310420d48c634c23f5a0f8cf1a8f7d",
+    "apps/api/src/modules/evaluation-revision/evaluation-revision.ts": "d5db6b99e0410629384b368cebfddc9057753b584d110f38a4290ca3553a872e",
     "apps/api/src/modules/intake/intake-i18n.ts": "dae4bf3cd2d0e9030e64fdce38680fea6ac129c025ad9d5291830830522f3436",
     "apps/api/src/modules/simulation/agent-certification.ts": "6cbd9e65b895e8c4247f5e37bc21155d7f5b06c9d268ed1a961520aabe8edad8",
     "apps/api/src/modules/simulation/agent-release-policy.ts": "5409d5a30bff70f541863848709b16daa0f6be24aea04ebe2eecf646ab2cdcde",

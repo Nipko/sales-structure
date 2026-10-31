@@ -242,6 +242,19 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         expect(await readable(second)).toBe(second.lease.schemaName);
     });
 
+    it('does not hand a new usage a shared corpus that is about to expire (phase E lease loss)', async () => {
+        const first = await acquire();
+        // the shared copy keeps the deadline fixed at its capture: leave it five minutes, less than MIN_SHARED_REMAINING_MS
+        await sql(`UPDATE "${first.lease.schemaName}".__eval_namespace SET expires_at=clock_timestamp()+interval '5 minutes'`);
+        const second = await acquire(undefined, otherAgent);
+        expect(second.lease.token).not.toBe(first.lease.token);
+        expect(second.management!.slot).not.toBe(first.management!.slot);
+        expect(await readable(second)).toBe(second.lease.schemaName);
+        // a short request is still served by the short-lived copy: the cap is the requested TTL
+        const third = await acquire(undefined, otherAgent, 60_000);
+        expect([first.lease.token, second.lease.token]).toContain(third.lease.token);
+    });
+
     it('reaps inactive and deleted tenants, retaining only non-revivable metadata tombstones', async () => {
         const copy = await acquire();
         await sql('UPDATE public.tenants SET is_active=false WHERE id=$1::uuid', tenantId);

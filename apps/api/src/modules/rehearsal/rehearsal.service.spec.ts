@@ -155,6 +155,11 @@ describe('RehearsalService.start: límites y banco congelado', () => {
         await expect(harness({ today: MAX_RUNS_PER_DAY }).service.start('t1')).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
     });
 
+    it('la medición interna (fase E) no consume la cuota diaria, pero sigue siendo una ejecución a la vez', async () => {
+        await expect(harness({ today: MAX_RUNS_PER_DAY }).service.start('t1', { internalMeasurement: true })).resolves.toBeDefined();
+        await expect(harness({ running: 1 }).service.start('t1', { internalMeasurement: true })).rejects.toBeInstanceOf(ConflictException);
+    });
+
     it('repetir reutiliza el banco congelado (pass^k): sin volver a leer la foto', async () => {
         const frozen = generateRehearsal(spec, snapshotOf('salon-qa-citas'), { seed: 'k', maxCases: 4 });
         const h = harness({ bankRow: frozen });

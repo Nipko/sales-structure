@@ -155,6 +155,9 @@ async function reapInTransaction(tx: Tx, tenantId: string, sourceSchema: string)
 /** Acquires one reference per snapshot. Shared corpus TTL is fixed at capture;
  * a later usage may receive less than its requested TTL, exposed explicitly in
  * usage.expiresAt. No retry or reuse extends either original deadline. */
+/** Minimum life a shared corpus must have left to be reused by a new usage (capped by the requested TTL). */
+export const MIN_SHARED_REMAINING_MS = 15 * 60_000;
+
 export async function acquireKnowledgeReplica(prisma: PrismaService, input: AcquireKnowledgeReplica): Promise<EvaluationKnowledgeReplica> {
     const { tenantId, agentId, snapshotToken } = input, ttlMs = input.ttlMs ?? 3600_000;
     if (!UUID.test(tenantId) || !UUID.test(agentId) || !UUID.test(snapshotToken)
@@ -178,14 +181,24 @@ export async function acquireKnowledgeReplica(prisma: PrismaService, input: Acqu
         const sourceRevision = await knowledgeSourceRevision(tx, schema);
         let available: number | undefined;
         let copy: EvaluationKnowledgeReplica | undefined;
+        let shortLived: EvaluationKnowledgeReplica | undefined;
         let captured = false;
+        // A shared corpus keeps the deadline fixed at its capture. Reusing one that is about to expire made every
+        // usage acquired from it lose its lease mid-run (phase E, 31-oct-2026): prefer a copy that still covers the
+        // requested TTL (capped at MIN_SHARED_REMAINING_MS), else capture a fresh one, and only when no slot is
+        // free fall back to the short-lived copy as before.
+        const minRemainingMs = Math.min(ttlMs, MIN_SHARED_REMAINING_MS);
         for (let slot = 0; slot < KNOWLEDGE_REPLICA_SLOTS; slot++) {
             const candidate = await slotReplica(tx, tenantId, slot, schema);
             if (!candidate) { available ??= slot; continue; }
             if (candidate.management!.sourceRevision !== sourceRevision) continue;
-            const live = await tx.$queryRawUnsafe(`SELECT 1 FROM "${candidate.lease.schemaName}".__eval_namespace WHERE expires_at>clock_timestamp()+interval '1 second'`);
-            if (live.length === 1) { copy = candidate; break; }
+            const live = await tx.$queryRawUnsafe(`SELECT expires_at>clock_timestamp()+$1::integer*interval '1 millisecond' AS covers
+                FROM "${candidate.lease.schemaName}".__eval_namespace WHERE expires_at>clock_timestamp()+interval '1 second'`, minRemainingMs);
+            if (live.length !== 1) continue;
+            if (live[0].covers === true) { copy = candidate; break; }
+            shortLived ??= candidate;
         }
+        if (!copy && available === undefined && shortLived) copy = shortLived;
         if (!copy) {
             if (available === undefined) fail('slots_exhausted');
             copy = await captureKnowledgeReplicaInTransaction(tx, tenantId, 3600_000,

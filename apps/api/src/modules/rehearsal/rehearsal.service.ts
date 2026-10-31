@@ -48,6 +48,11 @@ export interface RehearsalStartInput {
     /** Repite el banco congelado de esa ejecución (pass^k). */
     repeatOf?: string | null;
     requestedBy?: string | null;
+    /**
+     * Fase E: la medición interna (`scripts/rehearsal/measure.cjs`) no consume el cupo diario del dueño. El
+     * controlador arma la entrada campo por campo y nunca lo pasa: solo existe para quien corre dentro del contenedor.
+     */
+    internalMeasurement?: boolean;
 }
 
 export interface RehearsalRunView {
@@ -140,7 +145,7 @@ export class RehearsalService {
                     count(*) FILTER (WHERE started_at >= date_trunc('day', clock_timestamp()))::int AS today
                FROM rehearsal_runs`);
         if (running > 0) throw new ConflictException('rehearsal_running');
-        if (today >= MAX_RUNS_PER_DAY) throw new HttpException('rehearsal_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
+        if (today >= MAX_RUNS_PER_DAY && input.internalMeasurement !== true) throw new HttpException('rehearsal_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS);
         const agentId = await this.resolveAgent(schema, input.agentId);
 
         let bank: RehearsalBank;

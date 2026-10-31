@@ -49,16 +49,20 @@ export { canonicalJson, sha256, hashOf } from './hash';
 export { formFor, formRequirementIds, screenTargetsFor, hasOwnerForm, parseField, splitTop, FORM_SCHEMA, DURATION_UNITS, WEEK_DAYS } from './forms/descriptor';
 export type { FormDescriptor, FormField, FormFieldKind, FormOption, FormCondition, FormMode } from './forms/descriptor';
 export {
-    generateRehearsal, servedLanguages, seededRandom, REHEARSAL_SCHEMA, REHEARSAL_MAX_CASES, REHEARSAL_LANGUAGES,
+    generateRehearsal, servedLanguages, seededRandom, REHEARSAL_SCHEMA, REHEARSAL_MAX_CASES, REHEARSAL_LANGUAGES, rehearsalCaseFor,
 } from './rehearsal/generate';
 export type {
     RehearsalBank, RehearsalCase, RehearsalCoverage, RehearsalEvent, RehearsalExpectation, RehearsalOptions, RehearsalSkip,
+    RehearsalFacts, RehearsalFocus, RehearsalCaseQuery, RehearsalCaseResult,
 } from './rehearsal/generate';
 export { gradeCase, needsJudge, summarize, isPass, passHatK, PENDING_TOOL } from './rehearsal/grade';
 export type {
     RehearsalObservation, RehearsalToolCall, RehearsalOutcome, RehearsalCheck, RehearsalCheckId, RehearsalGrade, RehearsalSummary, JudgeVerdict,
 } from './rehearsal/grade';
 export { figuresOfText, figuresOfValue, figureLabel, hasMoneyFigure } from './rehearsal/figures';
+export { NOT_ANSWER_SOURCES, answerRank, matchesSource } from './rehearsal/sources';
+export { regradeMeasurement, summarizeRegrade, agreementReport, renderAgreement, slugOfSchema, REGRADE_SCHEMA } from './rehearsal/regrade';
+export type { RegradeReport, RegradedAttempt, RegradeSummary, AgreementReport, HumanLabel, StoredMeasurement } from './rehearsal/regrade';
 export {
     checkCopilotProposal, normalizeQuoteText, quoteAppearsIn, valueFigures, figuresWithoutQuote, isCopilotRequirement, sameCopilotValue,
     genericTextReason, MIN_QUOTE_CHARS, MAX_QUOTE_CHARS, MAX_EVIDENCE,

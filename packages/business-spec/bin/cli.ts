@@ -8,6 +8,7 @@ import { readSpecDocs } from '../src/load';
 import { qaTruth, requirementsForIntent } from '../src/qa/truth';
 import { renderReportMarkdown } from '../src/report';
 import { generateRehearsal } from '../src/rehearsal/generate';
+import { agreementReport, regradeMeasurement, renderAgreement, type HumanLabel, type RegradeReport, type StoredMeasurement, type StoredToolCalls } from '../src/rehearsal/regrade';
 import type { CompiledSpec, TenantSnapshot } from '../src/types';
 
 const REPO = path.resolve(__dirname, '..', '..', '..');
@@ -76,6 +77,38 @@ export function main(argv: string[]): number {
             fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true });
             fs.writeFileSync(out, `${JSON.stringify(compiled())}\n`);
             console.log(`escrito ${out}`);
+            return 0;
+        }
+        if (cmd === 'rehearsal-regrade') {
+            // E1.1 (ADR 0014): recalifica una medición guardada con el generador y el calificador actuales; sin LLM
+            const runs = arg(argv, '--runs');
+            const dir = arg(argv, '--snapshots');
+            const out = arg(argv, '--out');
+            if (!runs || !dir || !out) throw new Error('uso: rehearsal-regrade --runs <medición.json> --snapshots <dir> --out <archivo> [--tool-calls <archivo>]');
+            const snapshots: Record<string, TenantSnapshot> = {};
+            for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.snapshot.json')).sort()) snapshots[f.replace(/.snapshot.json$/, '')] = loadSnapshot(path.join(dir, f));
+            const toolCallsFile = arg(argv, '--tool-calls');
+            const toolCalls: StoredToolCalls[] = toolCallsFile ? JSON.parse(fs.readFileSync(toolCallsFile, 'utf8')) : [];
+            const report = regradeMeasurement(compiled(), JSON.parse(fs.readFileSync(runs, 'utf8')) as StoredMeasurement, snapshots, toolCalls);
+            fs.writeFileSync(out, `${JSON.stringify(report, null, 2)}
+`);
+            const s = report.summary;
+            console.log(`intentos: ${s.attempts} · ${Object.entries(s.byStatus).map(([k, n]) => `${k} ${n}`).join(' · ')}`);
+            console.log(`antes: determinista ${s.before.deterministic}, juez ${s.before.judge}, error ${s.before.error}`);
+            console.log(`después: determinista ${s.after.deterministic} (aprueba ${s.after.pass}, falla ${s.after.wrong}), necesita juez ${s.after.needsJudge}, sin caso ${s.after.skipped}`);
+            for (const c of s.requirementChanges) console.log(`  ${c.intentId}: ${c.from} → ${c.to} (${c.attempts})`);
+            for (const c of s.expectationChanges) console.log(`  ${c.intentId} ${c.requirementId}: ${c.from} → ${c.to} (${c.attempts})`);
+            console.log(`escrito ${out}`);
+            return 0;
+        }
+        if (cmd === 'rehearsal-agreement') {
+            // E1.1: acuerdo del calificador (determinista + «necesita juez») con la revisión humana
+            const regraded = arg(argv, '--regraded');
+            const labels = arg(argv, '--labels');
+            if (!regraded || !labels) throw new Error('uso: rehearsal-agreement --regraded <archivo> --labels <etiquetas.json> [--json]');
+            const report = agreementReport(JSON.parse(fs.readFileSync(regraded, 'utf8')) as RegradeReport, JSON.parse(fs.readFileSync(labels, 'utf8')) as HumanLabel[]);
+            process.stdout.write(argv.includes('--json') ? `${JSON.stringify(report, null, 2)}
+` : renderAgreement(report));
             return 0;
         }
         const snapFile = arg(argv, '--snapshot');

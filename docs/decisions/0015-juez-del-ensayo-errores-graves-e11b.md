@@ -55,6 +55,29 @@ Además, el script `judge-regraded.cjs` no cargaba las fábricas de configuraci�
 
 El prompt se ajustó sobre las mismas 100 etiquetas con las que se mide, así que el ~90 % está sobreajustado. Antes de usar el juez para decidir, se valida con **etiquetas nuevas puestas a ciegas** (sin ver el veredicto) sobre intentos que no estaban en el conjunto. Si el acuerdo fuera de muestra baja del 90 %, los casos del tipo con más desacuerdo quedan como `inconclusive` y no se cuentan, en vez de forzar un veredicto.
 
+## Validación a ciegas (E1.1c)
+
+Muestra A: 30 intentos nuevos, etiquetados sin ver ningún veredicto (`holdout-labels.json`, 15 correctas, 10 incorrectas y 5 ambiguas). Con los hechos de E1.1b, el juez acertó 84–88 % de las claras, y todos sus fallos fueron reprobar respuestas correctas. Dos de ellos (H21, H23) volvieron a ser hechos incompletos:
+
+- el cliente nombra un ítem en una pregunta general y el caso no está atado a él, así que el juez veía «contenido sembrado» aunque la duración y la descripción estuvieran confirmadas campo por campo;
+- el horario no llegaba, y el agente lo dice como hecho estando sembrado o ausente.
+
+E1.1c corrige ambos:
+
+- `factsOf` busca el ítem nombrado en los mensajes cuando el caso no trae uno. Solo se suma a la ficha; la resolución del requisito no cambia.
+- `business` incluye `CORE.HOURS.REGULAR`.
+
+Como la muestra A ya no es ciega para esa corrección, se tomó otra muestra B de 30 intentos (15 correctas, 10 incorrectas y 5 ambiguas). Acuerdo del juez sobre las claras (`deepseek-chat`, prompt v5):
+
+| Conjunto | Acuerdo | Nota |
+|---|---|---|
+| B | **92 %** (23/25) | Ciego, dos corridas idénticas |
+| A | 96 % y 100 % | Ya no del todo ciego |
+| Calibración | 88 % (44/50) | |
+| **Global** | **≈ 91,5 %** | Juez solo, sobre 100 casos claros. Los deterministas aciertan el 97 % de lo que deciden. |
+
+Con 25 casos claros en B, el intervalo es ancho. El umbral de 90 % se da por alcanzado, y se vuelve a medir cuando se sumen etiquetas en E6 o en la fase D.
+
 ## Consecuencias
 
 - Las corridas de ensayo nuevas usan este juez. Los bancos congelados se recalifican con `rehearsal-regrade`, que regenera los hechos desde la foto.

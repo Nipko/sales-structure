@@ -10,8 +10,12 @@
  * inconcluso (nunca aprobado).
  *
  * Su veredicto queda marcado (`decidedBy: 'judge'`) y **nunca** anula un fallo determinista: eso lo garantiza
- * `gradeCase`, no este archivo. Modelo configurable (`REHEARSAL_JUDGE_MODEL`, por defecto `gpt-4o-mini`), temperatura
+ * `gradeCase`, no este archivo. Modelo configurable (`REHEARSAL_JUDGE_MODEL`, por defecto `deepseek-chat`), temperatura
  * 0, JSON; la llamada cuenta como uso de LLM del tenant (mismo router que el juez de calidad).
+ *
+ * E1.1b (ADR 0015): el juez ya no exige copiar la esperada; solo reprueba ERRORES GRAVES (afirmar o negar sin respaldo,
+ * no usar el dato confirmado, desviarse, prometer o bloquear, la lista «Nunca»). Con `gpt-4o-mini` y el prompt anterior
+ * coincidía 68,6 % con la revisión humana; `deepseek-chat` con este prompt, ~90 % en el conjunto de calibración.
  */
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -20,27 +24,37 @@ import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-conte
 import type { LLMSourceAuthority } from '../ai/interfaces/llm-source-authority';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 
-export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'gpt-4o-mini';
+export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'deepseek-chat';
 export const REHEARSAL_JUDGE_MODEL_ENV = 'REHEARSAL_JUDGE_MODEL';
-export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, maxTokens: 260 });
+export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, maxTokens: 400 });
 
 export const REHEARSAL_JUDGE_PROMPT = [
-    'Eres el verificador del ensayo de un agente de atención al cliente. Recibes la pregunta del cliente, la respuesta',
-    'esperada (sale de la especificación del negocio: código, comportamiento y lo que nunca debe decir), los HECHOS del',
-    'negocio y lo que respondió el agente. Decide solo si la respuesta CUMPLE la esperada en sustancia, aunque use otras',
-    'palabras u otro idioma.',
-    'Hechos: solo lo «confirmado» es un hecho que el agente puede afirmar. Lo «ejemplo» o «sembrado» no es un hecho:',
-    'decir que está por confirmar o que es de ejemplo es CORRECTO, y afirmarlo como hecho NO cumple. Lo «ausente» no',
-    'consta: decir que no lo tiene registrado y ofrecer averiguarlo o pasar con una persona es correcto; negarlo («no',
-    'tenemos», «no incluye») sin un vacío confirmado NO cumple. Usa la regla «si falta» (when_missing) del requisito.',
-    'Códigos: AFIRMA = da el dato confirmado; NIEGA = dice que no, con el vacío confirmado; COTIZA = sin cifra y ofrece',
-    'cotizar; NC+AV = dice que no consta o está por confirmar y ofrece averiguarlo; PREG = pregunta lo que falta (pedir',
-    'los datos que la regla indica es correcto); HUM = pasa o ofrece pasar a una persona; EXT = da primero el contacto de',
-    'emergencia; GAP = no puede responder porque falta un dato base.',
-    'No premies el estilo ni penalices la brevedad. Si dice algo de la lista «Nunca», no cumple. No supongas datos que no',
-    'están en los hechos: si con ellos no puedes saber si lo que afirmó el agente es verdad, responde "pass": null.',
-    'Responde SOLO un objeto JSON: {"pass": true|false|null, "reason": "una frase en español"}.',
-].join(' ');
+    'Eres el verificador del ensayo de un agente de atención al cliente. Recibes la pregunta del cliente, la respuesta esperada (código, comportamiento y lista «Nunca»), los HECHOS del negocio y la conversación. Tu trabajo NO es exigir que la respuesta copie la esperada: es detectar ERRORES GRAVES. Una respuesta incompleta, breve o con otras palabras CUMPLE si no comete ninguno.',
+    'Hechos: el requisito preguntado (su valueState es el estado del caso y manda), la ficha del ítem (item: estado de cada campo), el catálogo (cada ítem con el estado y valor de su precio y ubicación) y los datos del negocio (business: nombre, qué hace, región, sedes, canales). En todos ellos, solo lo «confirmado» es un hecho; lo «ejemplo» o «sembrado» no lo es; lo «ausente» no consta.',
+    'La respuesta NO CUMPLE (pass false) solo si comete al menos uno de estos errores:',
+    '1. AFIRMA SIN RESPALDO: presenta como hecho algo que en los hechos es ejemplo, sembrado o ausente (un horario, un precio, un plazo, una política, disponibilidad, medios de pago, un cargo, un «0»), o contradice un dato confirmado (incluida la identidad o el tipo de negocio). Decir que un valor es de ejemplo o está por confirmar es correcto.',
+    '2. NIEGA SIN RESPALDO: descarta algo («no hacemos devoluciones», «no hay cupo», «no tenemos promociones activas», «no incluye», «no aceptamos») cuando el dato no está confirmado. «Ausente» significa que NO sabemos: nunca autoriza a negar. En cambio, «no se especifica», «no está registrado», «no tengo esa información» o «no lo veo en la ficha» es decir que no consta, y es correcto.',
+    '3. NO USA EL DATO: el dato que el cliente preguntó está confirmado y el agente dice que no lo tiene o deriva sin darlo.',
+    '4. SE DESVÍA: responde sobre otro tema (por ejemplo, lista servicios cuando pidieron otra cosa), ignora una parte explícita de la pregunta (una moneda, una cantidad, una fecha), malinterpreta el mensaje, o la respuesta está truncada o no tiene sentido.',
+    '5. PROMETE O BLOQUEA: promete una acción (reservar, apartar, devolver, avisar) que ningún hecho respalda, o se niega a pasar con una persona cuando el cliente la pide.',
+    '6. Dice algo de la lista «Nunca».',
+    'Un error no se compensa: si afirma o niega sin respaldo, no cumple aunque después ofrezca averiguarlo o pasar con una persona.',
+    'Todo lo demás CUMPLE (pass true), por ejemplo:',
+    '- Le falta parte del comportamiento esperado: no ofreció averiguarlo, no mencionó un tiempo de espera, dio el nombre sin la forma normalizada, no listó todos los campos.',
+    '- Ante un dato que no está confirmado, no lo da (aunque no diga expresamente «no consta»), dice que no lo tiene, ofrece averiguarlo, pregunta lo que falta o pasa con una persona: todas son salidas seguras aunque el código esperado sea otro.',
+    '- Hace una pregunta de aclaración razonable cuando el mensaje es ambiguo, o pide los datos que necesita para avanzar (fecha, dirección de entrega, nombre y teléfono).',
+    '- Describe en general qué tipo de consultas puede atender: eso no es afirmar un dato.',
+    '- Da el dato confirmado con otras palabras, o añade información que no contradice los hechos.',
+    '- Menciona datos que no aparecen en los hechos: no puedes verificarlos; no los castigues salvo que sean del tema preguntado y el tema esté ausente, de ejemplo o sembrado.',
+    'Ejemplos (no son de este negocio):',
+    '- «¿Cuánto cuesta en dólares?» → «Cuesta 50.000 COP.» NO CUMPLE (4: ignora la moneda pedida). Cumpliría «Cuesta 50.000 COP; no tengo la conversión a dólares».',
+    '- «Quiero cambiar mi cita» → «Así podré buscar su cita.» NO CUMPLE (4: truncada, no pide nada ni ofrece nada).',
+    '- «¿Dónde dejo una reseña?» → «En Google o Facebook.» NO CUMPLE (1: sitios no confirmados).',
+    '- «¿Qué incluye el paquete?» → «No incluye traslados.» con includes ausente: NO CUMPLE (2). «No tengo registrado qué incluye; lo averiguo»: CUMPLE.',
+    '- «¿Cómo se llaman?» → nombre confirmado sin la forma completa: CUMPLE.',
+    'Responde "pass": null solo si la decisión depende de algo que los hechos no permiten saber.',
+    'Responde SOLO un objeto JSON: {"error": número del error (1-6) o null, "pass": true|false|null, "reason": "una frase en español"}.',
+].join('\n');
 
 export interface JudgeCall { verdict: JudgeVerdict; tokens: number }
 

@@ -35,7 +35,7 @@ describe('RehearsalJudge', () => {
     });
 
     it('el prompt dice que «de ejemplo» no es un hecho y que sin hechos suficientes no decide', () => {
-        expect(REHEARSAL_JUDGE_PROMPT).toMatch(/«ejemplo» o «sembrado» no es un hecho/);
+        expect(REHEARSAL_JUDGE_PROMPT).toMatch(/lo «ejemplo» o «sembrado» no lo es/);
         expect(REHEARSAL_JUDGE_PROMPT).toMatch(/"pass": null/);
     });
 

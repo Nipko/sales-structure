@@ -49,6 +49,8 @@ export interface RegradedAttempt {
         caseKey: string; requirementId: string; expected: string; valueState: string | null;
         outcome: RehearsalOutcome; decidedBy: 'deterministic' | 'judge' | null; needsJudge: boolean; missClass: string | null;
         reason: string; checks: RehearsalCheck[]; paraphrase: string;
+        /** Lo que el juez de paráfrasis necesita para decidir fuera del agente (solo cuando `needsJudge`). */
+        judgeInput?: { case: RehearsalCase; replies: string[]; toolCalls: RehearsalToolCall[] };
     } | null;
     /** Por qué no hay caso (intención o ítem ya no existen, ningún requisito responde). */
     skip?: string;
@@ -99,7 +101,8 @@ export function regradeMeasurement(spec: CompiledSpec, input: StoredMeasurement,
                 const found = rehearsalCaseFor(spec, snap, { intentId: r.intentId, requirementId: r.requirementIds[0], itemId: r.itemId, language: r.language, turns });
                 if (!found.case) { attempts.push({ ...base, status: 'case_missing', inBank: banks.get(bankKey)!.has(r.caseKey), after: null, skip: found.skip }); continue; }
                 const c: RehearsalCase = found.case;
-                const g = gradeCase(c, { replies: r.turns.map(t => t.agent ?? ''), toolCalls: calls.get(`${tenant.schema}|${run.id}|${r.caseKey}`) ?? [] }, null);
+                const obs = { replies: r.turns.map(t => t.agent ?? ''), toolCalls: calls.get(`${tenant.schema}|${run.id}|${r.caseKey}`) ?? [] };
+                const g = gradeCase(c, obs, null);
                 const status: RegradeStatus = c.requirementIds[0] !== r.requirementIds[0] ? 'requirement_replaced'
                     : c.expected !== r.expected || c.valueState !== r.valueState ? 'expectation_changed' : 'unchanged';
                 attempts.push({
@@ -108,6 +111,7 @@ export function regradeMeasurement(spec: CompiledSpec, input: StoredMeasurement,
                         caseKey: c.key, requirementId: c.requirementIds[0], expected: c.expected, valueState: c.valueState,
                         outcome: g.outcome, decidedBy: g.decidedBy, needsJudge: g.needsJudge, missClass: g.missClass, reason: g.reason, checks: g.checks,
                         paraphrase: c.expectation.paraphrase,
+                        ...(g.needsJudge ? { judgeInput: { case: c, replies: obs.replies, toolCalls: obs.toolCalls } } : {}),
                     },
                 });
             }

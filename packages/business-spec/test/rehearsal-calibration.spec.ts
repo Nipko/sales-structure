@@ -65,6 +65,15 @@ describe('answered_by: qué requisito responde la pregunta', () => {
                 if (c.itemId) expect(c.facts.item?.id).toBe(c.itemId);
             }
         });
+
+        it('E1.1b: el estado del requisito es el del caso, y van el catálogo y los datos del negocio', () => {
+            for (const c of cases) {
+                if (c.valueState) expect(c.facts.requirement.valueState).toBe(c.valueState);
+                expect(Array.isArray(c.facts.catalog)).toBe(true);
+                expect(c.facts.business).toBeDefined();
+                expect(Object.keys(c.facts.business ?? {})).not.toContain(c.requirementIds[0]);
+            }
+        });
     });
 
     it('el banco sigue siendo determinista', () => {

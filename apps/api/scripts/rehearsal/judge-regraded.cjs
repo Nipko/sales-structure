@@ -34,9 +34,13 @@ async function main() {
     const { RehearsalJudge } = require('../../dist/modules/rehearsal/rehearsal-judge');
     const { gradeCase } = require('@parallext/business-spec');
 
+    // Las mismas fábricas de configuración que AppModule: sin ellas, `redis.host` cae en localhost y el proceso se queda
+    // reintentando la conexión sin calificar nada.
+    const load = ['app', 'database', 'redis', 'auth', 'llm'].map(n => require(`../../dist/config/${n}.config`).default);
+
     class JudgeOnlyModule {}
     Module({
-        imports: [ConfigModule.forRoot({ isGlobal: true }), EventEmitterModule.forRoot(), PrismaModule, RedisModule, AIModule],
+        imports: [ConfigModule.forRoot({ isGlobal: true, load }), EventEmitterModule.forRoot(), PrismaModule, RedisModule, AIModule],
         providers: [RehearsalJudge],
     })(JudgeOnlyModule);
 

@@ -90,8 +90,16 @@ export interface RehearsalFacts {
         whenMissing: { code: string; behavior: string; never: string[] };
     };
     item?: { id: string; name: string; fields: Record<string, { state: ValueState; value: unknown }> };
-    /** Ítems activos del catálogo (C06, C11): nombre y estado del contenido y del precio. */
-    catalog?: { name: string; content: ValueState; price: ValueState | null }[];
+    /**
+     * Ítems activos del catálogo: nombre, estado del contenido y del precio y, desde E1.1b, en todos los casos (el
+     * cliente puede nombrar un ítem en una pregunta general) los campos de precio y ubicación con su estado y valor.
+     */
+    catalog?: { name: string; content: ValueState; price: ValueState | null; fields?: Record<string, { state: ValueState; value: unknown }> }[];
+    /**
+     * E1.1b: identidad y contacto del negocio (nombre, qué hace, región, sedes, canales) con su estado. Sin esto el juez
+     * castigaba al agente por usar datos confirmados de otro requisito («afirmó un nombre no confirmado»).
+     */
+    business?: Record<string, { state: ValueState | null; value?: unknown }>;
 }
 
 export interface RehearsalCase {
@@ -313,16 +321,24 @@ const clip = (v: unknown): unknown => {
 const activeItems = (snap: TenantSnapshot): ItemRecord[] => Object.keys(snap.items).sort().flatMap(o => (snap.items[o] ?? []).filter(i => i.active));
 const toValueState = (s: string): ValueState => (s === 'confirmed' ? 'confirmado' : s === 'example' ? 'ejemplo' : 'sembrado');
 
-/** E1.1: intenciones que preguntan por el catálogo entero: el juez recibe la lista de ítems activos con su estado. */
-const CATALOG_INTENTS = new Set(['C06', 'C11', 'P07-1', 'P08-1']);
+/** E1.1b: campos de cada ítem del catálogo que el juez recibe con su valor (precio y ubicación). */
+const CATALOG_FACT_FIELDS = ['price', 'price_per_night', 'price_per_passenger_type', 'currency', 'address', 'city', 'zone'];
 
-function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, item: ItemRecord | null): RehearsalFacts {
+/** E1.1b: requisitos de identidad y contacto que el juez recibe siempre como contexto del negocio. */
+const BUSINESS_FACTS = ['CORE.IDENTITY.NAME', 'CORE.IDENTITY.DESCRIPTION', 'CORE.IDENTITY.REGION', 'CORE.LOCATIONS.LIST', 'CORE.CONTACT.CHANNELS'];
+
+/**
+ * Lo que el juez recibe como verdad. `valueState` del requisito es el del caso (`qaTruth`), no el del valor guardado:
+ * en los requisitos de catálogo la verdad sale de la ficha del ítem y el valor general suele estar «ausente», y el juez
+ * leía esa contradicción como «precio no confirmado» (E1.1b). La ficha va siempre que el cliente nombra un ítem.
+ */
+function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, item: ItemRecord | null, caseState: ValueState | null): RehearsalFacts {
     const rv = resolveValue(snap.values[req.req.id], at, item ? `item:${item.id}` : undefined);
     const global = rv.state === 'ausente' && item ? resolveValue(snap.values[req.req.id], at) : rv;
     const wm = req.req.whenMissing;
     const facts: RehearsalFacts = {
         requirement: {
-            id: req.req.id, title: req.req.title, valueState: global.state,
+            id: req.req.id, title: req.req.title, valueState: caseState ?? global.state,
             ...(global.record ? { value: clip(global.record.value) } : {}),
             rule: req.req.qaTruth, whenMissing: { code: wm.code, behavior: wm.behavior, never: wm.never },
         },
@@ -332,12 +348,22 @@ function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: Effecti
         for (const [f, v] of Object.entries(item.fields)) fields[f] = { state: itemFieldState(item, f), value: clip(v) };
         facts.item = { id: item.id, name: itemName(item), fields };
     }
-    if (CATALOG_INTENTS.has(intent.id)) {
-        facts.catalog = activeItems(snap).slice(0, FACTS_MAX_ITEMS).map(i => ({
+    facts.catalog = activeItems(snap).slice(0, FACTS_MAX_ITEMS).map(i => {
+        const fields: Record<string, { state: ValueState; value: unknown }> = {};
+        for (const f of CATALOG_FACT_FIELDS) if (i.fields[f] !== undefined && i.fields[f] !== null) fields[f] = { state: itemFieldState(i, f), value: clip(i.fields[f]) };
+        return {
             name: itemName(i), content: toValueState(i.contentStatus),
             price: i.priceStatus === 'example' ? 'ejemplo' : i.priceStatus === 'confirmed' ? 'confirmado' : null,
-        }));
+            ...(Object.keys(fields).length ? { fields } : {}),
+        };
+    });
+    const business: NonNullable<RehearsalFacts['business']> = {};
+    for (const id of BUSINESS_FACTS) {
+        if (id === req.req.id) continue;
+        const v = resolveValue(snap.values[id], at);
+        business[id] = { state: v.state, ...(v.record && v.state !== 'ausente' ? { value: clip(v.record.value) } : {}) };
     }
+    facts.business = business;
     return facts;
 }
 
@@ -361,7 +387,7 @@ function buildCase(spec: CompiledSpec, snap: TenantSnapshot, at: Date, input: Ca
         key, intentId: intent.id, intentTitle: intent.title, layer: intent.layer,
         requirementIds: [req.req.id], requirementTitle: req.req.title, uiTarget: req.req.uiTarget ?? null,
         itemId: item && ownItem ? item.id : null, itemName: item ? name : null, language, turns,
-        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(snap, at, intent, req, item && ownItem ? item : null),
+        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(snap, at, intent, req, item, valueState),
         expectation: {
             figuresAnyOf: anyOf,
             forbiddenFigures: forbiddenFigures(spec, snap, at, tc, item && ownItem ? item : null, new Set(anyOf)),

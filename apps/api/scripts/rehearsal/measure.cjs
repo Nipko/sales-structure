@@ -6,7 +6,9 @@
  *
  *   node scripts/rehearsal/measure.cjs --schemas tenant_a,tenant_b --k 3 --seed e1 --out /tmp/e1.json
  *
- * Cada tenant corre en paralelo; sus repeticiones, en serie (el servicio admite una corrida activa por tenant).
+ * Corre `--concurrency` tenants a la vez (2 por defecto: con 7 a la vez, las lecturas de herramientas superaban su
+ * límite de 3 s); las repeticiones de cada tenant van en serie (el servicio admite una corrida activa por tenant).
+ * No consume el cupo diario del dueño (`internalMeasurement`).
  */
 'use strict';
 const fs = require('node:fs');
@@ -35,7 +37,7 @@ async function measureTenant(svc, prisma, schema, k, seed, log) {
     for (let i = 0; i < k; i++) {
         let view;
         try {
-            view = await svc.start(tenantId, i === 0 ? { seed } : { repeatOf: first });
+            view = await svc.start(tenantId, { ...(i === 0 ? { seed } : { repeatOf: first }), internalMeasurement: true });
         } catch (e) {
             runs.push({ attempt: i + 1, error: String(e?.message ?? e) });
             log(`${schema} intento ${i + 1}: no arrancó (${e?.message ?? e})`);
@@ -67,8 +69,15 @@ async function main() {
     const log = m => console.log(`[${new Date().toISOString()}] ${m}`);
 
     const startedAt = new Date().toISOString();
-    const results = await Promise.all(schemas.map(s => measureTenant(svc, prisma, s, k, seed, log)
-        .catch(e => ({ schema: s, error: String(e?.message ?? e) }))));
+    const concurrency = Math.max(1, Number(arg('--concurrency', '2')));
+    const queue = [...schemas];
+    const results = [];
+    await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+        while (queue.length) {
+            const s = queue.shift();
+            results.push(await measureTenant(svc, prisma, s, k, seed, log).catch(e => ({ schema: s, error: String(e?.message ?? e) })));
+        }
+    }));
     fs.writeFileSync(out, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), k, seed, results }, null, 1));
     log(`listo: ${out}`);
     await app.close();

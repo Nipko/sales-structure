@@ -13,6 +13,7 @@ import {
 } from './types';
 import { CUSTOM_EVALUATOR_IDS } from './engine/evaluators';
 import { parseObjectRef } from './refs';
+import { matchesSource, NOT_ANSWER_SOURCES } from './rehearsal/sources';
 
 export { parseObjectRef };
 
@@ -74,6 +75,8 @@ export function compile(docs: SpecDocs, options: CompileOptions = {}): { spec: C
             id, layer: String(raw.layer ?? ''), block: String(raw.block ?? ''), title: String(raw.title ?? ''),
             ifMissing: Array.isArray(raw.if_missing) ? raw.if_missing.map(String) : [], conversational: raw.conversational === true,
             phrases: {}, demand: 0,
+            answeredBy: Array.isArray(raw.answered_by) ? raw.answered_by.map(String) : [],
+            answerFields: Array.isArray(raw.answer_fields) ? raw.answer_fields.map(String) : [],
         };
         // R7: frases del ensayo por idioma y demanda de B1 §D (ambas opcionales)
         if (raw.demand !== undefined && !(Number.isInteger(raw.demand) && raw.demand >= 0)) err('INVALID_ENUM', `${id}: demand debe ser un entero ≥ 0`, id);
@@ -298,6 +301,15 @@ export function compile(docs: SpecDocs, options: CompileOptions = {}): { spec: C
     for (const p of docs.profiles?.profiles ?? []) for (const [t, v] of Object.entries(p.overrides ?? {})) addOverride(`profile:${p.profile}`, t, v);
     for (const o of docs.objects?.objects ?? []) for (const [t, v] of Object.entries(o.overrides ?? {})) addOverride(`object:${o.object}`, t, v, String(o.object));
     for (const d of domainDocs) for (const [t, v] of Object.entries(d.raises ?? {})) addOverride(`domain:${d.domain}`, t, v);
+
+    // ── E1.1: `answered_by` ⊆ los requisitos que declaran la intención en `answers`, nunca uno de higiene ──
+    for (const intent of Object.values(intents)) {
+        for (const p of intent.answeredBy) {
+            const hits = Object.values(requirements).filter(r => r.answers.includes(intent.id) && matchesSource(p, r));
+            if (!hits.length) err('UNKNOWN_REFERENCE', `${intent.id}: answered_by ${p} no declara la intención en answers`, intent.id);
+            if (hits.some(r => NOT_ANSWER_SOURCES.has(r.id))) err('INVALID_ENUM', `${intent.id}: answered_by ${p} es de higiene o de plataforma, nunca responde`, intent.id);
+        }
+    }
 
     const spec: CompiledSpec = { specVersion, requirements, order, objects, profiles, domains, subtypeToProfile, intents, overrides };
     return { spec, errors };

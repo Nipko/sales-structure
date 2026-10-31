@@ -116,6 +116,13 @@ export interface IntentDef {
     phrases: Record<string, string[]>;
     /** R7: conversaciones de la campaña QA 4300 con esta intención (B1 §D.2); 0 = sin evidencia. */
     demand: number;
+    /**
+     * E1.1 (ADR 0014): requisitos que RESPONDEN la pregunta, en orden de prioridad (`OBJ.*.X` = plantilla del objeto).
+     * Vacío = todos los de `answers` salvo los de higiene o de plataforma. Los demás son contexto, no respuesta esperada.
+     */
+    answeredBy: string[];
+    /** E1.1: en una ficha, los campos que contestan la pregunta (C08 «¿qué incluye?»); vacío = toda la ficha. */
+    answerFields: string[];
 }
 
 export interface CompiledSpec {

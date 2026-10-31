@@ -63,7 +63,8 @@ describe.each(Object.entries(FIXTURES))('generateRehearsal · %s', (slug, profil
             expect(['N/A', 'CUENTA', 'CONVERSACIONAL']).not.toContain(c.expected);
             const truth = qaTruth(spec, snap, { requirementId: c.requirementIds[0], intent: c.intentId, ...(c.itemId ? { itemId: c.itemId } : {}) });
             expect(c.truth).toEqual(truth.cases[0]);
-            expect(c.expected).toBe(truth.expected);
+            // E1.1: con answer_fields (C08) la respuesta se acota a lo preguntado; si nada de eso consta, «no consta»
+            expect(c.expected).toBe(c.focus && !Object.keys(c.focus.affirm).length ? 'NC+AV' : truth.expected);
             expect(c.turns[0]).not.toMatch(/\{item\}/);
             if (c.itemName) expect(c.turns[0]).toContain(c.itemName);
         }
@@ -146,8 +147,12 @@ function makeCase(over: Partial<RehearsalCase> & { expectation?: Partial<Rehears
         requirementIds: ['CORE.PAYMENT.METHODS'], requirementTitle: 'Medios de pago', uiTarget: null, itemId: null, itemName: null,
         language: 'es', turns: ['¿Aceptan tarjeta?'], expected: 'NC+AV', valueState: 'ausente',
         truth: { requirementId: 'CORE.PAYMENT.METHODS', applies: true, valueState: 'ausente', expected: 'NC+AV', never: [], behavior: 'NC+AV', rule: '' },
+        facts: { requirement: { id: 'CORE.PAYMENT.METHODS', title: 'Medios de pago', valueState: 'ausente', rule: '', whenMissing: { code: 'NC+AV', behavior: '', never: [] } } },
         ...rest,
-        expectation: { figuresAnyOf: [], forbiddenFigures: [], noMoney: false, qualifier: null, event: null, unknownMarker: true, answerable: false, paraphrase: '', ...expectation },
+        expectation: {
+            figuresAnyOf: [], forbiddenFigures: [], noMoney: false, qualifier: null, event: null, unknownMarker: true, answerable: false, paraphrase: '',
+            namesAnyOf: [], affirmYes: false, ...expectation,
+        },
     };
 }
 

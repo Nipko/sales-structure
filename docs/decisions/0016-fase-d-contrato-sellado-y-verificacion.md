@@ -61,6 +61,34 @@ Cada rebanada se mide sola, con el mismo banco congelado de E1 (semilla `e1`, k 
 - **E2a** = agente actual + D1a. Es la línea base real de la arquitectura actual: el agente ya ve lo que vería en vivo.
 - **E2b** = E2a + D1b.
 
+### Resultados (1-nov-2026, 7 tenants, k = 3, juez v5)
+
+| | E1 calibrada | E2a (D1a) | E2b (D1a + D1b) |
+|---|---|---|---|
+| Aciertos por intento | 75% | 79% | 85% |
+| pass^3 | 68% | 73% | 77% |
+| pass^3 NC+AV (no consta) | 62% | 67% | 84% |
+| pass^3 PREG | 81% | 90% | 100% |
+| pass^3 AFIRMA (dato confirmado) | 70% | 70% | **38%** |
+
+- E2a: en los 166 casos comunes con E1, pass^3 sube de 70% a 77%. Ver el bloque sí cambia al agente.
+- E2b: el verificador casi elimina las afirmaciones y negaciones sin respaldo, pero **quita datos confirmados**. Un precio de ficha confirmado (250000) se reemplazaba por «no tengo ese dato confirmado».
+  - Causa: la evidencia del verificador eran solo las herramientas que el modelo llamó. No traía el catálogo del turno, los servicios, los hechos verificados ni las lecturas automáticas y obligatorias, que es justo de donde el agente saca esos datos. Y como `unknown` lista el requisito de catálogo cuando a alguna ficha le falta un campo, el precio parecía «sin respaldo».
+  - No se activa en ningún tenant real hasta corregirlo.
+
+### D1c: la evidencia es lo que el agente vio
+
+- `turnEvidence` arma la evidencia en este orden:
+  - hechos verificados (libro de hechos y catálogo proyectado);
+  - catálogo del turno y servicios;
+  - todas las lecturas (llamadas, automáticas de ficha, propiedad y stock, y obligatorias);
+  - conocimiento recuperado;
+  - identidad del negocio.
+
+  El tope sube de 4000 a 9000 caracteres.
+- El prompt aclara que un dato presente en la evidencia está respaldado aunque su tema esté en `unknown`, porque `unknown` describe el requisito en general, no cada ficha.
+- **E2c** = E2a + D1b + D1c, con el mismo banco. Criterio para dejar la bandera: AFIRMA no peor que E2a, y NC+AV y PREG con la ganancia de E2b.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

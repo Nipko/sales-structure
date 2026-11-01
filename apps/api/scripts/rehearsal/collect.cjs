@@ -22,11 +22,15 @@ async function main() {
     const out = arg('--out', '/tmp/rehearsal-collect.json');
     if (!schemas.length || !since) throw new Error('faltan --schemas o --since');
 
+    // Sin esto el proceso es un worker más: procesa colas de producción y corre los cron (isolate.cjs).
+    const isolate = require('./isolate.cjs');
+    isolate.beforeBoot();
     const { NestFactory } = require('@nestjs/core');
     const { AppModule } = require('../../dist/app.module');
     const { RehearsalService } = require('../../dist/modules/rehearsal/rehearsal.service');
     const { PrismaService } = require('../../dist/modules/prisma/prisma.service');
     const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+    isolate.afterBoot(app);
     const svc = app.get(RehearsalService);
     const prisma = app.get(PrismaService);
 

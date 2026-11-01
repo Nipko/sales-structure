@@ -325,16 +325,24 @@ const toValueState = (s: string): ValueState => (s === 'confirmed' ? 'confirmado
 const CATALOG_FACT_FIELDS = ['price', 'price_per_night', 'price_per_passenger_type', 'currency', 'address', 'city', 'zone'];
 
 /** E1.1b: requisitos de identidad y contacto que el juez recibe siempre como contexto del negocio. */
-const BUSINESS_FACTS = ['CORE.IDENTITY.NAME', 'CORE.IDENTITY.DESCRIPTION', 'CORE.IDENTITY.REGION', 'CORE.LOCATIONS.LIST', 'CORE.CONTACT.CHANNELS'];
+const BUSINESS_FACTS = ['CORE.IDENTITY.NAME', 'CORE.IDENTITY.DESCRIPTION', 'CORE.IDENTITY.REGION', 'CORE.LOCATIONS.LIST', 'CORE.CONTACT.CHANNELS', 'CORE.HOURS.REGULAR'];
 
 /**
  * Lo que el juez recibe como verdad. `valueState` del requisito es el del caso (`qaTruth`), no el del valor guardado:
  * en los requisitos de catálogo la verdad sale de la ficha del ítem y el valor general suele estar «ausente», y el juez
  * leía esa contradicción como «precio no confirmado» (E1.1b). La ficha va siempre que el cliente nombra un ítem.
  */
-function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, item: ItemRecord | null, caseState: ValueState | null): RehearsalFacts {
-    const rv = resolveValue(snap.values[req.req.id], at, item ? `item:${item.id}` : undefined);
-    const global = rv.state === 'ausente' && item ? resolveValue(snap.values[req.req.id], at) : rv;
+/** E1.1c: el ítem que nombra el cliente aunque el caso no esté atado a él (P02, P07, P11: «¿cuánto dura X?»). */
+const namedItem = (snap: TenantSnapshot, turns: string[]): ItemRecord | null => {
+    const text = turns.join(' ').toLowerCase();
+    return activeItems(snap).filter(i => itemName(i).length > 2 && text.includes(itemName(i).toLowerCase()))
+        .sort((a, b) => itemName(b).length - itemName(a).length)[0] ?? null;
+};
+
+function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, caseItem: ItemRecord | null, caseState: ValueState | null, turns: string[]): RehearsalFacts {
+    const rv = resolveValue(snap.values[req.req.id], at, caseItem ? `item:${caseItem.id}` : undefined);
+    const global = rv.state === 'ausente' && caseItem ? resolveValue(snap.values[req.req.id], at) : rv;
+    const item = caseItem ?? namedItem(snap, turns);
     const wm = req.req.whenMissing;
     const facts: RehearsalFacts = {
         requirement: {
@@ -387,7 +395,7 @@ function buildCase(spec: CompiledSpec, snap: TenantSnapshot, at: Date, input: Ca
         key, intentId: intent.id, intentTitle: intent.title, layer: intent.layer,
         requirementIds: [req.req.id], requirementTitle: req.req.title, uiTarget: req.req.uiTarget ?? null,
         itemId: item && ownItem ? item.id : null, itemName: item ? name : null, language, turns,
-        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(snap, at, intent, req, item, valueState),
+        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(snap, at, intent, req, item, valueState, turns),
         expectation: {
             figuresAnyOf: anyOf,
             forbiddenFigures: forbiddenFigures(spec, snap, at, tc, item && ownItem ? item : null, new Set(anyOf)),

@@ -74,6 +74,11 @@ describe('answered_by: qué requisito responde la pregunta', () => {
                 expect(Object.keys(c.facts.business ?? {})).not.toContain(c.requirementIds[0]);
             }
         });
+
+        it('E1.1c: si el cliente nombra un ítem, su ficha va aunque el caso no esté atado a él', () => {
+            const named = cases.filter(c => !c.itemId && (c.facts.catalog ?? []).some(i => c.turns.join(' ').toLowerCase().includes(i.name.toLowerCase())));
+            for (const c of named) expect(c.facts.item).toBeDefined();
+        });
     });
 
     it('el banco sigue siendo determinista', () => {

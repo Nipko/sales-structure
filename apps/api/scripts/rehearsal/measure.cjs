@@ -59,11 +59,15 @@ async function main() {
     const out = arg('--out', '/tmp/rehearsal-measure.json');
     if (!schemas.length) throw new Error('falta --schemas');
 
+    // Sin esto el proceso es un worker más: procesa colas de producción y corre los cron (isolate.cjs).
+    const isolate = require('./isolate.cjs');
+    isolate.beforeBoot();
     const { NestFactory } = require('@nestjs/core');
     const { AppModule } = require('../../dist/app.module');
     const { RehearsalService } = require('../../dist/modules/rehearsal/rehearsal.service');
     const { PrismaService } = require('../../dist/modules/prisma/prisma.service');
     const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+    isolate.afterBoot(app);
     const svc = app.get(RehearsalService);
     const prisma = app.get(PrismaService);
     const log = m => console.log(`[${new Date().toISOString()}] ${m}`);

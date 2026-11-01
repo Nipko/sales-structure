@@ -19,7 +19,7 @@ import type { TurnKnowledgeContract } from '@parallext/business-spec';
 
 export const EVIDENCE_VERIFIER_MODEL = 'gpt-4.1-mini';
 export const EVIDENCE_VERIFIER_MAX_TOKENS = 400;
-const EVIDENCE_MAX_CHARS = 4000;
+const EVIDENCE_MAX_CHARS = 9000;
 const REPLY_MAX_CHARS = 3000;
 
 export type EvidenceLanguage = 'es' | 'en' | 'pt' | 'fr';
@@ -49,11 +49,45 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     'Marca SOLO las frases de la respuesta que:',
     '- AFIRMAN como hecho algo de un tema que no consta (un horario, precio, plazo, política, disponibilidad, medio de pago, cargo, servicio o condición) y que no está respaldado por facts ni por evidence; o',
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
+    'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
     'Responde SOLO JSON: {"violations": [{"sentence": "la frase exacta", "kind": "claim" | "denial", "requirementId": "ID del unknown o null"}]}. Sin violaciones: {"violations": []}.',
 ].join('\n');
 
 const clip = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max)}…` : text);
+
+/** Un hecho verificado del turno (libro de hechos o catálogo proyectado), en la forma mínima que el verificador lee. */
+export interface EvidenceFact {
+    readonly subject: { readonly name?: string; readonly id: string };
+    readonly field: string;
+    readonly value: unknown;
+    readonly currency?: string;
+}
+
+/**
+ * D1c: la evidencia es todo lo que el agente vio como autoridad en el turno, no solo las herramientas que llamó. E2b
+ * midió el verificador sin el catálogo del turno, las lecturas automáticas ni los hechos verificados: quitó precios
+ * confirmados (AFIRMA cayó de 70% a 38% de pass^3). Va primero lo más denso y lo que más pesa: hechos, catálogo,
+ * servicios; después lecturas y herramientas, conocimiento recuperado y la identidad del negocio.
+ */
+export function turnEvidence(input: {
+    facts?: readonly EvidenceFact[];
+    catalog?: readonly unknown[];
+    services?: readonly unknown[];
+    reads?: ReadonlyArray<{ name: string; result: unknown }>;
+    knowledge?: readonly unknown[];
+    business?: unknown;
+}): string[] {
+    const facts = (input.facts ?? []).map(f => `${f.subject.name ?? f.subject.id} · ${f.field} = ${JSON.stringify(f.value)}${f.currency ? ` ${f.currency}` : ''}`);
+    return [
+        ...(facts.length ? [`facts: ${clip(facts.join('; '), 2500)}`] : []),
+        ...(input.catalog?.length ? [`catalog: ${clip(JSON.stringify(input.catalog), 2500)}`] : []),
+        ...(input.services?.length ? [`services: ${clip(JSON.stringify(input.services), 1500)}`] : []),
+        ...(input.reads ?? []).map(t => `${t.name}: ${clip(JSON.stringify(t.result ?? null), 1500)}`),
+        ...(input.knowledge ?? []).map(k => `knowledge: ${clip(JSON.stringify(k), 800)}`),
+        ...(input.business ? [`business: ${clip(JSON.stringify(input.business), 800)}`] : []),
+    ];
+}
 
 /** La solicitud al clasificador. `evidence`: lecturas del turno ya serializadas (el llamador las elige y recorta). */
 export function evidenceVerifierRequest(input: {

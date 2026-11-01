@@ -3,7 +3,7 @@ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from '.
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { CATALOG_OVER_FAQ_FLAG, EVIDENCE_VERIFIER_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
-import { evidenceVerifierRequest, parseEvidenceVerdict, repairReply } from './runtime/evidence-verifier';
+import { evidenceVerifierRequest, parseEvidenceVerdict, repairReply, turnEvidence } from './runtime/evidence-verifier';
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
@@ -6479,7 +6479,11 @@ export class ConversationsService {
                 && knowledgeContract?.unknown.length && await this.evidenceVerifierEnabled(tenantId, session)) {
                 finalResponse = await this.verifyReplyEvidence({
                     reply: finalResponse, customerMessage: userText, language: userLanguage, contract: knowledgeContract,
-                    tools: [...preExecutedTools, ...executedToolsThisTurn, ...engineExecutedTools], turnContext,
+                    // D1c: everything the model read as authority this turn, not only the tools it called.
+                    reads: [...new Set([...preExecutedTools, ...executedToolsThisTurn, ...engineExecutedTools,
+                        ...(automaticListingDetailRead ? [{ name: 'get_listing_details', result: automaticListingDetailRead.result }] : []),
+                        ...automaticPropertyDetailReads, ...automaticProductStockReads, ...requiredReadResults])],
+                    facts: [...ledgerFacts, ...projectedCatalogFacts(turnContext, now)], turnContext,
                     router: session ? llmRouter : this.llmRouter, tenantId, executionContext, conversationId: conversation.id, turnTrace, session,
                 });
             }
@@ -7125,19 +7129,17 @@ export class ConversationsService {
     /**
      * D1b: one cheap classifier call flags the sentences that state or deny something without evidence; the server
      * removes them and adds the fixed not-confirmed notice. Never blocks: no verdict means the reply goes unchanged.
-     * Evidence = the turn's reads, the knowledge it retrieved and the business identity it was given.
+     * Evidence = what the model had as authority: verified facts, the turn catalogue and services, every read (called,
+     * automatic or required), the knowledge it retrieved and the business identity (D1c).
      */
     private async verifyReplyEvidence(input: {
         reply: string; customerMessage: string; language: string; contract: TurnKnowledgeContract;
-        tools: Array<{ name: string; result: any }>; turnContext: TurnContext;
+        reads: Array<{ name: string; result: any }>; facts: VerifiedFact[]; turnContext: TurnContext;
         router: { execute: (request: any) => Promise<any> }; tenantId: string; executionContext?: ServiceExecutionContext;
         conversationId: string; turnTrace: { add: (...args: any[]) => void }; session?: AgentTurnSession;
     }): Promise<string> {
-        const evidence = [
-            ...input.tools.map(t => `${t.name}: ${JSON.stringify(t.result ?? null).slice(0, 1500)}`),
-            ...(input.turnContext.retrievedKnowledge ?? []).map(k => `knowledge: ${JSON.stringify(k).slice(0, 800)}`),
-            ...(input.turnContext.business ? [`business: ${JSON.stringify(input.turnContext.business).slice(0, 800)}`] : []),
-        ];
+        const evidence = turnEvidence({ facts: input.facts, catalog: input.turnContext.catalog, services: input.turnContext.availableServices,
+            reads: input.reads, knowledge: input.turnContext.retrievedKnowledge, business: input.turnContext.business });
         try {
             const request = evidenceVerifierRequest({ customerMessage: input.customerMessage, reply: input.reply, contract: input.contract, evidence });
             const response = await input.router.execute({ ...request, tenantId: input.tenantId, executionContext: input.executionContext,

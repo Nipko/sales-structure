@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, splitSentences, unknownNotice } from './evidence-verifier';
+import { evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -57,6 +57,23 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(unknownNotice(contract({ handoff: { available: true } }), 'en')).toContain('connect you with someone');
         expect(unknownNotice(contract(), 'pt-BR')).toBe('Não tenho essa informação confirmada.');
         expect(unknownNotice(contract(), 'de')).toBe('No tengo ese dato confirmado.');
+    });
+
+    it('D1c: la evidencia lleva lo que el agente vio como autoridad, con los hechos y el catálogo primero', () => {
+        const evidence = turnEvidence({
+            facts: [{ subject: { id: 'p1', name: 'apartment en Spark QA Ciudad' }, field: 'price', value: 250000, currency: 'EUR' }],
+            catalog: [{ id: 'p1', title: 'apartment en Spark QA Ciudad', price: 250000 }],
+            services: [{ id: 's1', name: 'Visita guiada', durationMinutes: 60 }],
+            reads: [{ name: 'get_property_details', result: { address: 'Calle 1' } }],
+            knowledge: [{ q: 'horario' }],
+            business: { name: 'Inmobiliaria QA' },
+        });
+        expect(evidence.map(e => e.split(':')[0])).toEqual(['facts', 'catalog', 'services', 'get_property_details', 'knowledge', 'business']);
+        expect(evidence[0]).toBe('facts: apartment en Spark QA Ciudad · price = 250000 EUR');
+        expect(turnEvidence({})).toEqual([]);
+        const req = evidenceVerifierRequest({ customerMessage: '¿Precio?', reply: 'Cuesta 250.000 EUR.', contract: contract(), evidence });
+        expect(JSON.parse(req.messages[0].content).evidence).toContain('250000');
+        expect(req.systemPrompt).toContain('está respaldado aunque el tema esté en unknown');
     });
 
     it('parte frases por . ! ? … con cierres', () => {

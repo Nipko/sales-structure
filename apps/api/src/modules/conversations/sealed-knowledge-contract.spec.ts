@@ -67,6 +67,9 @@ describe('D1a · contrato de conocimiento sellado en la foto de evaluación', ()
             const verifierCalls = f.llmRouter.execute.mock.calls.filter(([req]: any[]) => req.traceContext?.stage === 'evidence_verifier');
             if (on) {
                 expect(verifierCalls).toHaveLength(1);
+                // D1c: el verificador recibe la evidencia armada por turnEvidence (bloques con prefijo), no solo herramientas.
+                const evidence = JSON.parse(verifierCalls[0][0].messages[0].content).evidence as string;
+                expect(typeof evidence).toBe('string');
                 expect(response.reply).not.toContain('lunes a viernes de 8 a 18');
                 expect(response.reply).toContain('No tengo ese dato confirmado');
             } else {

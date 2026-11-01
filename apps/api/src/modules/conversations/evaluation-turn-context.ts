@@ -1,3 +1,4 @@
+import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import type { BusinessIdentity, TenantRegionalProfileV1, TurnContext, VerticalContext } from '@parallext/shared';
 import type { ActiveObjectPolicyContext } from './active-object-policy';
 import type { InformationalHours } from './informational-hours';
@@ -29,6 +30,12 @@ export interface EvaluationTurnContextInputs {
     catalogOverFaq?: boolean;
     /** `agentRuntime.requiredReads.{restaurants,catalog}` as the tenant had them at capture. Optional: older snapshots lack it and read as off. */
     requiredReads?: { restaurants: boolean; catalog: boolean; properties?: boolean; tours?: boolean; listings?: boolean; appointments?: boolean };
+    /**
+     * D1a (ADR 0016): the turn knowledge contract of the last readiness evaluation, as the tenant had it at capture. The
+     * sealed turn renders `<knowledge_status>` and offers «lo averiguo» from it, exactly as a live turn does from the
+     * live contract. Optional: older snapshots lack it and run without the block, as before.
+     */
+    knowledgeContract?: TurnKnowledgeContract;
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -43,6 +50,8 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'factsLedger') && typeof input.factsLedger !== 'boolean')
         || (Object.hasOwn(input, 'renderedFacts') && typeof input.renderedFacts !== 'boolean')
         || (Object.hasOwn(input, 'catalogOverFaq') && typeof input.catalogOverFaq !== 'boolean')
+        || (Object.hasOwn(input, 'knowledgeContract') && (!record(input.knowledgeContract)
+            || typeof input.knowledgeContract.specVersion !== 'string' || !Array.isArray(input.knowledgeContract.unknown)))
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)
             || typeof input.requiredReads.restaurants !== 'boolean' || typeof input.requiredReads.catalog !== 'boolean'
             // PR7 and real-estate pilots: optional, a snapshot sealed before them reads as off.

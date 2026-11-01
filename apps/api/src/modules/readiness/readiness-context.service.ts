@@ -40,6 +40,16 @@ export class ReadinessContextService {
 
     constructor(private readonly readiness: ReadinessService) {}
 
+    /** D1a: el contrato entero, para sellarlo en la foto de una evaluación. Nunca lanza: sin contrato, null. */
+    async contract(tenantId: string): Promise<TurnKnowledgeContract | null> {
+        try {
+            return (await this.readiness.turnContract(tenantId)) ?? null;
+        } catch (err) {
+            this.logger.warn(`readiness: contrato del turno no disponible para ${tenantId}: ${(err as Error).message}`);
+            return null;
+        }
+    }
+
     async forTurn(tenantId: string, options: { writesEnforced?: boolean } = {}): Promise<TurnKnowledgeStatus | null> {
         try {
             const contract = await this.readiness.turnContract(tenantId);

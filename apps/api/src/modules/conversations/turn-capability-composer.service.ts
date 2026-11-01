@@ -59,6 +59,8 @@ export interface ComposeTurnCapabilityInput {
     jurisdiction?: string;
     /** Server-owned lease; never accepted from an API payload. */
     sandboxNamespace?: EvalNamespaceLease;
+    /** D1a (ADR 0016): a sealed turn takes the knowledge offers from its snapshot, never from the live contract. */
+    sealedKnowledgeOffers?: { pendingQuestion: boolean };
 }
 
 const PROVIDER_DEFINITIONS: Readonly<Record<string, ToolDefinition>> = Object.freeze({
@@ -315,7 +317,8 @@ export class TurnCapabilityComposerService {
         }
 
         // No compromete al negocio (promete una respuesta, no una reserva): también en un perfil bloqueado.
-        if (await this.pendingQuestionOffered(input.tenantId)) tools = uniqueTools([...tools, ...PENDING_QUESTION_TOOLS]);
+        const pendingQuestion = input.sealedKnowledgeOffers ? input.sealedKnowledgeOffers.pendingQuestion : await this.pendingQuestionOffered(input.tenantId);
+        if (pendingQuestion) tools = uniqueTools([...tools, ...PENDING_QUESTION_TOOLS]);
 
         tools = uniqueTools([...tools, ...identityStepUpToolsFor(tools)]);
         const publishedTools = tools.map(tool => String(tool.name));

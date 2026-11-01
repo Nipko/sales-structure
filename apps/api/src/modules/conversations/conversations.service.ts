@@ -180,7 +180,7 @@ import { BusinessInfoService } from '../business-info/business-info.service';
 import { BusinessFactsReader, renderNotOfferedEntry } from '../readiness/business-facts.reader';
 import { GoLiveService } from '../readiness/go-live.service';
 import { notLiveNotice } from '../readiness/go-live-gate';
-import { ReadinessContextService } from '../readiness/readiness-context.service';
+import { knowledgeStatusFrom, ReadinessContextService } from '../readiness/readiness-context.service';
 import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
 import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
@@ -3009,6 +3009,8 @@ export class ConversationsService {
         const business = this.businessFacts
             ? await this.businessFacts.identity(tenantId, identity, AGENT_TEST_EXECUTION_CONTEXT)
             : identity;
+        // D1a (ADR 0016): the knowledge contract is sealed with the rest, so a sealed turn sees what a live turn sees.
+        const knowledgeContract = this.readinessContext ? await this.readinessContext.contract(tenantId) : null;
         return resolveEvaluationTurnContext({ version: 1, tenantId,
             businessHours: businessHours ?? null,
             appointmentHours: await this.captureAppointmentHours(tenantId, config),
@@ -3030,6 +3032,7 @@ export class ConversationsService {
                 // F4300-08. Only when on: a snapshot of a tenant with the flag off is exactly the previous one.
                 ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_APPOINTMENTS_FLAG) ? { appointments: true } : {}),
             },
+            ...(knowledgeContract ? { knowledgeContract } : {}),
         }, tenantId);
     }
 
@@ -3696,6 +3699,7 @@ export class ConversationsService {
                 jurisdiction: turnContext.regional?.operatingCountry,
                 executionContext,
                 sandboxNamespace: session?.sandboxNamespace,
+                ...(evaluationContext ? { sealedKnowledgeOffers: { pendingQuestion: evaluationContext.knowledgeContract?.offers?.pendingQuestion === true } } : {}),
                 evaluationInputs: session?.snapshot.runtimeInputs ? {
                     providerHealth: session.snapshot.runtimeInputs.providerHealth,
                     mcp: { tools: session.snapshot.mcpTools || [], discoveredCount: session.snapshot.runtimeInputs.mcpDiscoveredCount,
@@ -5710,19 +5714,19 @@ export class ConversationsService {
             ? [...ledgerFacts, ...projectedCatalogFacts(turnContext, now), ...extractVerifiedFacts(preExecutedTools, now).facts] : [];
         if (renderedFacts) turnContext.factTokens = factTokenViews(factRegistry(turnFactBase), now);
         // R4 (C0 §1.2): the turn knowledge contract from the last readiness evaluation, live and in Agent Test alike (the
-        // agent behaves the same in every tenant state). A sealed evaluation replays its frozen inputs: no block there.
+        // agent behaves the same in every tenant state). D1a (ADR 0016): a sealed turn renders the contract sealed in its
+        // snapshot (every Agent Test, rehearsal and evaluation turn is sealed; before D1a none of them got the block).
         // `writes` travels only when the WRITE_MODE capability is enforced, so the prompt never contradicts the tools.
-        if (this.readinessContext && !evaluationContext) {
-            const knowledgeStatus = await this.readinessContext.forTurn(tenantId, {
-                writesEnforced: capability.contract?.writeModeDecision?.mode === 'enforce',
+        const writesEnforced = capability.contract?.writeModeDecision?.mode === 'enforce';
+        const knowledgeStatus = evaluationContext
+            ? (evaluationContext.knowledgeContract ? knowledgeStatusFrom(evaluationContext.knowledgeContract, { writesEnforced }) : null)
+            : this.readinessContext ? await this.readinessContext.forTurn(tenantId, { writesEnforced }) : null;
+        if (knowledgeStatus) {
+            turnContext.knowledgeStatus = knowledgeStatus;
+            turnTrace.add('turn_context', 'knowledge_status', {
+                specVersion: knowledgeStatus.specVersion, verdict: knowledgeStatus.verdict, resultHash: knowledgeStatus.resultHash,
+                unknown: knowledgeStatus.unknownIds.length, sealed: !!evaluationContext,
             });
-            if (knowledgeStatus) {
-                turnContext.knowledgeStatus = knowledgeStatus;
-                turnTrace.add('turn_context', 'knowledge_status', {
-                    specVersion: knowledgeStatus.specVersion, verdict: knowledgeStatus.verdict, resultHash: knowledgeStatus.resultHash,
-                    unknown: knowledgeStatus.unknownIds.length,
-                });
-            }
         }
         let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours);
         if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }

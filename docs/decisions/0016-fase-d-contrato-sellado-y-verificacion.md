@@ -89,6 +89,20 @@ Cada rebanada se mide sola, con el mismo banco congelado de E1 (semilla `e1`, k 
 - El prompt aclara que un dato presente en la evidencia está respaldado aunque su tema esté en `unknown`, porque `unknown` describe el requisito en general, no cada ficha.
 - **E2c** = E2a + D1b + D1c, con el mismo banco. Criterio para dejar la bandera: AFIRMA no peor que E2a, y NC+AV y PREG con la ganancia de E2b.
 
+### E2c y D1d: el código descarta lo que se comprueba sin modelo
+
+E2c (1-nov) dio pass^3 81% (E2a 73%), con NC+AV en 89%. Pero AFIRMA quedó en 60% por intento (E2a 80%). 61 intentos de dental y hotel se perdieron por `evaluation_dependencies_changed:database.structure`: el deploy de D1c aún terminaba cuando arrancó la medición.
+
+- Una sonda sobre inmobiliaria (k = 1) registró la evidencia y el veredicto de cada turno. La evidencia **sí** traía `"price":250000,"priceStatus":"confirmed"`, y aun así el clasificador (gpt-4.1-mini) marcó «el precio confirmado es de 250.000 EUR». De 28 marcas, 10 eran precios o totales confirmados y otras 5 eran frases que solo decían que algo no consta.
+- **D1d:** el código descarta esas marcas antes de reparar:
+  - una afirmación cuyas cifras (o múltiplos de hasta 20, como un total) están en las fuentes autoritativas del turno. Esas fuentes son lecturas, catálogo, servicios y hechos verificados; nunca conocimiento ni identidad, y nunca un precio de ejemplo o sembrado;
+  - una frase que solo dice «no tengo», «no consta» o «por confirmar».
+
+  Una frase con horas (8:00) nunca se respalda por cifras, porque los horarios sembrados son el error más común.
+- La reparación ya no deja un encabezado de lista sin ítems.
+- Repetida sobre la sonda, el filtro descarta 15 de 28 marcas: todos los precios confirmados y las frases de reserva. Conserva los horarios sembrados y las negaciones sin respaldo.
+- **E2d** = E2c + D1d, con el mismo criterio.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

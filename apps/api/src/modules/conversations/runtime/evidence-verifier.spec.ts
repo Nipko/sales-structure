@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -74,6 +74,39 @@ describe('EvidenceVerifier (D1b)', () => {
         const req = evidenceVerifierRequest({ customerMessage: '¿Precio?', reply: 'Cuesta 250.000 EUR.', contract: contract(), evidence });
         expect(JSON.parse(req.messages[0].content).evidence).toContain('250000');
         expect(req.systemPrompt).toContain('está respaldado aunque el tema esté en unknown');
+    });
+
+    it('D1d: cifras de las fuentes autoritativas; un precio de ejemplo no cuenta y el conocimiento tampoco', () => {
+        const nums = authoritativeNumbers({
+            reads: [{ result: { listings: [{ price: 250000, priceStatus: 'confirmed', parkingSpots: 0 }] } }],
+            services: [{ name: 'Visita guiada', durationMinutes: 60, price: 90000, priceStatus: 'example' }],
+            facts: [{ subject: { id: 't1' }, field: 'price', value: 125 }],
+        });
+        expect([...nums].sort((a, b) => a - b)).toEqual([0, 60, 125, 250000]);
+        expect(sentenceNumbers('El total sería 750.000 EUR (3 × 250.000 EUR), abre 8:00.')).toEqual([750000, 3, 250000]);
+    });
+
+    it('D1d: descarta lo comprobable sin modelo — precio confirmado, total, «por confirmar» — y deja horarios y negaciones', () => {
+        const nums = new Set([250000, 60]);
+        const v = (sentence: string, kind: 'claim' | 'denial' = 'claim') => ({ sentence, kind, requirementId: null });
+        const { kept, dropped } = dropBackedViolations([
+            v('El precio confirmado es de 250.000 EUR.'),
+            v('Para 3 apartamentos, el total sería 750.000 EUR (3 × 250.000 EUR).'),
+            v('Visita guiada — precio por confirmar'),
+            v('Abrimos de lunes a viernes de 08:00 a 18:00.'),
+            v('El precio es 90.000 COP.'),
+            v('No cuenta con parqueadero.', 'denial'),
+            v('Cuenta con 2 habitaciones.'),
+        ], nums);
+        expect(dropped.map(d => d.sentence)).toEqual([
+            'El precio confirmado es de 250.000 EUR.', 'Para 3 apartamentos, el total sería 750.000 EUR (3 × 250.000 EUR).', 'Visita guiada — precio por confirmar']);
+        expect(kept).toHaveLength(4);
+    });
+
+    it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
+        const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
+        const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');
+        expect(r.reply).toBe('El precio es 250.000. No tengo ese dato confirmado.');
     });
 
     it('parte frases por . ! ? … con cierres', () => {

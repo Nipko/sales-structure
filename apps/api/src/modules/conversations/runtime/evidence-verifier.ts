@@ -134,6 +134,70 @@ export function parseEvidenceVerdict(content: unknown, reply: string): EvidenceV
 
 const normalize = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
+/** Estados de precio que no respaldan una cifra: el negocio no la confirmó. */
+const UNCONFIRMED_PRICE = new Set(['example', 'seeded', 'missing', 'estimated', 'placeholder']);
+const MAX_MULTIPLE = 20;
+
+/**
+ * D1d: las cifras de las fuentes autoritativas del turno — lecturas, catálogo, servicios y hechos verificados. Nunca el
+ * conocimiento recuperado ni la identidad: pueden ser texto sembrado. Un precio con estado de ejemplo o sembrado no
+ * cuenta.
+ */
+export function authoritativeNumbers(input: {
+    facts?: readonly EvidenceFact[];
+    catalog?: readonly unknown[];
+    services?: readonly unknown[];
+    reads?: ReadonlyArray<{ result: unknown }>;
+}): Set<number> {
+    const out = new Set<number>();
+    const walk = (value: unknown, depth: number): void => {
+        if (depth > 8 || value === null || value === undefined) return;
+        if (typeof value === 'number') { if (Number.isFinite(value)) out.add(value); return; }
+        if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
+        if (typeof value !== 'object') return;
+        const record = value as Record<string, unknown>;
+        const unconfirmedPrice = typeof record.priceStatus === 'string' && UNCONFIRMED_PRICE.has(record.priceStatus);
+        for (const [key, v] of Object.entries(record)) {
+            if (unconfirmedPrice && /price/i.test(key)) continue;
+            walk(v, depth + 1);
+        }
+    };
+    for (const f of input.facts ?? []) if (typeof f.value === 'number') out.add(f.value);
+    walk(input.catalog, 0);
+    walk(input.services, 0);
+    for (const r of input.reads ?? []) walk(r.result, 0);
+    return out;
+}
+
+/** Cifras de una frase: «250.000» y «250,000» son 250000; «13.5» es 13.5. Las horas (8:00) no se leen como cifras. */
+export function sentenceNumbers(sentence: string): number[] {
+    const text = sentence.replace(/\b\d{1,2}:\d{2}\b/g, ' ');
+    return [...text.matchAll(/\d+(?:[.,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?/g)].map(([m]) =>
+        /^\d+(?:[.,]\d{3})+$/.test(m) ? Number(m.replace(/[.,]/g, '')) : Number(m.replace(',', '.')));
+}
+
+const HEDGE = /\b(no (tengo|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
+
+/**
+ * D1d: el código descarta lo que el clasificador marcó mal y es comprobable sin modelo:
+ * - una afirmación cuyas cifras (todas, o múltiplos chicos de una, como un total) están en las fuentes autoritativas;
+ * - una frase que solo dice que algo no consta o está por confirmar (el prompt ya pide no marcarlas).
+ * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
+ */
+export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
+    const backed = (n: number): boolean => numbers.has(n)
+        || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE);
+    const kept: EvidenceViolation[] = [];
+    const dropped: EvidenceViolation[] = [];
+    for (const v of violations) {
+        const hasTime = /\b\d{1,2}:\d{2}\b/.test(v.sentence);
+        const nums = sentenceNumbers(v.sentence).filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
+        const figuresBacked = v.kind === 'claim' && !hasTime && nums.length > 0 && nums.every(backed);
+        if (figuresBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);
+    }
+    return { kept, dropped };
+}
+
 /** Frases: corta tras . ! ? … (y sus cierres) seguidos de espacio o salto de línea. */
 export function splitSentences(text: string): string[] {
     return text.split(/(?<=[.!?…][)"'»”]?)\s+/u).map(s => s.trim()).filter(Boolean);
@@ -175,6 +239,11 @@ export function repairReply(reply: string, violations: readonly EvidenceViolatio
         if (flagged.some(f => n.includes(f) || f.includes(n))) removed.push(s); else kept.push(s);
     }
     if (!removed.length) return { reply, removed: [], noticeAdded: false };
+    // Un encabezado de lista que se quedó sin ítems («Estos son nuestros servicios: 1.») tampoco se envía.
+    for (let i = kept.length - 1; i >= 0; i--) {
+        const bare = kept[i].replace(/(^|\n)\s*\d+[.)]$/, '').trim();
+        if (!bare || bare.endsWith(':')) kept.splice(i, 1); else if (bare !== kept[i]) kept[i] = bare;
+    }
     const notice = unknownNotice(contract, language);
     const question = kept.length && /[?？]\s*$/.test(kept[kept.length - 1]) ? kept.pop()! : null;
     const body = [...kept, notice, ...(question ? [question] : [])].join(' ');

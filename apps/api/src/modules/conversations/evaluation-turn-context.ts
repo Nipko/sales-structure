@@ -36,6 +36,8 @@ export interface EvaluationTurnContextInputs {
      * live contract. Optional: older snapshots lack it and run without the block, as before.
      */
     knowledgeContract?: TurnKnowledgeContract;
+    /** `agentRuntime.evidenceVerifier` (D1b) as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
+    evidenceVerifier?: boolean;
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -50,6 +52,7 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'factsLedger') && typeof input.factsLedger !== 'boolean')
         || (Object.hasOwn(input, 'renderedFacts') && typeof input.renderedFacts !== 'boolean')
         || (Object.hasOwn(input, 'catalogOverFaq') && typeof input.catalogOverFaq !== 'boolean')
+        || (Object.hasOwn(input, 'evidenceVerifier') && typeof input.evidenceVerifier !== 'boolean')
         || (Object.hasOwn(input, 'knowledgeContract') && (!record(input.knowledgeContract)
             || typeof input.knowledgeContract.specVersion !== 'string' || !Array.isArray(input.knowledgeContract.unknown)))
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)

@@ -40,6 +40,8 @@ export const REQUIRED_READS_APPOINTMENTS_FLAG = 'agentRuntime.requiredReads.appo
 export const RENDERED_FACTS_FLAG = 'agentRuntime.renderedFacts';
 /** Per-tenant flag: the service catalogue decides what is offered, over a FAQ about a service it does not list (F4300-24). */
 export const CATALOG_OVER_FAQ_FLAG = 'agentRuntime.catalogOverFaq';
+/** Fase D, D1b (ADR 0016): antes de enviar, quita lo que la respuesta afirma o niega sin evidencia sobre un dato que no consta. */
+export const EVIDENCE_VERIFIER_FLAG = 'agentRuntime.evidenceVerifier';
 /**
  * R4 (ADR 0010): los dos controles nuevos nacen en modo sombra (se calculan y se registran, no cambian nada). Cada bandera
  * los pasa a aplicado para un tenant, después de 7 días de datos de sombra (docs/domain/business-readiness-runtime.md).
@@ -97,6 +99,7 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // availability and record fields as tokens (⟦fact:id⟧ / ⟦count:id⟧ / ⟦avail:id⟧) the server renders from the verified
     // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries
     // are skipped. Off = the prompt and the reply pipeline are exactly the previous ones.
+    { key: EVIDENCE_VERIFIER_FLAG, label: 'Evidence verifier', description: 'Before sending, a classifier flags sentences that state or deny something the business has not confirmed (per the turn knowledge contract); the server removes them and adds the fixed not-confirmed notice', category: 'experimental', default: false },
     { key: RENDERED_FACTS_FLAG, label: 'Rendered facts', description: 'Prices, counts, availability and record fields reach the customer as values rendered by the server from the verified facts (the model writes tokens); a figure the model typed itself is replaced by a safe template', category: 'experimental', default: false },
     // F4300-24 (apps/api/src/modules/conversations/runtime/catalog-over-faq.ts): for an agent that reads a service catalogue
     // (list_services), a FAQ or document naming a service the catalogue does not list is marked not_in_catalogue, the

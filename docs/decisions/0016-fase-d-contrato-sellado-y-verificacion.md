@@ -1,6 +1,6 @@
 # 0016 — Fase D: el turno sellado ve el contrato de conocimiento (D1a), y verificación con evidencia antes de enviar (D1b)
 
-- Estado: D1a aprobada; D1b propuesta (decidida con la autorización autónoma del dueño del 30-oct-2026; se revisa con él a su regreso)
+- Estado: D1a y D1b aprobadas; D1b nace apagada por bandera (decidida con la autorización autónoma del dueño del 30-oct-2026; se revisa con él a su regreso)
 - Fecha: 2026-10-31 · Decide: dueño · Autor: Claude (fase D)
 - Ámbito D1a: `apps/api/src/modules/conversations/evaluation-turn-context.ts` (`knowledgeContract`), `conversations.service.ts` (`captureEvaluationContext`, `<knowledge_status>` del turno), `turn-capability-composer.service.ts` (`sealedKnowledgeOffers`), `readiness/readiness-context.service.ts` (`contract`). Sin migraciones ni banderas nuevas.
 
@@ -30,6 +30,24 @@ El contrato completo (`facts`, `unknown` con su estado, código y lista `never`)
 - reescribe esas frases con el comportamiento `when_missing` del requisito (NC+AV, PREG o HUM, con las ofertas del contrato).
 
 Va detrás de `agentRuntime.evidenceVerifier`, sellada en la foto como las demás banderas.
+
+**Implementación** (`conversations/runtime/evidence-verifier.ts`, paso en `generateResponse` tras los normalizadores):
+
+- **Cuándo corre:** solo con respuesta compuesta por el modelo (no en respuestas deterministas, catálogo primero ni texto de motor) y si el contrato tiene requisitos que no constan.
+- **Clasificador:** `gpt-4.1-mini` (rol `classify`, temperatura 0, JSON). Recibe:
+  - el mensaje y la respuesta;
+  - `unknown` (estado y `never`) y `facts` del contrato;
+  - la evidencia del turno: lecturas, conocimiento recuperado e identidad del negocio.
+
+  Devuelve frases que afirman o niegan sin respaldo; solo se aceptan las que están literalmente en la respuesta.
+- **Reparación** (código, no modelo): quita esas frases y agrega una vez el aviso fijo en es/en/pt/fr.
+  - Con «lo averiguo» ofrecido: «no tengo ese dato confirmado; si quiere, lo consulto con el equipo y le aviso».
+  - Si no, con traspaso disponible: ofrece una persona.
+  - Si no, solo «no tengo ese dato confirmado».
+
+  Una pregunta final que sobrevive queda al final.
+- **Nunca bloquea:** sin veredicto, la respuesta sale igual. Queda en la traza (`guardrail/evidence_verifier`) y como señal `evidence_verifier_repaired`.
+- **Costo:** una llamada barata más por turno con respuesta compuesta, solo con la bandera.
 
 **Riesgo de medición:** si el verificador del producto y el juez del ensayo comparten modelo y criterio, el ensayo mediría su propio sesgo. Para mitigarlo:
 

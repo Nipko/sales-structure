@@ -1,8 +1,10 @@
 import { appointmentRecordReadId } from './appointment-record-read';
 import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from './canonical-consent-recovery';
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
-import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
+import { CATALOG_OVER_FAQ_FLAG, EVIDENCE_VERIFIER_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
+import { evidenceVerifierRequest, parseEvidenceVerdict, repairReply } from './runtime/evidence-verifier';
+import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
     type RequiredReadResult, type RequiredReadsPilot } from './runtime/required-reads.runner';
@@ -3033,6 +3035,8 @@ export class ConversationsService {
                 ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, REQUIRED_READS_APPOINTMENTS_FLAG) ? { appointments: true } : {}),
             },
             ...(knowledgeContract ? { knowledgeContract } : {}),
+            // Only when on: a snapshot of a tenant with the flag off is exactly the previous one.
+            ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, EVIDENCE_VERIFIER_FLAG) ? { evidenceVerifier: true } : {}),
         }, tenantId);
     }
 
@@ -5718,9 +5722,11 @@ export class ConversationsService {
         // snapshot (every Agent Test, rehearsal and evaluation turn is sealed; before D1a none of them got the block).
         // `writes` travels only when the WRITE_MODE capability is enforced, so the prompt never contradicts the tools.
         const writesEnforced = capability.contract?.writeModeDecision?.mode === 'enforce';
-        const knowledgeStatus = evaluationContext
-            ? (evaluationContext.knowledgeContract ? knowledgeStatusFrom(evaluationContext.knowledgeContract, { writesEnforced }) : null)
-            : this.readinessContext ? await this.readinessContext.forTurn(tenantId, { writesEnforced }) : null;
+        // D1b keeps the whole contract for the evidence verifier; the prompt only gets its rendering.
+        const knowledgeContract: TurnKnowledgeContract | null = evaluationContext
+            ? evaluationContext.knowledgeContract ?? null
+            : this.readinessContext ? await this.readinessContext.contract(tenantId) : null;
+        const knowledgeStatus = knowledgeContract ? knowledgeStatusFrom(knowledgeContract, { writesEnforced }) : null;
         if (knowledgeStatus) {
             turnContext.knowledgeStatus = knowledgeStatus;
             turnTrace.add('turn_context', 'knowledge_status', {
@@ -6466,6 +6472,17 @@ export class ConversationsService {
                 finalResponse = this.removeUnfilledPlaceholders(finalResponse, systemPrompt, currentMessages, [...executedToolsThisTurn, ...engineExecutedTools],
                     tenantId, userLanguage, turnContext, session, allowHumanHandoff);
             }
+            // D1b (ADR 0016): nothing the business has not confirmed is stated or denied. Only on a composed reply: a
+            // deterministic reply, the catalogue-first answer and an engine's own text are already grounded.
+            if (finalResponse && !isErrorFallback(finalResponse) && !deterministicReply && !catalogFirstApplied
+                && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())
+                && knowledgeContract?.unknown.length && await this.evidenceVerifierEnabled(tenantId, session)) {
+                finalResponse = await this.verifyReplyEvidence({
+                    reply: finalResponse, customerMessage: userText, language: userLanguage, contract: knowledgeContract,
+                    tools: [...preExecutedTools, ...executedToolsThisTurn, ...engineExecutedTools], turnContext,
+                    router: session ? llmRouter : this.llmRouter, tenantId, executionContext, conversationId: conversation.id, turnTrace, session,
+                });
+            }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
             const placeholderOutcome = UNFILLED_PLACEHOLDER_OUTCOME.get(turnContext);
             if (placeholderOutcome) turnTrace.add('guardrail', 'unfilled_placeholder', { ...placeholderOutcome });
@@ -7094,6 +7111,54 @@ export class ConversationsService {
      * flag existed reads as off. A read failure is "off", which is the
      * behaviour every tenant had before the flag existed.
      */
+    /** `agentRuntime.evidenceVerifier` (D1b, off by default). Sealed turns read the snapshot; a read failure is "off". */
+    private async evidenceVerifierEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
+        try {
+            if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).evidenceVerifier === true;
+            return (await this.featureFlags?.isFeatureEnabled(tenantId, EVIDENCE_VERIFIER_FLAG)) === true;
+        } catch (error: any) {
+            this.logger.warn(`[EvidenceVerifier] flag unavailable for ${tenantId}: ${error?.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * D1b: one cheap classifier call flags the sentences that state or deny something without evidence; the server
+     * removes them and adds the fixed not-confirmed notice. Never blocks: no verdict means the reply goes unchanged.
+     * Evidence = the turn's reads, the knowledge it retrieved and the business identity it was given.
+     */
+    private async verifyReplyEvidence(input: {
+        reply: string; customerMessage: string; language: string; contract: TurnKnowledgeContract;
+        tools: Array<{ name: string; result: any }>; turnContext: TurnContext;
+        router: { execute: (request: any) => Promise<any> }; tenantId: string; executionContext?: ServiceExecutionContext;
+        conversationId: string; turnTrace: { add: (...args: any[]) => void }; session?: AgentTurnSession;
+    }): Promise<string> {
+        const evidence = [
+            ...input.tools.map(t => `${t.name}: ${JSON.stringify(t.result ?? null).slice(0, 1500)}`),
+            ...(input.turnContext.retrievedKnowledge ?? []).map(k => `knowledge: ${JSON.stringify(k).slice(0, 800)}`),
+            ...(input.turnContext.business ? [`business: ${JSON.stringify(input.turnContext.business).slice(0, 800)}`] : []),
+        ];
+        try {
+            const request = evidenceVerifierRequest({ customerMessage: input.customerMessage, reply: input.reply, contract: input.contract, evidence });
+            const response = await input.router.execute({ ...request, tenantId: input.tenantId, executionContext: input.executionContext,
+                traceContext: { conversationId: input.conversationId, stage: 'evidence_verifier' } });
+            const verdict = parseEvidenceVerdict(response?.content, input.reply);
+            if (!verdict) {
+                input.turnTrace.add('guardrail', 'evidence_verifier', { status: 'no_verdict' });
+                return input.reply;
+            }
+            const repair = repairReply(input.reply, verdict.violations, input.contract, input.language);
+            input.turnTrace.add('guardrail', 'evidence_verifier', { status: repair.removed.length ? 'repaired' : 'clean',
+                violations: verdict.violations.map(v => ({ kind: v.kind, requirementId: v.requirementId })), removed: repair.removed.length });
+            if (repair.removed.length) this.recordAgentSignal(input.tenantId, 'evidence_verifier_repaired', input.session);
+            return repair.reply;
+        } catch (error: any) {
+            this.logger.warn(`[EvidenceVerifier] unavailable for ${input.tenantId}: ${error?.message}`);
+            input.turnTrace.add('guardrail', 'evidence_verifier', { status: 'unavailable' });
+            return input.reply;
+        }
+    }
+
     private async safetyTriageEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
         try {
             if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).safetyTriage === true;

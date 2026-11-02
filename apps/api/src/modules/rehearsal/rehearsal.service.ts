@@ -199,13 +199,14 @@ export class RehearsalService {
                 const run = await this.runCase(tenantId, agentId, c, snapshot);
                 let grade = gradeCase(c, run.obs);
                 let judgeTokens = 0;
+                let judgeCostUsd = 0;
                 let judged = false;
                 if (grade.needsJudge && this.judge?.available) {
                     const call = await this.judge.judge(tenantId, c, run.obs.replies, this.agentTest.snapshotSourceAuthority(snapshot));
                     judged = true;
-                    if (call) { grade = gradeCase(c, run.obs, call.verdict); judgeTokens = call.tokens; }
+                    if (call) { grade = gradeCase(c, run.obs, call.verdict); judgeTokens = call.tokens; judgeCostUsd = call.costUsd; }
                 }
-                await this.storeResult(schema, runId, c, run, grade, judged, judgeTokens);
+                await this.storeResult(schema, runId, c, run, grade, judged, judgeTokens, judgeCostUsd);
                 if (run.obs.error === 'ai_message_quota_exceeded') { status = 'stopped'; error = 'ai_message_quota_exceeded'; break; }
             }
         } catch (e) {
@@ -253,7 +254,8 @@ export class RehearsalService {
         }
     }
 
-    private async storeResult(schema: string, runId: string, c: RehearsalCase, run: CaseRun, grade: RehearsalGrade, judged: boolean, judgeTokens: number): Promise<void> {
+    private async storeResult(schema: string, runId: string, c: RehearsalCase, run: CaseRun, grade: RehearsalGrade, judged: boolean, judgeTokens: number,
+        judgeCostUsd = 0): Promise<void> {
         const turns = c.turns.map((customer, i) => ({ customer, agent: (run.obs.replies[i] ?? '').slice(0, 8_000) }));
         const judgeCheck = grade.checks.find(k => k.id === 'judge');
         await this.sql(schema,
@@ -272,7 +274,7 @@ export class RehearsalService {
                     judge_calls = judge_calls + $5, judge_tokens = judge_tokens + $6,
                     models = CASE WHEN $7::text IS NULL OR $7::text = ANY(models) THEN models ELSE array_append(models, $7::text) END
               WHERE id = $1::uuid`,
-            [runId, run.inputTokens, run.outputTokens, run.costUsd, judged ? 1 : 0, judgeTokens, run.model]);
+            [runId, run.inputTokens, run.outputTokens, run.costUsd + judgeCostUsd, judged ? 1 : 0, judgeTokens, run.model]);
     }
 
     private async finish(schema: string, runId: string, status: RehearsalRunStatus, error: string | null): Promise<RehearsalSummary> {

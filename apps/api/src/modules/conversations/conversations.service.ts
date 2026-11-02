@@ -3,7 +3,7 @@ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from '.
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { CATALOG_OVER_FAQ_FLAG, EVIDENCE_VERIFIER_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
-import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, parseEvidenceVerdict, repairReply, turnEvidence } from './runtime/evidence-verifier';
+import { authoritativeAbsences, authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, parseEvidenceVerdict, repairReply, turnEvidence } from './runtime/evidence-verifier';
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
@@ -7149,10 +7149,11 @@ export class ConversationsService {
                 input.turnTrace.add('guardrail', 'evidence_verifier', { status: 'no_verdict' });
                 return input.reply;
             }
-            // D1d: what the classifier flagged but the turn's own data backs (a confirmed price, a total from it) or that only
-            // says something is not confirmed stays in the reply.
-            const { kept, dropped } = dropBackedViolations(verdict.violations, authoritativeNumbers({
-                facts: input.facts, catalog: input.turnContext.catalog, services: input.turnContext.availableServices, reads: input.reads }));
+            // D1d: what the classifier flagged but the turn's own data backs (a confirmed price, a total from it, D1f: a
+            // denial of a fee or amenity the data sets to 0 or false) or that only says something is not confirmed stays.
+            const sources = { catalog: input.turnContext.catalog, services: input.turnContext.availableServices, reads: input.reads };
+            const { kept, dropped } = dropBackedViolations(verdict.violations, authoritativeNumbers({ ...sources, facts: input.facts }),
+                authoritativeAbsences(sources));
             const repair = repairReply(input.reply, kept, input.contract, input.language);
             input.turnTrace.add('guardrail', 'evidence_verifier', { status: repair.removed.length ? 'repaired' : 'clean',
                 violations: kept.map(v => ({ kind: v.kind, requirementId: v.requirementId })), dropped: dropped.length, removed: repair.removed.length });

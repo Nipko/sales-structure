@@ -123,6 +123,15 @@ AFIRMA sigue bajo el criterio. 32 de sus 43 fallos llevan el aviso del verificad
   - la lista de frases de reserva suma «no tenemos», «no hay información» y «no está registrado».
 - **E2e** = E2d + D1e, con el mismo criterio. Si AFIRMA no llega al nivel de E2a, la bandera se apaga y el verificador queda para ensayo.
 
+### D1f: un 0 o false de la ficha respalda la negación
+
+En la misma sonda, el clasificador marcó cinco veces «sin cargo por limpieza» aunque la ficha traía `cleaningFee: 0`. Es el mismo caso que «no cuenta con parqueadero» con `parkingSpots: 0`.
+
+- **Respaldo por ausencia:** `authoritativeAbsences` recoge los campos de las fuentes autoritativas que valen 0 o false. Una frase negativa sin cifras se descarta si nombra un tema cuyo campo está en esa lista. Los temas son pocos y explícitos: limpieza, parqueadero, mascotas, depósito, envío y fumar. Una negación de otro tema sigue marcada.
+- **Prompt:** el del clasificador dice ahora que un 0 o false respalda la negación.
+- **Cautela más estricta:** «no tenemos» solo cuenta como cautela con información, registro o dato. D1e la había abierto a cualquier «no tenemos», y eso habría dejado pasar un «no tenemos parqueadero» inventado.
+- D1f se fusiona después de E2e, para no invalidar la medición en curso.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

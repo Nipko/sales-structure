@@ -300,7 +300,7 @@ describe('a corrective rewrite never reaches the customer with its own commentar
         const h = world({
             tools: STORE, industry: 'retail',
             model: () => 'Su pedido quedó cancelado.',
-            script: request => /afirmó que una reserva/.test(String((request.messages ?? []).slice(-1)[0]?.content ?? ''))
+            script: request => /afirmación de acción completada/.test(String((request.messages ?? []).slice(-1)[0]?.content ?? ''))
                 ? answer('"Para cancelar su pedido necesito su confirmación: ¿desea anular el pedido C03EBDD7?"\n\nThis seems to address the concern about claiming an action. It reports the *')
                 : undefined,
         });
@@ -314,7 +314,7 @@ describe('a corrective rewrite never reaches the customer with its own commentar
         const h = world({
             tools: STORE, industry: 'retail',
             model: () => 'Su pedido quedó cancelado.',
-            script: request => /afirmó que una reserva/.test(String((request.messages ?? []).slice(-1)[0]?.content ?? ''))
+            script: request => /afirmación de acción completada/.test(String((request.messages ?? []).slice(-1)[0]?.content ?? ''))
                 ? answer('Your order is waiting for your confirmation, please tell us whether you want to cancel it and we will do it for you.')
                 : undefined,
         });

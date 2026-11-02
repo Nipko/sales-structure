@@ -100,6 +100,12 @@ describe('booking routing uses the current service catalog before yielding to ve
         expect(h.session().metadata.bookingState).toMatchObject({ step: 'idle' });
         expect(h.session().metadata.bookingState.serviceId).toBeUndefined();
         expect(JSON.parse((await h.session().state.get('booking:services:tenant'))!)).toEqual([previous]);
-        expect(h.f.toolExecutor.execute.mock.calls.map((call: any[]) => call[3])).toEqual(['list_services']);
+        // Only catalogue reads, never a business write. The routing read is the first; the service name says
+        // «virtual», so the modality grounding (service-location-grounding.ts) may read the catalogue again for
+        // the model, with persistence disabled.
+        const calls = h.f.toolExecutor.execute.mock.calls;
+        expect(calls.length).toBeGreaterThanOrEqual(1);
+        expect(calls.map((call: any[]) => call[3]).every((name: string) => name === 'list_services')).toBe(true);
+        expect(calls.slice(1).every((call: any[]) => call[6]?.executionContext?.persistence === 'disabled')).toBe(true);
     });
 });

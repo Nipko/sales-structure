@@ -103,6 +103,19 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept).toHaveLength(4);
     });
 
+    it('D1e: los dígitos de un nombre o código no bloquean el respaldo; «no tenemos información registrada» es cautela', () => {
+        expect(sentenceNumbers('El Spark QA Plato 20261018T110518Z cuesta 13.500 COP.')).toEqual([13500]);
+        expect(sentenceNumbers('El Galaxy S24 vale 3.200.000, el modelo 2024.')).toEqual([3200000, 2024]);
+        const v = (sentence: string, kind: 'claim' | 'denial' = 'claim') => ({ sentence, kind, requirementId: null });
+        const { kept, dropped } = dropBackedViolations([
+            v('El Spark QA Plato 20261018T110518Z cuesta 13.500 COP.'),
+            v('no tenemos información registrada sobre alérgenos para este plato', 'denial'),
+            v('El Galaxy S24 cuesta 99.000 COP.'),
+        ], new Set([13500]));
+        expect(dropped).toHaveLength(2);
+        expect(kept.map(k => k.sentence)).toEqual(['El Galaxy S24 cuesta 99.000 COP.']);
+    });
+
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');

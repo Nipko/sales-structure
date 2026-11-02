@@ -169,14 +169,17 @@ export function authoritativeNumbers(input: {
     return out;
 }
 
-/** Cifras de una frase: «250.000» y «250,000» son 250000; «13.5» es 13.5. Las horas (8:00) no se leen como cifras. */
+/**
+ * Cifras de una frase: «250.000» y «250,000» son 250000; «13.5» es 13.5. Las horas (8:00) no se leen como cifras, ni
+ * los dígitos pegados a letras: son parte de un nombre o código («Galaxy S24», «Plato 20261018T110518Z»).
+ */
 export function sentenceNumbers(sentence: string): number[] {
     const text = sentence.replace(/\b\d{1,2}:\d{2}\b/g, ' ');
-    return [...text.matchAll(/\d+(?:[.,]\d{3})+(?!\d)|\d+(?:[.,]\d+)?/g)].map(([m]) =>
+    return [...text.matchAll(/(?<![\p{L}\d])(?:\d+(?:[.,]\d{3})+|\d+(?:[.,]\d+)?)(?![\p{L}\d])/gu)].map(([m]) =>
         /^\d+(?:[.,]\d{3})+$/.test(m) ? Number(m.replace(/[.,]/g, '')) : Number(m.replace(',', '.')));
 }
 
-const HEDGE = /\b(no (tengo|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
+const HEDGE = /\b(no (tengo|tenemos|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|no (hay|existe) informaci|no est[aá] registrad|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
 
 /**
  * D1d: el código descarta lo que el clasificador marcó mal y es comprobable sin modelo:

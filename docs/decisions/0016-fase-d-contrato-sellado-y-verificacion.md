@@ -103,6 +103,26 @@ E2c (1-nov) dio pass^3 81% (E2a 73%), con NC+AV en 89%. Pero AFIRMA quedó en 60
 - Repetida sobre la sonda, el filtro descarta 15 de 28 marcas: todos los precios confirmados y las frases de reserva. Conserva los horarios sembrados y las negaciones sin respaldo.
 - **E2d** = E2c + D1d, con el mismo criterio.
 
+### E2d y D1e: los dígitos de un nombre no son cifras
+
+E2d (2-nov) salió limpia: 6 errores, todos timeouts de herramientas.
+
+| | E2a | E2c | E2d |
+|---|---|---|---|
+| Aciertos por intento | 79% | 86% | 87% |
+| pass^3 | 73% | 81% | 80% |
+| AFIRMA (por intento / pass^3) | 80% / 70% | 60% / 50% | 69% / 58% |
+| NC+AV | 71% | 93% | 89% |
+| PREG | 91% | 96% | 100% |
+| HUM | 87% | 90% | 88% |
+
+AFIRMA sigue bajo el criterio. 32 de sus 43 fallos llevan el aviso del verificador, y siguen cayendo precios confirmados en comida, hotel, viajes y electrónica. Una sonda en comida y hotel (k = 1) mostró que las cifras autoritativas **sí** traían el precio (13500, 150000). Lo que bloqueaba el descarte eran los dígitos del nombre del ítem: en «Spark QA Plato 20261018T110518Z cuesta 13.500 COP», 20261018 y 110518 se leían como cifras sin respaldo. En un negocio real pasaría lo mismo con «Galaxy S24» o «Ruta 66».
+
+- **D1e:**
+  - `sentenceNumbers` ya no lee dígitos pegados a letras;
+  - la lista de frases de reserva suma «no tenemos», «no hay información» y «no está registrado».
+- **E2e** = E2d + D1e, con el mismo criterio. Si AFIRMA no llega al nivel de E2a, la bandera se apaga y el verificador queda para ensayo.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

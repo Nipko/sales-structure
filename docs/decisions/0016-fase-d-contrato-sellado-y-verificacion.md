@@ -132,6 +132,33 @@ En la misma sonda, el clasificador marcó cinco veces «sin cargo por limpieza»
 - **Cautela más estricta:** «no tenemos» solo cuenta como cautela con información, registro o dato. D1e la había abierto a cualquier «no tenemos», y eso habría dejado pasar un «no tenemos parqueadero» inventado.
 - D1f se fusiona después de E2e, para no invalidar la medición en curso.
 
+### E2e, decisión sobre la bandera y D1g
+
+E2e (2-nov) midió E2d + D1e, con 11 errores (timeouts y `rehearsal_deadline`):
+
+| | E2a (sin verificador) | E2d | E2e |
+|---|---|---|---|
+| Aciertos por intento | 79% | 87% | 87% |
+| pass^3 | 73% | 80% | 80% |
+| AFIRMA (por intento / pass^3) | 80% / 70% | 69% / 58% | 73% / 65% |
+| NC+AV | 71% | 89% | 89% |
+| PREG | 91% | 100% | 99% |
+| HUM | 87% | 88% | 88% |
+
+**El criterio no se cumple:** AFIRMA sigue 7 puntos debajo de E2a. De los 39 fallos AFIRMA, 25 llevan el aviso del verificador.
+
+**Decisión: la bandera sigue encendida en los 7 tenants QA y apagada por defecto para tenants nuevos.** Es un cambio respecto del criterio, y se deja escrito para revisarlo con el dueño.
+
+- El verificador cambia unos 50 intentos en los que el agente inventaba o negaba sin respaldo por una respuesta honesta: NC+AV pasa de 71% a 89% y PREG de 91% a 99%.
+- A cambio pierde unos 10 en los que callaba un dato confirmado.
+- El mandato del rediseño pone primero no inventar. Callar un dato confirmado ofrece pasar a una persona: es una respuesta peor, pero no falsa.
+- Es un entorno de pruebas sin clientes reales. La pérdida en AFIRMA se sigue cerrando con guardas.
+
+**Los fallos AFIRMA que quedan:**
+- **Cupos y stock:** «quedan 10 cupos el sábado» se borra porque la guarda ignora cifras de hasta 20. **D1g:** en una frase de cupos o stock, una cifra chica se respalda si está tal cual en los datos, no como múltiplo.
+- **Precio por noche del hotel:** sigue borrándose después de D1e; la próxima sonda lo diagnostica.
+- **Viajes:** cae de 93% a 83%, en buena parte por casos del banco que no existían en E2d y que no se pueden comparar.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

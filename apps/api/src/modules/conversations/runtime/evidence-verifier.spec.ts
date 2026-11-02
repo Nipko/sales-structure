@@ -160,6 +160,19 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept).toHaveLength(2);
     });
 
+    it('D1i: una cifra que dijo el cliente no se comprueba; un trozo marcado se lee en su frase entera', () => {
+        const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
+        const reply = 'Actualmente tenemos en stock solo 2 unidades del Audífono QA Aurora, por lo que no sería posible pedir 3. '
+            + 'El Tour QA Aurora 20261014 tiene un precio confirmado de 129.000 COP por persona. Quedan 5 cupos para 3 personas.';
+        const { kept, dropped } = dropBackedViolations([
+            v('no sería posible pedir 3'),
+            v('El Tour QA Aurora 20261014 tiene un precio confirmado de 129.000 COP por persona.'),
+            v('Quedan 5 cupos para 3 personas.'),
+        ], new Set([2, 129000]), new Set(), { reply, customerMessage: 'Si pido 3 del Tour QA Aurora 20261014, ¿cuánto sería?' });
+        expect(dropped.map(d => d.sentence)).toEqual(['no sería posible pedir 3', 'El Tour QA Aurora 20261014 tiene un precio confirmado de 129.000 COP por persona.']);
+        expect(kept.map(k => k.sentence)).toEqual(['Quedan 5 cupos para 3 personas.']);
+    });
+
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');

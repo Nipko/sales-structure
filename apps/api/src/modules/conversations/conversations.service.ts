@@ -7153,7 +7153,7 @@ export class ConversationsService {
             // denial of a fee or amenity the data sets to 0 or false) or that only says something is not confirmed stays.
             const sources = { catalog: input.turnContext.catalog, services: input.turnContext.availableServices, reads: input.reads };
             const { kept, dropped } = dropBackedViolations(verdict.violations, authoritativeNumbers({ ...sources, facts: input.facts }),
-                authoritativeAbsences(sources));
+                authoritativeAbsences(sources), { reply: input.reply, customerMessage: input.customerMessage });
             const repair = repairReply(input.reply, kept, input.contract, input.language);
             input.turnTrace.add('guardrail', 'evidence_verifier', { status: repair.removed.length ? 'repaired' : 'clean',
                 violations: kept.map(v => ({ kind: v.kind, requirementId: v.requirementId })), dropped: dropped.length, removed: repair.removed.length });

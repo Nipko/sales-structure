@@ -223,19 +223,26 @@ const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
  * - una frase que solo dice que algo no consta o está por confirmar (el prompt ya pide no marcarlas).
  * - D1f: una negación sin cifras cuyo tema tiene en la ficha un campo en 0 o false («sin cargo por limpieza», cleaningFee 0);
  *   D1h: con cifras, si además todas están respaldadas («150.000 COP por noche, sin cargo por limpieza»).
+ * D1i: una cifra que el cliente escribió (la cantidad que pide, el código del ítem) no es un dato del negocio y no se
+ * comprueba; si el clasificador marcó un trozo, las cifras se leen en la frase entera de la respuesta que lo contiene.
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
 export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
-    absences: ReadonlySet<string> = new Set()): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
+    absences: ReadonlySet<string> = new Set(), turn: { reply?: string; customerMessage?: string } = {},
+): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
     const backed = (n: number): boolean => numbers.has(n)
         || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE);
+    const echoed = new Set(sentenceNumbers(turn.customerMessage ?? ''));
+    const replySentences = splitSentences(turn.reply ?? '');
     const kept: EvidenceViolation[] = [];
     const dropped: EvidenceViolation[] = [];
     for (const v of violations) {
-        const hasTime = /\b\d{1,2}:\d{2}\b/.test(v.sentence);
-        const nums = sentenceNumbers(v.sentence).filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
+        const whole = replySentences.find(s => s.includes(v.sentence)) ?? v.sentence;
+        const figures = sentenceNumbers(whole).filter(n => !echoed.has(n));
+        const hasTime = /\b\d{1,2}:\d{2}\b/.test(whole);
+        const nums = figures.filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
         // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
-        const small = AVAILABILITY.test(v.sentence) ? sentenceNumbers(v.sentence).filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
+        const small = AVAILABILITY.test(whole) ? figures.filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
         const negationBacked = NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
             topic.test(v.sentence) && [...absences].some(key => field.test(key)));
         // D1h: «150.000 COP por noche, sin cargo por limpieza» llega como negación; si la negación está respaldada, cuentan las cifras.

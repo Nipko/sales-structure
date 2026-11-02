@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { authoritativeAbsences, authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -116,22 +116,20 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['El Galaxy S24 cuesta 99.000 COP.']);
     });
 
-    it('D1f: un 0 o false de la ficha respalda la negación de ese tema, y solo de ese', () => {
-        const absences = authoritativeAbsences({
-            reads: [{ result: { properties: [{ cleaningFee: 0, petsAllowed: false, competitorCount: 0, rooms: 2 }] } }],
-        });
-        expect([...absences].sort()).toEqual(['cleaningFee', 'competitorCount', 'petsAllowed']);
+    it('D1j: un 0 o false no respalda una negación; de una frase mixta queda lo respaldado', () => {
         const v = (sentence: string, kind: 'claim' | 'denial' = 'denial') => ({ sentence, kind, requirementId: null });
+        const reply = 'El precio por noche es 150.000 COP y no tiene costo de limpieza. No se aceptan mascotas. '
+            + 'Tiene 2 habitaciones, 80 m² de área y no cuenta con parqueadero. No hay cargo de limpieza (0 COP). ¿Le ayudo?';
         const { kept, dropped } = dropBackedViolations([
-            v('No hay cargos extra por limpieza en la habitación.'),
-            v('No tiene costo adicional por limpieza (sin costo).', 'claim'),
+            v('El precio por noche es 150.000 COP y no tiene costo de limpieza.', 'claim'),
             v('No se aceptan mascotas.'),
-            v('No cuenta con parqueadero.'),
-            v('No tenemos promociones activas.'),
-            v('Tenemos limpieza diaria incluida.', 'claim'),
-        ], new Set(), absences);
-        expect(dropped).toHaveLength(3);
-        expect(kept.map(k => k.sentence)).toEqual(['No cuenta con parqueadero.', 'No tenemos promociones activas.', 'Tenemos limpieza diaria incluida.']);
+            v('Tiene 2 habitaciones, 80 m² de área y no cuenta con parqueadero.'),
+            v('No hay cargo de limpieza (0 COP).'),
+        ], new Set([150000, 0, 80]), { reply });
+        expect(dropped).toEqual([]);
+        expect(kept.map(k => k.keep)).toEqual(['El precio por noche es 150.000 COP.', undefined, 'Tiene 2 habitaciones, 80 m² de área.', undefined]);
+        const r = repairReply(reply, kept, contract(), 'es');
+        expect(r.reply).toBe('El precio por noche es 150.000 COP. Tiene 2 habitaciones, 80 m² de área. No tengo ese dato confirmado. ¿Le ayudo?');
     });
 
     it('D1g: en una frase de cupos o stock, una cifra chica se respalda si está tal cual en los datos', () => {
@@ -148,18 +146,6 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 4 cupos.', 'El tour dura 4 horas.']);
     });
 
-    it('D1h: precio respaldado y negación respaldada en la misma frase se respalda aunque llegue como negación', () => {
-        const absences = new Set(['cleaningFee']);
-        const v = (sentence: string) => ({ sentence, kind: 'denial' as const, requirementId: 'CORE.OFFER.FEES' });
-        const { kept, dropped } = dropBackedViolations([
-            v('El precio es desde 150.000 COP por noche, sin cargo adicional por limpieza (sin costo).'),
-            v('Cuesta 99.000 COP por noche, sin cargo por limpieza.'),
-            v('Cuesta 150.000 COP por noche, sin parqueadero.'),
-        ], new Set([150000]), absences);
-        expect(dropped.map(d => d.sentence)).toEqual(['El precio es desde 150.000 COP por noche, sin cargo adicional por limpieza (sin costo).']);
-        expect(kept).toHaveLength(2);
-    });
-
     it('D1i: una cifra que dijo el cliente no se comprueba; un trozo marcado se lee en su frase entera', () => {
         const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
         const reply = 'Actualmente tenemos en stock solo 2 unidades del Audífono QA Aurora, por lo que no sería posible pedir 3. '
@@ -168,7 +154,7 @@ describe('EvidenceVerifier (D1b)', () => {
             v('no sería posible pedir 3'),
             v('El Tour QA Aurora 20261014 tiene un precio confirmado de 129.000 COP por persona.'),
             v('Quedan 5 cupos para 3 personas.'),
-        ], new Set([2, 129000]), new Set(), { reply, customerMessage: 'Si pido 3 del Tour QA Aurora 20261014, ¿cuánto sería?' });
+        ], new Set([2, 129000]), { reply, customerMessage: 'Si pido 3 del Tour QA Aurora 20261014, ¿cuánto sería?' });
         expect(dropped.map(d => d.sentence)).toEqual(['no sería posible pedir 3', 'El Tour QA Aurora 20261014 tiene un precio confirmado de 129.000 COP por persona.']);
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 5 cupos para 3 personas.']);
     });

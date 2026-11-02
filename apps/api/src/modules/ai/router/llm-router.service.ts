@@ -50,7 +50,6 @@ const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
     { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 1000000, supportsTools: true },
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, maxContextTokens: 128000, supportsTools: true },
-    { id: 'gemini-2.5-pro', provider: 'google', tier: 'tier_1_premium', costPer1kTokens: 0.00563, costInPer1k: 0.00125, costOutPer1k: 0.010, maxContextTokens: 1000000, supportsTools: false },
     // Tier 2 — Standard (good quality, good value — pro plans)
     { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.00035, costInPer1k: 0.0002, costOutPer1k: 0.0005, maxContextTokens: 131072, supportsTools: true },
     { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, maxContextTokens: 1000000, supportsTools: true },
@@ -66,7 +65,8 @@ export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
     Object.freeze(MODEL_REGISTRY.map(model => Object.freeze({ ...model })));
 
 // Task-based fallback chains ordered by cost-effectiveness.
-// Conversation: natural tone + low cost. Gemini included (no tools needed).
+// Conversation: natural tone + low cost. Gemini included (no tools needed). gemini-2.5-pro left the catalogue
+// on 2-nov-2026: Google answers 404 «no longer available to new users».
 // Tool calling: only models with supportsTools:true. Gemini excluded.
 const FALLBACK_CHAINS: Record<TaskType, string[]> = {
     conversation: [
@@ -75,7 +75,6 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
         'gpt-4o-mini',                   // tier_2 — reliable all-around, $0.003/1k
         'deepseek-chat',                 // tier_4 — budget fallback, $0.0001/1k
         'gpt-4.1-mini',                  // tier_2 — solid backup, $0.004/1k
-        'gemini-2.5-pro',                // tier_1 — premium conversation, $0.010/1k
         'gpt-4o',                        // tier_1 — premium, $0.0125/1k
         'claude-sonnet-4-6',             // tier_1 — premium reasoning, $0.015/1k
     ],

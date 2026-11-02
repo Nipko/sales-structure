@@ -186,6 +186,25 @@ C09 (precio) sube de 79% a 95%, C10 (total) de 62% a 90%, C30 de 71% a 95%. C17 
 
 **Pendiente, de raíz:** las herramientas del agente (`list_properties`, `get_property_details`, listados) muestran `cleaningFee: 0` y `parkingSpots: 0` aunque nadie los haya confirmado, y eso invita a negar. Corregirlo exige distinguir en el dato «0 declarado» de «sin declarar», con un estado por campo como el de precios. Queda para el dueño, junto con la decisión sobre la bandera.
 
+### E2g: D1j medido
+
+E2g corrió el 2-nov-2026 con D1j desplegado (7 tenants, k = 3, juez v5).
+
+| | E2a (sin verificador) | E2e | E2f | E2g |
+|---|---|---|---|---|
+| Aciertos por intento | 79% | 87% | 88% | 89% |
+| pass^3 | 73% | 80% | 81% | 82% |
+| AFIRMA (por intento / pass^3) | 80% / 70% | 73% / 65% | 77% / 65% | 82% / 70% |
+| NC+AV | 71% | 89% | 88% | 91% |
+| PREG | 91% | 99% | 99% | 95% |
+| HUM | 87% | 88% | 91% | 88% |
+
+- C17 (requisitos) se recupera de 44% a 76% y C09 (precio) llega a 100%. AFIRMA pasa la meta del 80%.
+- C30 (pedir una persona) cae de 95% a 76%. Durante E2g el proveedor del modelo devolvió 21 errores 429 («model at capacity»); en E2f no hubo ninguno. Además hubo 3 traspasos fallidos (`human_delivery_unavailable`), que en E2f no aparecen. No está probado que los 429 causen las fallas de C30, pero en ellas el agente dice «no hay nadie disponible» o el motor responde que no pudo conectar, porque el ensayo no entrega a personas reales. No es un efecto de D1j, que no toca el traspaso, pero muestra un hueco: si el traspaso falla, el agente no debe retener al cliente; debe dejar la solicitud registrada y decir que el equipo lo contactará.
+- C16 (reservar sin modo definido) sigue bajo (39%): el agente promete «Reservaremos…» sin escritura. Es del agente, no del verificador.
+
+**Decisión:** D1j se queda. La bandera del verificador sigue encendida en los 7 tenants de QA.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

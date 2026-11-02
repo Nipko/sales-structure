@@ -15,7 +15,7 @@ const snapshotOf = (slug: string) => fromLegacyRows(JSON.parse(readFileSync(reso
 const bank = generateRehearsal(spec, snapshotOf('spark-qa-dental-03'), { seed: 'e1' });
 
 function routerReturning(content: string) {
-    return { execute: jest.fn(async (_req: any) => ({ content, usage: { totalTokens: 77 }, finishReason: 'stop' })) };
+    return { execute: jest.fn(async (_req: any) => ({ content, usage: { totalTokens: 77, promptTokens: 1000, completionTokens: 1000 }, finishReason: 'stop' })) };
 }
 
 describe('RehearsalJudge', () => {
@@ -24,7 +24,8 @@ describe('RehearsalJudge', () => {
         const router = routerReturning('{"pass": true, "reason": "cumple"}');
         const judge = new RehearsalJudge(router as any);
         const call = await judge.judge('t1', c, ['respuesta']);
-        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: REHEARSAL_JUDGE_DEFAULT_MODEL }, tokens: 77 });
+        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: REHEARSAL_JUDGE_DEFAULT_MODEL }, tokens: 77, costUsd: expect.any(Number) });
+        expect(call!.costUsd).toBeGreaterThan(0);
         const req = router.execute.mock.calls[0][0];
         expect(req).toMatchObject({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, jsonMode: true, tenantId: 't1', systemPrompt: REHEARSAL_JUDGE_PROMPT });
         const sent = JSON.parse(req.messages[0].content);

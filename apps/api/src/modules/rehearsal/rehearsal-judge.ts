@@ -23,6 +23,7 @@ import type { JudgeVerdict, RehearsalCase } from '@parallext/business-spec';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import type { LLMSourceAuthority } from '../ai/interfaces/llm-source-authority';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { callCostUsd } from '../conversations/agent-turn-session';
 
 export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'deepseek-chat';
 export const REHEARSAL_JUDGE_MODEL_ENV = 'REHEARSAL_JUDGE_MODEL';
@@ -56,7 +57,7 @@ export const REHEARSAL_JUDGE_PROMPT = [
     'Responde SOLO un objeto JSON: {"error": número del error (1-6) o null, "pass": true|false|null, "reason": "una frase en español"}.',
 ].join('\n');
 
-export interface JudgeCall { verdict: JudgeVerdict; tokens: number }
+export interface JudgeCall { verdict: JudgeVerdict; tokens: number; costUsd: number }
 
 /**
  * Lee el JSON del juez; cualquier otra cosa es «sin veredicto» (el caso queda inconcluso, no aprobado). `pass: null`
@@ -122,7 +123,10 @@ export class RehearsalJudge {
             });
             const verdict = parseJudgeVerdict(response?.content, this.model);
             if (!verdict) this.logger.warn(`[rehearsal] juez sin veredicto: case=${c.key} finish=${String(response?.finishReason ?? 'unknown')}`);
-            return verdict ? { verdict, tokens: Number(response?.usage?.totalTokens ?? 0) } : null;
+            // Same pricing as the agent's calls (#348): the catalogue rate of the model that served it.
+            const served = response?.routingDecision?.selectedModel?.id ?? response?.raw?.model ?? this.model;
+            const costUsd = callCostUsd(served, response?.usage?.promptTokens ?? 0, response?.usage?.completionTokens ?? 0);
+            return verdict ? { verdict, tokens: Number(response?.usage?.totalTokens ?? 0), costUsd } : null;
         } catch (error) {
             this.logger.warn(`[rehearsal] juez no disponible: case=${c.key} ${(error as Error)?.message ?? error}`);
             return null;

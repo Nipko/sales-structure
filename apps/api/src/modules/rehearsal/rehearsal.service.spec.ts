@@ -54,7 +54,7 @@ function harness(opts: { running?: number; today?: number; bankRow?: RehearsalBa
         }),
     };
     const readiness = { spec, readSnapshot: jest.fn(async () => snapshotOf('spark-qa-dental-03')) };
-    const judge = { available: true, judge: jest.fn(async () => ({ verdict: { pass: true, reason: 'cumple', model: 'judge' }, tokens: 50 })) };
+    const judge = { available: true, judge: jest.fn(async () => ({ verdict: { pass: true, reason: 'cumple', model: 'judge' }, tokens: 50, costUsd: 0.0002 })) };
     const events = { emit: jest.fn() };
     const service = new RehearsalService(prisma as any, readiness as any, agentTest as any, judge as any, events as any);
     return { service, prisma, agentTest, readiness, judge, events, calls, stored, snapshot };

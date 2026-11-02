@@ -50,6 +50,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- AFIRMAN como hecho algo de un tema que no consta (un horario, precio, plazo, política, disponibilidad, medio de pago, cargo, servicio o condición) y que no está respaldado por facts ni por evidence; o',
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
+    'Un 0 o false en la evidencia respalda una negación: «sin cargo por limpieza» con cleaningFee 0 no es una violación.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
     'Responde SOLO JSON: {"violations": [{"sentence": "la frase exacta", "kind": "claim" | "denial", "requirementId": "ID del unknown o null"}]}. Sin violaciones: {"violations": []}.',
 ].join('\n');
@@ -179,15 +180,49 @@ export function sentenceNumbers(sentence: string): number[] {
         /^\d+(?:[.,]\d{3})+$/.test(m) ? Number(m.replace(/[.,]/g, '')) : Number(m.replace(',', '.')));
 }
 
-const HEDGE = /\b(no (tengo|tenemos|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|no (hay|existe) informaci|no est[aá] registrad|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
+const HEDGE = /\b(no (tengo|tenemos (registrad|informaci|ese dato|esa informaci|datos)|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|no (hay|existe) informaci|no est[aá] registrad|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
+
+/** D1f: temas que una negación puede nombrar, y los campos de la ficha que la respaldan con 0 o false. */
+const ABSENCE_TOPICS: ReadonlyArray<readonly [RegExp, RegExp]> = [
+    [/clean/i, /limpi|cleaning|limpeza/i],
+    [/parking/i, /parqueadero|estacionamiento|parking|garaje|garagem/i],
+    [/(?:^pets?|Pets?)(?=[A-Z_]|$)/, /mascota|\bpets?\b|animal/i],
+    [/deposit/i, /dep[oó]sito|deposit|garant/i],
+    [/(?:delivery|shipping)(?:fee|cost|price)/i, /env[ií]o|domicilio|delivery|shipping|frete/i],
+    [/smok/i, /fumar|smok/i],
+];
+
+/** D1f: los campos de las fuentes autoritativas que valen 0 o false — respaldan «sin cargo», «no tiene», «no se acepta». */
+export function authoritativeAbsences(input: {
+    catalog?: readonly unknown[];
+    services?: readonly unknown[];
+    reads?: ReadonlyArray<{ result: unknown }>;
+}): Set<string> {
+    const out = new Set<string>();
+    const walk = (value: unknown, depth: number): void => {
+        if (depth > 8 || value === null || typeof value !== 'object') return;
+        if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
+        for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
+            if (v === 0 || v === false) out.add(key); else walk(v, depth + 1);
+        }
+    };
+    walk(input.catalog, 0);
+    walk(input.services, 0);
+    for (const r of input.reads ?? []) walk(r.result, 0);
+    return out;
+}
+
+const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
 
 /**
  * D1d: el código descarta lo que el clasificador marcó mal y es comprobable sin modelo:
  * - una afirmación cuyas cifras (todas, o múltiplos chicos de una, como un total) están en las fuentes autoritativas;
  * - una frase que solo dice que algo no consta o está por confirmar (el prompt ya pide no marcarlas).
+ * - D1f: una negación sin cifras cuyo tema tiene en la ficha un campo en 0 o false («sin cargo por limpieza», cleaningFee 0).
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
-export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
+export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
+    absences: ReadonlySet<string> = new Set()): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
     const backed = (n: number): boolean => numbers.has(n)
         || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE);
     const kept: EvidenceViolation[] = [];
@@ -196,7 +231,9 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
         const hasTime = /\b\d{1,2}:\d{2}\b/.test(v.sentence);
         const nums = sentenceNumbers(v.sentence).filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
         const figuresBacked = v.kind === 'claim' && !hasTime && nums.length > 0 && nums.every(backed);
-        if (figuresBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);
+        const absenceBacked = nums.length === 0 && NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
+            topic.test(v.sentence) && [...absences].some(key => field.test(key)));
+        if (figuresBacked || absenceBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);
     }
     return { kept, dropped };
 }

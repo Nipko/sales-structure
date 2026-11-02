@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeAbsences, authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -114,6 +114,24 @@ describe('EvidenceVerifier (D1b)', () => {
         ], new Set([13500]));
         expect(dropped).toHaveLength(2);
         expect(kept.map(k => k.sentence)).toEqual(['El Galaxy S24 cuesta 99.000 COP.']);
+    });
+
+    it('D1f: un 0 o false de la ficha respalda la negación de ese tema, y solo de ese', () => {
+        const absences = authoritativeAbsences({
+            reads: [{ result: { properties: [{ cleaningFee: 0, petsAllowed: false, competitorCount: 0, rooms: 2 }] } }],
+        });
+        expect([...absences].sort()).toEqual(['cleaningFee', 'competitorCount', 'petsAllowed']);
+        const v = (sentence: string, kind: 'claim' | 'denial' = 'denial') => ({ sentence, kind, requirementId: null });
+        const { kept, dropped } = dropBackedViolations([
+            v('No hay cargos extra por limpieza en la habitación.'),
+            v('No tiene costo adicional por limpieza (sin costo).', 'claim'),
+            v('No se aceptan mascotas.'),
+            v('No cuenta con parqueadero.'),
+            v('No tenemos promociones activas.'),
+            v('Tenemos limpieza diaria incluida.', 'claim'),
+        ], new Set(), absences);
+        expect(dropped).toHaveLength(3);
+        expect(kept.map(k => k.sentence)).toEqual(['No cuenta con parqueadero.', 'No tenemos promociones activas.', 'Tenemos limpieza diaria incluida.']);
     });
 
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {

@@ -123,11 +123,10 @@ export class RehearsalJudge {
             });
             const verdict = parseJudgeVerdict(response?.content, this.model);
             if (!verdict) this.logger.warn(`[rehearsal] juez sin veredicto: case=${c.key} finish=${String(response?.finishReason ?? 'unknown')}`);
-            const usage = response?.usage ?? {};
-            // Same pricing as the agent's calls (#348): the router's own figure when it reports one, else the catalogue.
-            const costUsd = typeof response?.cost === 'number' ? response.cost
-                : callCostUsd(response?.model ?? this.model, Number(usage.promptTokens ?? usage.inputTokens ?? 0), Number(usage.completionTokens ?? usage.outputTokens ?? 0));
-            return verdict ? { verdict, tokens: Number(usage.totalTokens ?? 0), costUsd } : null;
+            // Same pricing as the agent's calls (#348): the catalogue rate of the model that served it.
+            const served = response?.routingDecision?.selectedModel?.id ?? response?.raw?.model ?? this.model;
+            const costUsd = callCostUsd(served, response?.usage?.promptTokens ?? 0, response?.usage?.completionTokens ?? 0);
+            return verdict ? { verdict, tokens: Number(response?.usage?.totalTokens ?? 0), costUsd } : null;
         } catch (error) {
             this.logger.warn(`[rehearsal] juez no disponible: case=${c.key} ${(error as Error)?.message ?? error}`);
             return null;

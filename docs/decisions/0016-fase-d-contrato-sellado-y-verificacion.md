@@ -123,7 +123,7 @@ AFIRMA sigue bajo el criterio. 32 de sus 43 fallos llevan el aviso del verificad
   - la lista de frases de reserva suma «no tenemos», «no hay información» y «no está registrado».
 - **E2e** = E2d + D1e, con el mismo criterio. Si AFIRMA no llega al nivel de E2a, la bandera se apaga y el verificador queda para ensayo.
 
-### D1f: un 0 o false de la ficha respalda la negación
+### D1f: un 0 o false de la ficha respalda la negación (retirada por D1j)
 
 En la misma sonda, el clasificador marcó cinco veces «sin cargo por limpieza» aunque la ficha traía `cleaningFee: 0`. Es el mismo caso que «no cuenta con parqueadero» con `parkingSpots: 0`.
 
@@ -156,8 +156,35 @@ E2e (2-nov) midió E2d + D1e, con 11 errores (timeouts y `rehearsal_deadline`):
 
 **Los fallos AFIRMA que quedan:**
 - **Cupos y stock:** «quedan 10 cupos el sábado» se borra porque la guarda ignora cifras de hasta 20. **D1g:** en una frase de cupos o stock, una cifra chica se respalda si está tal cual en los datos, no como múltiplo.
-- **Precio por noche del hotel:** sigue borrándose después de D1e; la próxima sonda lo diagnostica.
+- **Precio por noche del hotel:** sigue borrándose después de D1e; la causa (frase mixta) la corrige D1h y después D1j.
 - **Viajes:** cae de 93% a 83%, en buena parte por casos del banco que no existían en E2d y que no se pueden comparar.
+
+### D1h, D1i, E2f y D1j: un 0 no es un «no»
+
+- **D1h:** el verificador puede marcar como negación «150.000 COP por noche, sin cargo por limpieza». Ninguna regla cubría la mezcla de cifras y negación, así que se borraba el precio (hotel C09).
+- **D1i:** una cifra que escribió el cliente (la cantidad, el código del ítem) no se comprueba. Un trozo marcado se lee en su frase entera. La sonda lo mostró en viajes («Tour QA Aurora 20261014 … 129.000 COP») y en electrónica C10 («no sería posible pedir 3»).
+
+E2f (2-nov-2026, 7 tenants, k = 3, con D1f a D1i):
+
+| | E2a (sin verificador) | E2e | E2f |
+|---|---|---|---|
+| Aciertos por intento | 79% | 87% | 88% |
+| pass^3 | 73% | 80% | 81% |
+| AFIRMA (por intento / pass^3) | 80% / 70% | 73% / 65% | 77% / 65% |
+| NC+AV | 71% | 89% | 88% |
+| PREG | 91% | 99% | 99% |
+| HUM | 87% | 88% | 91% |
+
+C09 (precio) sube de 79% a 95%, C10 (total) de 62% a 90%, C30 de 71% a 95%. C17 (requisitos) cae de 70% a 44%: el agente dice «sin parqueadero» o «no tiene costo de limpieza», el verificador lo deja pasar por D1f y el juez lo marca como negación sin respaldo.
+
+**El juez tiene razón.** La especificación no toma `cleaning_fee` ni `parking_spots` como datos de la ficha, y su regla L4 dice que el valor por defecto de una columna (0, false, lista vacía) no es un «no» confirmado. D1f contradecía eso.
+
+**D1j:**
+- Un 0 o false de los datos no respalda nada: se retiran el respaldo por ausencias de D1f y su línea del prompt (ahora el prompt dice lo contrario).
+- Si una frase mezcla cifras respaldadas con una negación sin respaldo, el reparador quita solo la negación. «El precio por noche es 150.000 COP y no tiene costo de limpieza» queda como «El precio por noche es 150.000 COP.», más el aviso.
+- Una negación que solo repite cifras del cliente o de los datos («no sería posible pedir 3» con stock 2) no cuenta como negación.
+
+**Pendiente, de raíz:** las herramientas del agente (`list_properties`, `get_property_details`, listados) muestran `cleaningFee: 0` y `parkingSpots: 0` aunque nadie los haya confirmado, y eso invita a negar. Corregirlo exige distinguir en el dato «0 declarado» de «sin declarar», con un estado por campo como el de precios. Queda para el dueño, junto con la decisión sobre la bandera.
 
 ## Consecuencias
 

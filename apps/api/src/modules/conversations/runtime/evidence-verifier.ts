@@ -30,6 +30,8 @@ export interface EvidenceViolation {
     readonly kind: 'claim' | 'denial';
     /** El requisito que no consta y que la frase afirma o niega, si el clasificador lo identificó. */
     readonly requirementId: string | null;
+    /** D1j: lo que queda de la frase sin la negación, si eso está respaldado; el reparador lo deja en su lugar. */
+    readonly keep?: string;
 }
 
 export interface EvidenceVerdict { readonly violations: readonly EvidenceViolation[] }
@@ -50,7 +52,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- AFIRMAN como hecho algo de un tema que no consta (un horario, precio, plazo, política, disponibilidad, medio de pago, cargo, servicio o condición) y que no está respaldado por facts ni por evidence; o',
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
-    'Un 0 o false en la evidencia respalda una negación: «sin cargo por limpieza» con cleaningFee 0 no es una violación.',
+    'Un 0 o false en la evidencia NO respalda una negación: suele ser el valor por defecto del campo, no un «no» del negocio. «Sin cargo por limpieza» con cleaningFee 0 es una violación.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
     'Responde SOLO JSON: {"violations": [{"sentence": "la frase exacta", "kind": "claim" | "denial", "requirementId": "ID del unknown o null"}]}. Sin violaciones: {"violations": []}.',
 ].join('\n');
@@ -182,74 +184,58 @@ export function sentenceNumbers(sentence: string): number[] {
 
 const HEDGE = /\b(no (tengo|tenemos (registrad|informaci|ese dato|esa informaci|datos)|consta|está registrad|esta registrad|puedo confirmar|cuento con (ese|esa|el|la) (dato|informaci))|no (hay|existe) informaci|no est[aá] registrad|por confirmar|sin confirmar|not confirmed|don'?t have (that|this)|não tenho|não consta|a confirmar)/i;
 
-/** D1f: temas que una negación puede nombrar, y los campos de la ficha que la respaldan con 0 o false. */
-const ABSENCE_TOPICS: ReadonlyArray<readonly [RegExp, RegExp]> = [
-    [/clean/i, /limpi|cleaning|limpeza/i],
-    [/parking/i, /parqueadero|estacionamiento|parking|garaje|garagem/i],
-    [/(?:^pets?|Pets?)(?=[A-Z_]|$)/, /mascota|\bpets?\b|animal/i],
-    [/deposit/i, /dep[oó]sito|deposit|garant/i],
-    [/(?:delivery|shipping)(?:fee|cost|price)/i, /env[ií]o|domicilio|delivery|shipping|frete/i],
-    [/smok/i, /fumar|smok/i],
-];
-
-/** D1f: los campos de las fuentes autoritativas que valen 0 o false — respaldan «sin cargo», «no tiene», «no se acepta». */
-export function authoritativeAbsences(input: {
-    catalog?: readonly unknown[];
-    services?: readonly unknown[];
-    reads?: ReadonlyArray<{ result: unknown }>;
-}): Set<string> {
-    const out = new Set<string>();
-    const walk = (value: unknown, depth: number): void => {
-        if (depth > 8 || value === null || typeof value !== 'object') return;
-        if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
-        for (const [key, v] of Object.entries(value as Record<string, unknown>)) {
-            if (v === 0 || v === false) out.add(key); else walk(v, depth + 1);
-        }
-    };
-    walk(input.catalog, 0);
-    walk(input.services, 0);
-    for (const r of input.reads ?? []) walk(r.result, 0);
-    return out;
-}
-
 /** D1g: una frase de cupos o stock dice cifras chicas («quedan 10 cupos», «hay 2 unidades»): esas sí se comprueban. */
 const AVAILABILITY = /\b(cupos?|plazas?|lugares|disponib\w*|unidades|stock|existencias|quedan?|spots?|seats?|available|units?|in stock|vagas?|dispon[ií]ve\w*)\b/i;
 
 const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
 
+/** D1j: partes de una frase: comas, punto y coma, y la «y» que abre una negación («… 150.000 COP y no tiene …»). */
+const CLAUSE = /\s*[,;]\s*|\s+(?:y|and|e)\s+(?=(?:no|sin|without|sem|não)\b)/i;
+
 /**
  * D1d: el código descarta lo que el clasificador marcó mal y es comprobable sin modelo:
  * - una afirmación cuyas cifras (todas, o múltiplos chicos de una, como un total) están en las fuentes autoritativas;
  * - una frase que solo dice que algo no consta o está por confirmar (el prompt ya pide no marcarlas).
- * - D1f: una negación sin cifras cuyo tema tiene en la ficha un campo en 0 o false («sin cargo por limpieza», cleaningFee 0);
- *   D1h: con cifras, si además todas están respaldadas («150.000 COP por noche, sin cargo por limpieza»).
  * D1i: una cifra que el cliente escribió (la cantidad que pide, el código del ítem) no es un dato del negocio y no se
  * comprueba; si el clasificador marcó un trozo, las cifras se leen en la frase entera de la respuesta que lo contiene.
+ * D1j: un 0 o false de los datos no respalda nada: suele ser el valor por defecto de la columna, no un «no» del negocio
+ * (L4; retira el respaldo por ausencias de D1f). Si la frase mezcla cifras respaldadas con una negación sin respaldo
+ * («150.000 COP por noche y no tiene costo de limpieza»), la violación sigue pero lleva `keep`: lo respaldado, sin la
+ * negación. Una negación que solo repite cifras del cliente o de los datos («no sería posible pedir 3») no cuenta.
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
 export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
-    absences: ReadonlySet<string> = new Set(), turn: { reply?: string; customerMessage?: string } = {},
+    turn: { reply?: string; customerMessage?: string } = {},
 ): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
-    const backed = (n: number): boolean => numbers.has(n)
-        || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE);
+    const backed = (n: number): boolean => n !== 0 && (numbers.has(n)
+        || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE));
     const echoed = new Set(sentenceNumbers(turn.customerMessage ?? ''));
     const replySentences = splitSentences(turn.reply ?? '');
+    /** `checked`: hay cifras del negocio que comprobar; `ok`: todas respaldadas y sin horas. */
+    const figuresOf = (text: string): { any: boolean; checked: boolean; ok: boolean } => {
+        const all = sentenceNumbers(text);
+        const figures = all.filter(n => !echoed.has(n));
+        const nums = figures.filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
+        // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
+        const small = AVAILABILITY.test(text) ? figures.filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
+        return { any: all.length > 0, checked: nums.length + small.length > 0,
+            ok: !figures.includes(0) && !/\b\d{1,2}:\d{2}\b/.test(text) && nums.every(backed) && small.every(n => backed(n) && numbers.has(n)) };
+    };
     const kept: EvidenceViolation[] = [];
     const dropped: EvidenceViolation[] = [];
     for (const v of violations) {
+        if (HEDGE.test(v.sentence)) { dropped.push(v); continue; }
         const whole = replySentences.find(s => s.includes(v.sentence)) ?? v.sentence;
-        const figures = sentenceNumbers(whole).filter(n => !echoed.has(n));
-        const hasTime = /\b\d{1,2}:\d{2}\b/.test(whole);
-        const nums = figures.filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
-        // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
-        const small = AVAILABILITY.test(whole) ? figures.filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
-        const negationBacked = NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
-            topic.test(v.sentence) && [...absences].some(key => field.test(key)));
-        // D1h: «150.000 COP por noche, sin cargo por limpieza» llega como negación; si la negación está respaldada, cuentan las cifras.
-        const figuresBacked = (v.kind === 'claim' || negationBacked) && !hasTime && nums.length + small.length > 0
-            && nums.every(backed) && small.every(n => numbers.has(n));
-        const absenceBacked = nums.length === 0 && negationBacked;
-        if (figuresBacked || absenceBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);
+        const clauses = whole.split(CLAUSE).map(c => c.trim()).filter(Boolean);
+        const negated = clauses.filter(c => NEGATION.test(c) && !(figuresOf(c).any && figuresOf(c).ok));
+        const all = figuresOf(whole);
+        if (!negated.length) {
+            if (v.kind === 'claim' && all.checked && all.ok) dropped.push(v); else kept.push(v);
+            continue;
+        }
+        const positive = clauses.filter(c => !negated.includes(c));
+        const rest = figuresOf(positive.join(', '));
+        kept.push(positive.length && rest.checked && rest.ok ? { ...v, keep: `${positive.join(', ').replace(/[\s.,;:]+$/, '')}.` } : v);
     }
     return { kept, dropped };
 }
@@ -286,13 +272,15 @@ export interface EvidenceRepair {
  */
 export function repairReply(reply: string, violations: readonly EvidenceViolation[], contract: TurnKnowledgeContract, language: string): EvidenceRepair {
     if (!violations.length) return { reply, removed: [], noticeAdded: false };
-    const flagged = violations.map(v => normalize(v.sentence));
     const sentences = splitSentences(reply);
     const kept: string[] = [];
     const removed: string[] = [];
     for (const s of sentences) {
         const n = normalize(s);
-        if (flagged.some(f => n.includes(f) || f.includes(n))) removed.push(s); else kept.push(s);
+        const hits = violations.filter(v => { const f = normalize(v.sentence); return n.includes(f) || f.includes(n); });
+        if (!hits.length) { kept.push(s); continue; }
+        removed.push(s);
+        if (hits.every(v => v.keep)) kept.push(hits[0].keep!);
     }
     if (!removed.length) return { reply, removed: [], noticeAdded: false };
     // Un encabezado de lista que se quedó sin ítems («Estos son nuestros servicios: 1.») tampoco se envía.

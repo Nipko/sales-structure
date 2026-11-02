@@ -1,5 +1,6 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { randomUUID } from 'crypto';
+import { LLM_MODEL_CATALOGUE } from '../ai/router/llm-router.service';
 import type { TestAgentToolCall, TurnContext } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import type { AgentEvaluationSnapshot } from './agent-evaluation-snapshot';
@@ -74,9 +75,10 @@ export class AgentTurnTrace {
     capability?: any;
 
     provider(response: any): void {
-        this.inputTokens += response?.usage?.promptTokens ?? response?.usage?.inputTokens ?? response?.usage?.prompt_tokens ?? 0;
-        this.outputTokens += response?.usage?.completionTokens ?? response?.usage?.outputTokens ?? response?.usage?.completion_tokens ?? 0;
-        this.cost += response?.cost ?? 0;
+        const input = response?.usage?.promptTokens ?? response?.usage?.inputTokens ?? response?.usage?.prompt_tokens ?? 0;
+        const output = response?.usage?.completionTokens ?? response?.usage?.outputTokens ?? response?.usage?.completion_tokens ?? 0;
+        this.inputTokens += input;
+        this.outputTokens += output;
         // OpenAI-compatible providers keep their actual model inside raw;
         // task routing also reports the candidate that really succeeded.
         // Requested configuration alone is not evidence of the served model.
@@ -84,7 +86,18 @@ export class AgentTurnTrace {
             response?.routingDecision?.selectedModel?.id]
             .find(value => typeof value === 'string' && value.trim().length > 0);
         if (reportedModel) this.model = reportedModel.trim();
+        // The router prices each call for its own counters but does not return the figure, so a response
+        // without `cost` is priced here from the same catalogue and the model that served it.
+        this.cost += typeof response?.cost === 'number' ? response.cost : callCostUsd(reportedModel, input, output);
     }
+}
+
+/** USD of one call at catalogue rates; a dated snapshot («gpt-4o-mini-2024-07-18») is priced as its base model. */
+export function callCostUsd(model: string | undefined, inputTokens: number, outputTokens: number): number {
+    const id = String(model ?? '').trim().toLowerCase();
+    const rate = [...LLM_MODEL_CATALOGUE].sort((a, b) => b.id.length - a.id.length)
+        .find(m => id === m.id || id.startsWith(`${m.id}-`) || id.endsWith(`/${m.id}`));
+    return rate ? (inputTokens / 1000) * rate.costInPer1k + (outputTokens / 1000) * rate.costOutPer1k : 0;
 }
 
 interface StoredSession { session: AgentTurnSession; expires: number }

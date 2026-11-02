@@ -134,6 +134,20 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['No cuenta con parqueadero.', 'No tenemos promociones activas.', 'Tenemos limpieza diaria incluida.']);
     });
 
+    it('D1g: en una frase de cupos o stock, una cifra chica se respalda si está tal cual en los datos', () => {
+        const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
+        const { kept, dropped } = dropBackedViolations([
+            v('Sí, para el sábado quedan 10 cupos disponibles.'),
+            v('Tenemos 2 unidades en stock.'),
+            v('Quedan 4 cupos.'),
+            v('El tour dura 4 horas.'),
+            v('Quedan 10 cupos a 125 EUR por persona.'),
+        ], new Set([10, 2, 125]));
+        expect(dropped.map(d => d.sentence)).toEqual([
+            'Sí, para el sábado quedan 10 cupos disponibles.', 'Tenemos 2 unidades en stock.', 'Quedan 10 cupos a 125 EUR por persona.']);
+        expect(kept.map(k => k.sentence)).toEqual(['Quedan 4 cupos.', 'El tour dura 4 horas.']);
+    });
+
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');

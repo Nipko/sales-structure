@@ -212,6 +212,9 @@ export function authoritativeAbsences(input: {
     return out;
 }
 
+/** D1g: una frase de cupos o stock dice cifras chicas («quedan 10 cupos», «hay 2 unidades»): esas sí se comprueban. */
+const AVAILABILITY = /\b(cupos?|plazas?|lugares|disponib\w*|unidades|stock|existencias|quedan?|spots?|seats?|available|units?|in stock|vagas?|dispon[ií]ve\w*)\b/i;
+
 const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
 
 /**
@@ -230,7 +233,10 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
     for (const v of violations) {
         const hasTime = /\b\d{1,2}:\d{2}\b/.test(v.sentence);
         const nums = sentenceNumbers(v.sentence).filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
-        const figuresBacked = v.kind === 'claim' && !hasTime && nums.length > 0 && nums.every(backed);
+        // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
+        const small = AVAILABILITY.test(v.sentence) ? sentenceNumbers(v.sentence).filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
+        const figuresBacked = v.kind === 'claim' && !hasTime && nums.length + small.length > 0
+            && nums.every(backed) && small.every(n => numbers.has(n));
         const absenceBacked = nums.length === 0 && NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
             topic.test(v.sentence) && [...absences].some(key => field.test(key)));
         if (figuresBacked || absenceBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);

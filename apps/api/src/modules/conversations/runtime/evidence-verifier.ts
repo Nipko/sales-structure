@@ -221,7 +221,8 @@ const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
  * D1d: el código descarta lo que el clasificador marcó mal y es comprobable sin modelo:
  * - una afirmación cuyas cifras (todas, o múltiplos chicos de una, como un total) están en las fuentes autoritativas;
  * - una frase que solo dice que algo no consta o está por confirmar (el prompt ya pide no marcarlas).
- * - D1f: una negación sin cifras cuyo tema tiene en la ficha un campo en 0 o false («sin cargo por limpieza», cleaningFee 0).
+ * - D1f: una negación sin cifras cuyo tema tiene en la ficha un campo en 0 o false («sin cargo por limpieza», cleaningFee 0);
+ *   D1h: con cifras, si además todas están respaldadas («150.000 COP por noche, sin cargo por limpieza»).
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
 export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
@@ -235,10 +236,12 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
         const nums = sentenceNumbers(v.sentence).filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
         // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
         const small = AVAILABILITY.test(v.sentence) ? sentenceNumbers(v.sentence).filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
-        const figuresBacked = v.kind === 'claim' && !hasTime && nums.length + small.length > 0
-            && nums.every(backed) && small.every(n => numbers.has(n));
-        const absenceBacked = nums.length === 0 && NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
+        const negationBacked = NEGATION.test(v.sentence) && ABSENCE_TOPICS.some(([field, topic]) =>
             topic.test(v.sentence) && [...absences].some(key => field.test(key)));
+        // D1h: «150.000 COP por noche, sin cargo por limpieza» llega como negación; si la negación está respaldada, cuentan las cifras.
+        const figuresBacked = (v.kind === 'claim' || negationBacked) && !hasTime && nums.length + small.length > 0
+            && nums.every(backed) && small.every(n => numbers.has(n));
+        const absenceBacked = nums.length === 0 && negationBacked;
         if (figuresBacked || absenceBacked || HEDGE.test(v.sentence)) dropped.push(v); else kept.push(v);
     }
     return { kept, dropped };

@@ -148,6 +148,18 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 4 cupos.', 'El tour dura 4 horas.']);
     });
 
+    it('D1h: precio respaldado y negación respaldada en la misma frase se respalda aunque llegue como negación', () => {
+        const absences = new Set(['cleaningFee']);
+        const v = (sentence: string) => ({ sentence, kind: 'denial' as const, requirementId: 'CORE.OFFER.FEES' });
+        const { kept, dropped } = dropBackedViolations([
+            v('El precio es desde 150.000 COP por noche, sin cargo adicional por limpieza (sin costo).'),
+            v('Cuesta 99.000 COP por noche, sin cargo por limpieza.'),
+            v('Cuesta 150.000 COP por noche, sin parqueadero.'),
+        ], new Set([150000]), absences);
+        expect(dropped.map(d => d.sentence)).toEqual(['El precio es desde 150.000 COP por noche, sin cargo adicional por limpieza (sin costo).']);
+        expect(kept).toHaveLength(2);
+    });
+
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');

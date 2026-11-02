@@ -1,7 +1,7 @@
 /**
  * Fase E: un proceso de medición levanta `AppModule` (el mismo grafo que el worker) para usar `RehearsalService`. Sin
  * esto, ese proceso es un worker más: procesa colas de producción (entrantes de WhatsApp incluidas) y corre los cron.
- * En E1 un cron intentó mandar un correo. Se llama ANTES de cargar `AppModule`:
+ * En E1 un cron intentó mandar un correo. Tampoco repite el mantenimiento de arranque de Prisma. Se llama ANTES de cargar `AppModule`:
  *
  *   require('./isolate.cjs').beforeBoot();  ...createApplicationContext(AppModule)...  isolate.afterBoot(app);
  */
@@ -14,6 +14,13 @@ function beforeBoot() {
     // @nestjs/schedule arranca cada @Cron con `CronJob#start` al terminar el arranque.
     const cron = require('cron');
     cron.CronJob.prototype.start = function measurementNoStart() { return undefined; };
+    // El mantenimiento de arranque de Prisma (DDL con ACCESS EXCLUSIVE y el Historical Sync, que escribe deals) ya lo
+    // corre el API al desplegar; repetido en cada medición solo agrega bloqueos y escrituras de producción.
+    const { PrismaService } = require('../../dist/modules/prisma/prisma.service');
+    for (const step of ['ensureVarcharColumnsWiden', 'reportOrphanTenantSchemas', 'ensureNativeEvidenceOpportunityOwnership', 'syncHistoricalOpportunitiesToDeals']) {
+        if (typeof PrismaService.prototype[step] !== 'function') throw new Error(`isolate: PrismaService.${step} no existe`);
+        PrismaService.prototype[step] = async function measurementSkip() { return undefined; };
+    }
 }
 
 /** Los @Interval y @Timeout se montan con timers; se quitan apenas termina el arranque. */

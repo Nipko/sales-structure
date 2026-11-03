@@ -53,6 +53,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
     'Un 0 o false en la evidencia NO respalda una negación: suele ser el valor por defecto del campo, no un «no» del negocio. «Sin cargo por limpieza» con cleaningFee 0 es una violación.',
+    'Excepción: una lectura de este turno que responde «available»: false con un motivo («reason», por ejemplo no_departure_on_date) SÍ respalda decir que no hay salida, cupo o disponibilidad en esa fecha.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
     'Responde SOLO JSON: {"violations": [{"sentence": "la frase exacta", "kind": "claim" | "denial", "requirementId": "ID del unknown o null"}]}. Sin violaciones: {"violations": []}.',
 ].join('\n');
@@ -189,6 +190,20 @@ const AVAILABILITY = /\b(cupos?|plazas?|lugares|disponib\w*|unidades|stock|exist
 
 const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
 
+/** D1m: una frase sobre la salida, el cupo o la disponibilidad de una fecha. */
+const DATE_AVAILABILITY = /\b(salidas?|departures?|sa[ií]das?|départs?|cupos?|plazas?|seats?|vagas?|disponib\w*|available|availability|dispon[ií]ve\w*)\b/i;
+
+/**
+ * D1m (E2i, C15): una lectura de este turno que contesta «available: false» con un motivo («no_departure_on_date») es un
+ * «no» del negocio para esa fecha, no un valor por defecto: respalda «no hay salida ese día».
+ */
+export function explicitUnavailable(reads: ReadonlyArray<{ result: unknown }> | undefined): boolean {
+    return (reads ?? []).some(r => {
+        const result = r.result as Record<string, unknown> | null;
+        return !!result && typeof result === 'object' && result.available === false && typeof result.reason === 'string' && !!result.reason;
+    });
+}
+
 /** D1j: partes de una frase: comas, punto y coma, y la «y» que abre una negación («… 150.000 COP y no tiene …»). */
 const CLAUSE = /\s*[,;]\s*|\s+(?:y|and|e)\s+(?=(?:no|sin|without|sem|não)\b)/i;
 
@@ -205,7 +220,7 @@ const CLAUSE = /\s*[,;]\s*|\s+(?:y|and|e)\s+(?=(?:no|sin|without|sem|não)\b)/i;
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
 export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
-    turn: { reply?: string; customerMessage?: string } = {},
+    turn: { reply?: string; customerMessage?: string; explicitUnavailable?: boolean } = {},
 ): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
     const backed = (n: number): boolean => n !== 0 && (numbers.has(n)
         || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE));
@@ -226,6 +241,7 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
     for (const v of violations) {
         if (HEDGE.test(v.sentence)) { dropped.push(v); continue; }
         const whole = replySentences.find(s => s.includes(v.sentence)) ?? v.sentence;
+        if (v.kind === 'denial' && turn.explicitUnavailable && DATE_AVAILABILITY.test(whole)) { dropped.push(v); continue; }
         const clauses = whole.split(CLAUSE).map(c => c.trim()).filter(Boolean);
         const negated = clauses.filter(c => NEGATION.test(c) && !(figuresOf(c).any && figuresOf(c).ok));
         const all = figuresOf(whole);

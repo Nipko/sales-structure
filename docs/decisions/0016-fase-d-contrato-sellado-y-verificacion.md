@@ -282,6 +282,25 @@ Probé el caso de viajes en C15 («¿Tienen disponibilidad de Spark QA Tour para
 - Una lectura del turno con `available:false` y un `reason` respalda «no hay salida, cupo o disponibilidad en esa fecha». Esto se aplica en el código (`explicitUnavailable`) y también en el prompt del verificador. Un 0 o false suelto (cleaningFee 0) sigue sin respaldar nada.
 - `check_package_availability`, cuando la fecha no tiene salida, trae `nextDepartures` (fecha, hora y cupos) y la instrucción de darlas. Si no hay ninguna programada, lo dice. Si la lectura falla, devuelve el «no» simple.
 
+### E2j: #361 y D1m medidos; D1n respalda la salida leída
+
+E2j (3-nov, después de #361 y #362), comparada con E2i:
+
+| | E2i | E2j |
+|---|---|---|
+| Aciertos por intento | 89% | 90% |
+| pass^3 | 84% | 85% |
+| AFIRMA | 80% / 70% | 84% / 79% |
+| C22 (cancelar) | 86% | 100% |
+| Dental | 76% | 85% |
+| C15 | 52% | 57% |
+
+Inmobiliaria bajó de 95% a 82%, pero no por el código. Sus tres corridas se cortaron por `rehearsal_deadline` (34, 37 y 34 de 40 casos), con lecturas que pasaron de 3 s. Sus fallos son los de siempre.
+
+En viajes, el «no hay salida el sábado» ya llega al cliente, y con D1m el agente dice la próxima salida. El probe lo muestra: «La próxima salida disponible es el 15 de diciembre de 2026 a las 9:00 a.m., con 10 cupos disponibles». Pero el verificador quitó esa frase. Las fechas y horas no se comprueban como cifras, y la disponibilidad del objeto sigue `[1/2]`.
+
+**D1n:** una afirmación que nombra la fecha de una salida leída en este turno (`upcomingDepartures` o `nextDepartures`) queda respaldada si sus horas y cupos son los de esa salida. La fecha puede venir escrita en es/en/pt/fr o en formato numérico. Lo resuelve el código (`readDepartures` y `departureBacked`), sin modelo. Otra hora, otros cupos u otra fecha no la respaldan.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

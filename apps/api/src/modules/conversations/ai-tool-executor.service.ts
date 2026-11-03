@@ -5022,7 +5022,17 @@ export class AIToolExecutorService {
         partySize: unknown,
     ): Promise<any> {
         try {
-            return await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
+            const result = await this.toursService.checkAvailability(schemaName, packageId, date, partySize);
+            if (result.reason !== 'no_departure_on_date') return result;
+            // D1m (E2i, C15): «¿hay disponibilidad del tour para el sábado?» read «no_departure_on_date» and the reply stopped
+            // there; the departure of 15-dic with 10 seats was in the search result but not said. The next departures travel
+            // with the «no»: the customer gets the dates there are.
+            const departures = await this.nextDeparturesOf(schemaName, [{ id: packageId }]);
+            if (!departures.has(packageId)) return result;
+            const nextDepartures = departures.get(packageId)!;
+            return { ...result, nextDepartures, message: nextDepartures.length
+                ? 'There is no departure on that date. Say so and give the customer the next departures listed in nextDepartures (date, time, seatsLeft).'
+                : 'There is no departure on that date and no upcoming departure is scheduled for this package.' };
         } catch (e: any) {
             return this.safeToolFailure('check_package_availability', e, 'read');
         }

@@ -271,6 +271,17 @@ La caída de dental no viene de D1l. C22 («Quiero cancelar mi reserva») pasó 
 
 **Arreglo:** pedirle al cliente su teléfono («indicarme», «me podría dar», «su teléfono», «your number», «seu telefone», «votre numéro») no es una oferta. Las ofertas de producción («¿Quiere que le proporcione el número de guardia?») se siguen quitando.
 
+### D1m: la fecha sin salida trae las próximas, y su «no» está respaldado
+
+Probé el caso de viajes en C15 («¿Tienen disponibilidad de Spark QA Tour para el sábado?») en Agent Test, registrando qué decide el verificador. El agente leyó `check_package_availability` y obtuvo `{available:false, reason:"no_departure_on_date"}`. Respondió «no tiene disponibilidad para el sábado…, ya que no hay salida programada para esa fecha». Fallaron dos cosas:
+
+- **El verificador quitó esa negación.** La regla de D1j («un 0 o false no respalda una negación») tomó el `false` de esa lectura como un valor por defecto, cuando es un «no» explícito con su motivo.
+- **El agente no dijo la próxima salida** (15-dic, 10 cupos), aunque `search_packages` la traía.
+
+**D1m:**
+- Una lectura del turno con `available:false` y un `reason` respalda «no hay salida, cupo o disponibilidad en esa fecha». Esto se aplica en el código (`explicitUnavailable`) y también en el prompt del verificador. Un 0 o false suelto (cleaningFee 0) sigue sin respaldar nada.
+- `check_package_availability`, cuando la fecha no tiene salida, trae `nextDepartures` (fecha, hora y cupos) y la instrucción de darlas. Si no hay ninguna programada, lo dice. Si la lectura falla, devuelve el «no» simple.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

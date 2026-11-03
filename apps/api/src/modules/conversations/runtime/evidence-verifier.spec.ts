@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, explicitUnavailable, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -163,6 +163,21 @@ describe('EvidenceVerifier (D1b)', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');
         expect(r.reply).toBe('El precio es 250.000. No tengo ese dato confirmado.');
+    });
+
+    it('D1m: una lectura «available: false» con motivo respalda «no hay salida ese día»; un 0 o false suelto no', () => {
+        const reply = 'El paquete Spark QA Tour no tiene disponibilidad para el sábado 7 de noviembre de 2026, ya que no hay salida programada para esa fecha. ¿Le muestro otras fechas?';
+        const v = [{ sentence: 'no hay salida programada para esa fecha', kind: 'denial' as const, requirementId: 'OBJ.TOUR_BOOKING.AVAILABILITY_SOURCE' }];
+        const read = [{ result: { available: false, seatsLeft: 0, reason: 'no_departure_on_date' } }];
+        expect(explicitUnavailable(read)).toBe(true);
+        expect(explicitUnavailable([{ result: { available: false, seatsLeft: 0 } }])).toBe(false);
+        expect(explicitUnavailable([{ result: { cleaningFee: 0, parking: false } }])).toBe(false);
+        expect(dropBackedViolations(v, new Set(), { reply, explicitUnavailable: true }).dropped).toHaveLength(1);
+        expect(dropBackedViolations(v, new Set(), { reply, explicitUnavailable: false }).kept).toHaveLength(1);
+        // una negación de otro tema no se respalda por esa lectura
+        const fee = [{ sentence: 'No hay cargo por cancelación.', kind: 'denial' as const, requirementId: null }];
+        expect(dropBackedViolations(fee, new Set(), { reply: 'No hay cargo por cancelación.', explicitUnavailable: true }).kept).toHaveLength(1);
+        expect(evidenceVerifierRequest({ customerMessage: 'x', reply: 'y', contract: contract(), evidence: [] }).systemPrompt).toContain('no_departure_on_date');
     });
 
     it('parte frases por . ! ? … con cierres', () => {

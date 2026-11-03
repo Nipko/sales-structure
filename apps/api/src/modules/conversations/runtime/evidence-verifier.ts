@@ -204,6 +204,58 @@ export function explicitUnavailable(reads: ReadonlyArray<{ result: unknown }> | 
     });
 }
 
+/** D1n: una salida que una lectura de este turno devolvió (fecha, hora y cupos). */
+export interface ReadDeparture { readonly year: number; readonly month: number; readonly day: number; readonly time?: string; readonly seats?: number }
+
+/** D1n: las salidas de las lecturas del turno: objetos con `date` (AAAA-MM-DD…) y `seatsLeft` (upcomingDepartures, nextDepartures). */
+export function readDepartures(reads: ReadonlyArray<{ result: unknown }> | undefined): ReadDeparture[] {
+    const out: ReadDeparture[] = [];
+    const walk = (value: unknown, depth: number): void => {
+        if (depth > 8 || !value || typeof value !== 'object') return;
+        if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
+        const record = value as Record<string, unknown>;
+        const date = typeof record.date === 'string' ? record.date.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+        if (date && 'seatsLeft' in record) {
+            const clock = String(record.time ?? record.departureTime ?? '').match(/(?:^|T)(\d{2}):(\d{2})/);
+            out.push({ year: Number(date[1]), month: Number(date[2]), day: Number(date[3]),
+                ...(clock ? { time: `${Number(clock[1])}:${clock[2]}` } : {}),
+                ...(typeof record.seatsLeft === 'number' ? { seats: record.seatsLeft } : {}) });
+        }
+        for (const v of Object.values(record)) walk(v, depth + 1);
+    };
+    for (const r of reads ?? []) walk(r.result, 0);
+    return out;
+}
+
+const MONTHS: readonly (readonly string[])[] = [
+    ['enero', 'january', 'janeiro', 'janvier'], ['febrero', 'february', 'fevereiro', 'fevrier'], ['marzo', 'march', 'marco', 'mars'],
+    ['abril', 'april', 'avril'], ['mayo', 'may', 'maio', 'mai'], ['junio', 'june', 'junho', 'juin'], ['julio', 'july', 'julho', 'juillet'],
+    ['agosto', 'august', 'aout'], ['septiembre', 'setiembre', 'september', 'setembro', 'septembre'], ['octubre', 'october', 'outubro', 'octobre'],
+    ['noviembre', 'november', 'novembro', 'novembre'], ['diciembre', 'december', 'dezembro', 'decembre'],
+];
+
+/**
+ * D1n (E2j, C15): «La próxima salida disponible es el 15 de diciembre de 2026 a las 9:00, con 10 cupos» fue quitada: las
+ * fechas y horas no se comprueban como cifras y la disponibilidad del objeto estaba `[1/2]`. Una afirmación que nombra la
+ * fecha de una salida leída en este turno, y cuyas horas y cupos son los de esa salida, está respaldada.
+ */
+export function departureBacked(text: string, departures: readonly ReadDeparture[]): boolean {
+    const folded = text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    let rest = folded;
+    const named = departures.filter(d => {
+        const months = MONTHS[d.month - 1].join('|');
+        const date = new RegExp(`${d.year}-0?${d.month}-0?${d.day}(?!\\d)|(?<!\\d)0?${d.day}(?:\\s+(?:de|of))?\\s+(?:${months})\\b|\\b(?:${months})\\s+0?${d.day}(?!\\d)|(?<!\\d)0?${d.day}[/.-]0?${d.month}(?:[/.-]${d.year})?(?!\\d)`, 'g');
+        const hit = date.test(rest);
+        rest = rest.replace(date, ' ');
+        return hit;
+    });
+    if (!named.length) return false;
+    const times = [...rest.matchAll(/\b(\d{1,2}):(\d{2})\b/g)].map(m => `${Number(m[1])}:${m[2]}`);
+    if (!times.every(t => named.some(d => d.time === t))) return false;
+    const allowed = new Set(named.flatMap(d => [d.year, ...(d.seats !== undefined ? [d.seats] : [])]));
+    return sentenceNumbers(rest).every(n => allowed.has(n));
+}
+
 /** D1j: partes de una frase: comas, punto y coma, y la «y» que abre una negación («… 150.000 COP y no tiene …»). */
 const CLAUSE = /\s*[,;]\s*|\s+(?:y|and|e)\s+(?=(?:no|sin|without|sem|não)\b)/i;
 
@@ -220,7 +272,7 @@ const CLAUSE = /\s*[,;]\s*|\s+(?:y|and|e)\s+(?=(?:no|sin|without|sem|não)\b)/i;
  * Una frase con horas nunca se respalda por cifras: los horarios sembrados son el error más común.
  */
 export function dropBackedViolations(violations: readonly EvidenceViolation[], numbers: ReadonlySet<number>,
-    turn: { reply?: string; customerMessage?: string; explicitUnavailable?: boolean } = {},
+    turn: { reply?: string; customerMessage?: string; explicitUnavailable?: boolean; departures?: readonly ReadDeparture[] } = {},
 ): { kept: EvidenceViolation[]; dropped: EvidenceViolation[] } {
     const backed = (n: number): boolean => n !== 0 && (numbers.has(n)
         || [...numbers].some(a => a > 0 && n % a === 0 && n / a >= 2 && n / a <= MAX_MULTIPLE));
@@ -242,6 +294,7 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
         if (HEDGE.test(v.sentence)) { dropped.push(v); continue; }
         const whole = replySentences.find(s => s.includes(v.sentence)) ?? v.sentence;
         if (v.kind === 'denial' && turn.explicitUnavailable && DATE_AVAILABILITY.test(whole)) { dropped.push(v); continue; }
+        if (v.kind === 'claim' && turn.departures?.length && !NEGATION.test(whole) && departureBacked(whole, turn.departures)) { dropped.push(v); continue; }
         const clauses = whole.split(CLAUSE).map(c => c.trim()).filter(Boolean);
         const negated = clauses.filter(c => NEGATION.test(c) && !(figuresOf(c).any && figuresOf(c).ok));
         const all = figuresOf(whole);

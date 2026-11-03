@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, explicitUnavailable, parseEvidenceVerdict, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeNumbers, departureBacked, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, explicitUnavailable, parseEvidenceVerdict, readDepartures, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -178,6 +178,25 @@ describe('EvidenceVerifier (D1b)', () => {
         const fee = [{ sentence: 'No hay cargo por cancelación.', kind: 'denial' as const, requirementId: null }];
         expect(dropBackedViolations(fee, new Set(), { reply: 'No hay cargo por cancelación.', explicitUnavailable: true }).kept).toHaveLength(1);
         expect(evidenceVerifierRequest({ customerMessage: 'x', reply: 'y', contract: contract(), evidence: [] }).systemPrompt).toContain('no_departure_on_date');
+    });
+
+    it('D1n: la fecha, hora y cupos de una salida leída en el turno respaldan la afirmación', () => {
+        const reads = [{ result: { available: false, seatsLeft: 0, reason: 'no_departure_on_date',
+            nextDepartures: [{ date: '2026-12-15T00:00:00.000Z', time: '1970-01-01T09:00:00.000Z', seatsLeft: 10 }] } }];
+        const departures = readDepartures(reads);
+        expect(departures).toEqual([{ year: 2026, month: 12, day: 15, time: '9:00', seats: 10 }]);
+        const claim = 'La próxima salida disponible es el 15 de diciembre de 2026 a las 9:00 a.m., con 10 cupos disponibles.';
+        expect(departureBacked(claim, departures)).toBe(true);
+        expect(departureBacked('The next departure is on December 15 at 09:00 with 10 seats left.', departures)).toBe(true);
+        expect(departureBacked('A próxima saída é 15/12, com 10 vagas.', departures)).toBe(true);
+        // otra cifra, otra hora u otra fecha: no
+        expect(departureBacked('La próxima salida es el 15 de diciembre a las 9:00, con 12 cupos.', departures)).toBe(false);
+        expect(departureBacked('La próxima salida es el 15 de diciembre a las 10:00, con 10 cupos.', departures)).toBe(false);
+        expect(departureBacked('La próxima salida es el 16 de diciembre, con 10 cupos.', departures)).toBe(false);
+        expect(departureBacked('El 15 de diciembre cuesta 125 EUR.', departures)).toBe(false);
+        const v = [{ sentence: claim, kind: 'claim' as const, requirementId: 'OBJ.TOUR_BOOKING.AVAILABILITY_SOURCE' }];
+        expect(dropBackedViolations(v, new Set([10]), { reply: claim, departures }).dropped).toHaveLength(1);
+        expect(dropBackedViolations(v, new Set([10]), { reply: claim }).kept).toHaveLength(1);
     });
 
     it('parte frases por . ! ? … con cierres', () => {

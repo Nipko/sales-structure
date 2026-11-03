@@ -293,6 +293,25 @@ describe('F4300-34 contacts: what is a contact detail the business data does not
         expect(findUnbackedContacts('¿Quiere que le proporcione el número de teléfono de la clínica?', [business])).toEqual([]);
         expect(findUnbackedContacts('¿Quiere que le proporcione el número de guardia para emergencias?', [DENTAL_FAQ]).map(hit => hit.kind)).toEqual(['contact_offer']);
     });
+
+    it('E2i: asking the customer for THEIR phone is a request, not an offer, es / en / pt / fr', () => {
+        for (const ask of [
+            '¿Podría indicarme su nombre y el teléfono con el que hizo la reserva?',
+            '¿Me podría dar el teléfono con el que reservó?',
+            '¿Podría compartirme su número de WhatsApp?',
+            'Can I get your phone number to find the booking?',
+            'Could you give me the phone number you booked with?',
+            'Posso pedir que me passe seu telefone?',
+            'Puis-je avoir votre numéro de téléphone ?',
+        ]) expect(findUnbackedContacts(ask, [DENTAL_FAQ])).toEqual([]);
+        // the four production offers stay offers
+        for (const [, , reply] of NUMBER_OFFER) expect(findUnbackedContacts(reply.split(/(?<=\.) /)[1], [DENTAL_FAQ]).map(hit => hit.kind)).toEqual(['contact_offer']);
+    });
+
+    it('E2i: the cancel reply keeps its question', () => {
+        const reply = '¿Podría indicarme su nombre y el teléfono con el que hizo la reserva? Así podré buscar su cita y ayudarle a cancelarla.';
+        expect(guardUnfilledPlaceholders({ reply, customerText: 'Quiero cancelar mi reserva', lang: 'es', sources: [DENTAL_FAQ] }).changed).toBe(false);
+    });
 });
 
 describe('F4300-34 contacts: the two production replies, es / pt / en / fr, through the guard', () => {

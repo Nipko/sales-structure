@@ -160,6 +160,19 @@ const CONTACT_OFFER = [
     /\b(?:voulez-vous|souhaitez-vous|desirez-vous|puis-je|je peux)\b.{0,40}\b(?:donn\w*|fourni\w*|communiqu\w*|transmet\w*|envoi\w*|envoy\w*|partag\w*|indiqu\w*)\b.{0,40}\b(?:telephone|whatsapp|numero (?:de )?(?:telephone|contact|garde|urgences?|whatsapp)|ligne (?:de )?(?:garde|urgences?))\b/,
 ];
 
+/**
+ * E2i (QA 3-nov, dental, «Quiero cancelar mi reserva»): «¿Podría indicarme su nombre y el teléfono con el que hizo la reserva?»
+ * was taken for an offer of a phone not on file and removed; the customer got only «Así podré buscar su cita…». Asking the
+ * customer for THEIR phone is a request, not an offer: the giver is the customer («indicarme», «me podría dar», «su teléfono»,
+ * «give me», «your number», «seu telefone», «votre numéro»). On folded text.
+ */
+const CONTACT_REQUEST = [
+    /\b(?:su|sus|tu|tus|your|seu|sua|teu|tua|votre|ton)\s+(?:\w+\s+){0,3}?(?:telefono|telefone|telephone|phone|whatsapp|celular|numero|number|contacto|contato|contact)\b/,
+    /\b(?:proporcion|dar|compart|pas|envi|facilit|indic|confirm|dej)\w*(?:me|nos)\b/,
+    /\b(?:me|nos)\s+(?:(?!to\b)\w+\s+)?(?:proporcion|da|de|compart|pas|envi|facilit|indic|confirm|inform|donn|communiqu|transmet)\w*/,
+    /\b(?:give|send|share|provide|tell|text)\s+(?:me|us)\b/,
+];
+
 const digitsOf = (text: string) => text.replace(/\D/g, '');
 
 /** The phones the business data writes (digits only), however it writes them. */
@@ -240,7 +253,7 @@ export function findUnbackedContacts(text: string, sources?: ReadonlyArray<unkno
     if (!holdsPhone(corpus)) {
         const folded = fold(text);
         const offer = CONTACT_OFFER.find(re => re.test(folded));
-        if (offer) hits.push({ kind: 'contact_offer', text: text.trim(), index: 0 });
+        if (offer && !CONTACT_REQUEST.some(re => re.test(folded))) hits.push({ kind: 'contact_offer', text: text.trim(), index: 0 });
     }
     return hits.sort((a, b) => a.index - b.index);
 }

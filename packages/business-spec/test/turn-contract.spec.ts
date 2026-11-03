@@ -40,6 +40,10 @@ describe('turnContract sobre los 7 tenants QA', () => {
                 // un dato afirmable no está en «no consta»; los read_on_intent solo entran con su intención
                 expect(c.unknown.find(u => u.id === r.id)).toBeUndefined();
                 if (spec.requirements[r.id].exposure === 'always_in_context') expect(c.facts.map(f => f.id)).toContain(r.id);
+            } else if (spec.requirements[r.id].templateId === 'OBJ.*.AVAILABILITY_SOURCE' && !c.unknown.some(u => u.id === r.id)) {
+                // C15: la disponibilidad cargada en todos los ítems se afirma desde su lectura (dato `items` con su intención)
+                const asked = contractOf(snap, [...spec.requirements[r.id].answers]);
+                expect(asked.facts.find(f => f.id === r.id)).toMatchObject({ source: 'items' });
             } else if (!(r.gap?.rootCause && visible.includes(r.gap.rootCause))) {
                 // «unknown» no depende de la intención: todo lo no afirmable está, con el código de la especificación
                 const u = c.unknown.find(x => x.id === r.id);
@@ -114,6 +118,20 @@ describe('turnContract: estado de cada dato', () => {
         expect(text).toContain('CORE.HOURS.REGULAR[seeded]');
         expect(text).toContain('CORE.CONTACT.CHANNELS[contradictory]');
         expect(text).not.toContain('08:00');
+    });
+
+    it('C15: la disponibilidad cargada en los ítems (stock) se afirma desde su lectura; si falta en alguno, [n/m]', () => {
+        const id = 'OBJ.CATALOG_ORDER.AVAILABILITY_SOURCE';
+        const snap = fixtureSnapshot('tienda-qa-electronica');
+        const items = snap.items.catalog_order ?? [];
+        expect(items.length).toBeGreaterThan(1);
+        expect(contractOf(snap, ['C15']).facts.find(f => f.id === id)).toEqual({ id, topic: spec.requirements[id].title, state: 'confirmed', source: 'items' });
+        expect(contractOf(snap).unknown.find(u => u.id === id)).toBeUndefined();
+
+        delete items[0].fields.stock;
+        const partial = contractOf(snap, ['C15']);
+        expect(partial.facts.find(f => f.id === id)).toBeUndefined();
+        expect(partial.unknown.find(u => u.id === id)).toMatchObject({ state: 'absent', ratio: { ok: items.length - 1, total: items.length } });
     });
 
     it('un ítem de ejemplo se puede nombrar pero su precio no: el catálogo queda en unknown', () => {

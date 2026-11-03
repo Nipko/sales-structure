@@ -56,7 +56,7 @@ export const COMMON_NEVER = [
 /** Campos de precio de un ítem: su estado lo da `priceStatus` (L1), no el del contenido (F6). */
 const PRICE_FIELDS = new Set(['price', 'price_per_night', 'price_per_day', 'price_per_passenger_type', 'currency']);
 /** Datos de disponibilidad que la foto guarda en el ítem (salidas de un tour, unidades en stock). */
-const AVAILABILITY_FIELDS = ['departures', 'stock'];
+export const AVAILABILITY_FIELDS = ['departures', 'stock'];
 /** Campos de control del ítem que no son afirmaciones al cliente. */
 const INTERNAL_FIELDS = new Set(['active', 'available', 'address_privacy', 'staff_ids', 'preparation_ref', 'required_fields']);
 

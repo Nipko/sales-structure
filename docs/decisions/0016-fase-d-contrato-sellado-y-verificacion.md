@@ -219,6 +219,23 @@ Revisando C30 en E2g aparecieron dos diferencias entre Agent Test (que es lo que
 
 Producción no cambia: si un traspaso real falla, sigue diciendo que no pudo conectar. Si conviene registrar la solicitud y prometer contacto en ese caso, queda para revisión del dueño, porque exige una tarea de seguimiento real detrás de la promesa.
 
+### E2h: D1k medido
+
+E2h corrió el 2-nov-2026 con D1k desplegado (7 tenants, k = 3, juez v5), sin errores 429 del proveedor.
+
+| | E2a (sin verificador) | E2f | E2g | E2h |
+|---|---|---|---|---|
+| Aciertos por intento | 79% | 88% | 89% | 90% |
+| pass^3 | 73% | 81% | 82% | 83% |
+| AFIRMA (por intento / pass^3) | 80% / 70% | 77% / 65% | 82% / 70% | 83% / 73% |
+| NC+AV | 71% | 88% | 91% | 90% |
+| PREG | 91% | 99% | 95% | 99% |
+| HUM (por intento / pass^3) | 87% | 91% | 88% / 75% | 91% / 84% |
+
+- C30 (pedir una persona) vuelve a 95% (pass^3 86%).
+- C17 sube a 83% y C09 se mantiene en 100%.
+- C15 (disponibilidad con stock) cae a 38%: el agente dice «disponible» sin la cifra de stock. Ya estaba en la lista para el dueño. No lo toca D1k.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

@@ -214,6 +214,15 @@ describe('gradeCase', () => {
         expect(gradeCase(c, { replies: ['Un momento.'], toolCalls: [{ turn: 1, name: 'x', result: { shouldHandoff: true } }] }).outcome).toBe('missing_data');
     });
 
+    it('HUM: el aviso de cola de producción cuenta como traspaso (D1k)', () => {
+        const c = makeCase({ expected: 'HUM', expectation: { unknownMarker: false } });
+        for (const reply of [
+            'Entiendo su solicitud. Le estoy transfiriendo con nuestro equipo de atención. Un agente le responderá en breve. 🙋',
+            "Got it. I'm transferring you to our support team. An agent will reply shortly. 🙋",
+            'Entendi a sua solicitação. Estou transferindo você para a nossa equipe de atendimento. Um atendente responderá em breve. 🙋',
+        ]) expect(gradeCase(c, { replies: [reply], toolCalls: [] }).outcome).toBe('missing_data');
+    });
+
     it('un error del turno no se califica', () => {
         expect(gradeCase(makeCase({}), { replies: [], toolCalls: [], error: 'ai_message_quota_exceeded' }).outcome).toBe('error');
     });

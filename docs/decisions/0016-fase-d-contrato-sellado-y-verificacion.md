@@ -205,6 +205,20 @@ E2g corrió el 2-nov-2026 con D1j desplegado (7 tenants, k = 3, juez v5).
 
 **Decisión:** D1j se queda. La bandera del verificador sigue encendida en los 7 tenants de QA.
 
+### D1k: Agent Test traspasa como producción
+
+Revisando C30 en E2g aparecieron dos diferencias entre Agent Test (que es lo que corren los ensayos) y producción:
+
+- En producción, cuando el cliente pide una persona, el motor lo resuelve antes del modelo y responde con el aviso de cola («Le estoy transfiriendo con nuestro equipo…»). Agent Test se saltaba ese paso: el modelo improvisaba y a veces decía «no hay nadie disponible, pero yo le ayudo». El ensayo medía algo que producción no hace.
+- Cuando el turno abre un traspaso (promesa del agente, «sí» a la oferta, motor de reservas o procedimientos, operación bloqueada, después de un intake), Agent Test lo trataba como fallo y respondía «No pude conectarle con un agente…».
+
+**D1k:**
+- Agent Test resuelve el pedido de una persona igual que producción y responde con el aviso de cola, sin tocar la cola.
+- Los traspasos dentro del turno se simulan en Agent Test, como ya hacía el triaje de seguridad. Se registra la señal `handoff_simulated`.
+- El evaluador del ensayo reconoce el aviso de cola de producción como traspaso («le estoy transfiriendo», «I'm transferring you», «estou transferindo»).
+
+Producción no cambia: si un traspaso real falla, sigue diciendo que no pudo conectar. Si conviene registrar la solicitud y prometer contacto en ese caso, queda para revisión del dueño, porque exige una tarea de seguimiento real detrás de la promesa.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

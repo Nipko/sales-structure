@@ -240,6 +240,19 @@ E2h corrió el 2-nov-2026 con D1k desplegado (7 tenants, k = 3, juez v5), sin er
 
 Decisión del dueño (3-nov-2026): el verificador queda encendido para todos los tenants, no tenant por tenant. La bandera `agentRuntime.evidenceVerifier` pasa a `default: true` (categoría beta). Los 16 tenants sin valor guardado lo toman; un tenant puede apagarlo guardando `false`. Una foto sellada antes del cambio conserva lo que tenía.
 
+### D1l: C15, la disponibilidad cargada en los ítems se afirma con su cifra
+
+En E2h, C15 (disponibilidad) cayó a 38%. Las causas fueron dos:
+
+- **Contrato del turno.** `OBJ.<X>.AVAILABILITY_SOURCE` se evaluaba para todo el objeto y quedaba en `unknown` aunque cada producto trajera su stock confirmado. La verdad QA sí la afirma por ítem. El verificador, entonces, quitaba la frase de disponibilidad y el cliente recibía solo el aviso.
+- **Agente.** Respondía «Sí, tenemos disponibilidad» sin la cifra que leyó («quedan 2 unidades»).
+
+**D1l:**
+- Si todos los ítems del objeto traen salidas o stock confirmados, el requisito pasa a `facts` con `source="items"`, es decir, se afirma desde la lectura del ítem. Si solo algunos los traen, sigue en `unknown` con `[n/m]`.
+- Regla 13i del prompt: la disponibilidad se responde con la cifra que dio la lectura (unidades, o fechas de salida con cupos). Si la fecha pedida no está entre las salidas, se dicen las que hay.
+
+Hotel, comida, inmobiliaria, citas y dental no cargan disponibilidad en sus ítems y no cambian (NC+AV). En viajes solo uno de los dos tours tiene salidas confirmadas, así que sigue `[1/2]`.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

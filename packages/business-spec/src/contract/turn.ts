@@ -15,7 +15,7 @@
  * `renderKnowledgeStatus` lo pinta como el bloque `<knowledge_status>` de la capa 3 del prompt (≤ 600 tokens p95).
  */
 import { compose } from '../compose';
-import { COMMON_NEVER } from '../qa/truth';
+import { AVAILABILITY_FIELDS, COMMON_NEVER, itemFieldState } from '../qa/truth';
 import { resolveFacts } from '../facts';
 import { resolveValue, textEvidenceFor } from '../status';
 import type { CompiledSpec, GapCause, MissingCode, ReadinessResult, RequirementEvaluation, TenantSnapshot, ValueState, Verdict } from '../types';
@@ -88,6 +88,18 @@ const CAUSE_STATE: Partial<Record<GapCause, KnowledgeState>> = {
 const passes = (r: RequirementEvaluation) => r.result === 'cumple' && Object.values(r.levelResults ?? {}).every(x => x === 'cumple');
 
 /**
+ * C15 (E2h): cuántos ítems del objeto traen su disponibilidad confirmada (salidas de un tour, unidades en stock). La
+ * verdad QA ya afirma esa disponibilidad por ítem; el contrato la daba por desconocida para todo el objeto y el
+ * verificador quitaba «quedan 2 unidades» leído de la ficha. Sin ítems del objeto, `null`: manda la evaluación.
+ */
+function loadedAvailability(snap: TenantSnapshot, object: string | undefined): { ok: number; total: number } | null {
+    const items = object ? snap.items[object] ?? [] : [];
+    if (!items.length) return null;
+    const ok = items.filter(i => AVAILABILITY_FIELDS.some(f => i.fields[f] !== undefined && itemFieldState(i, f) === 'confirmado')).length;
+    return ok ? { ok, total: items.length } : null;
+}
+
+/**
  * Estado de un requisito que no se puede afirmar. Manda la causa del hueco; un «parcial» (lista con huecos) o un
  * valor confirmado que no alcanza el predicado se dicen «absent»: lo que falta no consta.
  */
@@ -128,6 +140,18 @@ export function buildTurnContract(spec: CompiledSpec, snap: TenantSnapshot, resu
             else if (record?.origin === 'default_accepted' || snap.defaultsAcceptance.some(a => a.ids.includes(req.id))) fact.source = 'default';
             else if (req.sources.acceptsTextEvidence && textEvidenceFor(snap.texts, req.id)) fact.source = 'text';
             facts.push(fact);
+            continue;
+        }
+        // la disponibilidad cargada en todos los ítems se afirma desde su lectura; en parte, `[n/m]` dice cuántos la traen
+        const loaded = req.templateId === 'OBJ.*.AVAILABILITY_SOURCE' ? loadedAvailability(snap, req.object) : null;
+        if (loaded && loaded.ok === loaded.total) {
+            if (req.exposure === 'always_in_context' || req.answers.some(a => intents.has(a))) {
+                facts.push({ id: req.id, topic: req.title, state: 'confirmed', source: 'items' });
+            }
+            continue;
+        }
+        if (loaded) {
+            unknown.push({ id: req.id, topic: req.title, state: 'absent', code: req.whenMissing.code, never: [...req.whenMissing.never], ratio: loaded });
             continue;
         }
         // el hueco se muestra en su raíz (schema §9), si la raíz también está en el contrato

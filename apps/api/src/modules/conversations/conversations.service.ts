@@ -3049,6 +3049,14 @@ export class ConversationsService {
         const conversation = { id: session.conversationId, contact_id: session.contactId, stage: 'greeting',
             metadata: session.metadata, created_at: session.lastMessageAt, updated_at: session.lastMessageAt };
         const contact = { id: session.contactId };
+        // Production resolves a request for a person before the model (processMessage, step 5) and answers with the
+        // queue notice; the preview does the same, without touching the queue, so a rehearsal measures what ships.
+        const text = message.content?.text || '';
+        if (text && await this.resolveHandoffReason(text, conversation, config, session.tenantId, true, session.executionContext)) {
+            this.recordAgentSignal(session.tenantId, 'handoff_simulated', session);
+            session.lastMessageAt = new Date().toISOString();
+            return handoffText(this.languageDetector.detect(text, config.language || 'es')).queueHead;
+        }
         const reply = await this.generateResponse(session.tenantId, conversation, message, config, contact, undefined,
             session.lastMessageAt, await this.loadTenantBusinessHours(session.tenantId, session), undefined, session.agentId, session);
         session.lastMessageAt = new Date().toISOString();
@@ -3145,6 +3153,17 @@ export class ConversationsService {
         const handoffReturn = (msg as any).handoffReturn as { ask: string | null; noteLeft: boolean; fromEpisode?: boolean } | undefined;
         const allowHumanHandoff = !session && !draftMode && !handoffReturn
             && (msg.channelType !== 'web_widget' || (msg.metadata as any)?.allowHumanHandoff === true);
+        // Agent Test and evaluations show what production would do without touching the queue (as the safety
+        // triage does): a handoff this turn opens is simulated there, never answered as «No pude conectarle».
+        const escalateOrSimulate = async (reason: string, noticeKind: HandoffNoticeKind, language: string): Promise<'opened' | 'simulated'> => {
+            if (session) {
+                this.recordAgentSignal(tenantId, 'handoff_simulated', session);
+                return 'simulated';
+            }
+            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
+            await this.escalateWithinTurn(tenantId, conversation, msg, reason, noticeKind, language, inboundMessageId, replyProvenance);
+            return 'opened';
+        };
         let userText = msg.content.text || '';
 
         // A media-consent challenge is a deterministic platform workflow, not a
@@ -3808,12 +3827,9 @@ export class ConversationsService {
         if (blockedOperation && !draftMode && !safetyTriage?.reply) {
             const reason = `capability_denied_intent:${blockedOperation}`;
             try {
-                if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                 // The transferring sentence below is this turn's own text, so the
                 // receipt adds no second announcement.
-                await this.escalateWithinTurn(tenantId, conversation, msg, reason, 'none',
-                    userLanguage, inboundMessageId, replyProvenance);
-                this.analyticsService.trackEvent({
+                if (await escalateOrSimulate(reason, 'none', userLanguage) === 'opened') this.analyticsService.trackEvent({
                     tenantId,
                     eventType: 'handoff_triggered',
                     conversationId: conversation.id,
@@ -4124,11 +4140,8 @@ export class ConversationsService {
                     tools = [];
                     if (deniedResult.handoff) {
                         try {
-                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
                             // The engine text explains the refusal, not the transfer.
-                            await this.escalateWithinTurn(tenantId, conversation, msg,
-                                deniedResult.handoffReason || 'booking_unavailable', 'transferring',
-                                userLanguage, inboundMessageId, replyProvenance);
+                            await escalateOrSimulate(deniedResult.handoffReason || 'booking_unavailable', 'transferring', userLanguage);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] authority handoff failed: ${e.message}`);
                             if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
@@ -4259,10 +4272,7 @@ export class ConversationsService {
                     if (engineResult.handoff) {
                         if (!engineProducedText && !handoffReturn) engineProducedText = handoffText(userLanguage).transferring;
                         try {
-                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                            await this.escalateWithinTurn(tenantId, conversation, msg,
-                                engineResult.handoffReason || 'booking_unavailable', 'none',
-                                userLanguage, inboundMessageId, replyProvenance);
+                            await escalateOrSimulate(engineResult.handoffReason || 'booking_unavailable', 'none', userLanguage);
                         } catch (e: any) {
                             this.logger.warn(`[Booking] handoff failed: ${e.message}`);
                             if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
@@ -4336,10 +4346,7 @@ export class ConversationsService {
                     if (procResult.handoff) {
                         if (!engineProducedText && !handoffReturn) engineProducedText = handoffText(userLanguage).transferring;
                         try {
-                            if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                            await this.escalateWithinTurn(tenantId, conversation, msg,
-                                procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`, 'none',
-                                userLanguage, inboundMessageId, replyProvenance);
+                            await escalateOrSimulate(procResult.handoffReason || `Procedimiento: ${procResult.procedureName || ''}`, 'none', userLanguage);
                         } catch (e: any) {
                             this.logger.warn(`[Procedure] handoff failed: ${e.message}`);
                             if (!handoffReturn) engineProducedText = handoffText(userLanguage).unavailable;
@@ -6584,17 +6591,16 @@ export class ConversationsService {
             // (never on the replay: a write it performed stands, but the queue is not re-entered)
             if (postToolHandoff && !draftMode && !handoffReturn) {
                 try {
-                    if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                    this.logger.warn(`[Pipeline] HANDOFF post-intake (${postToolHandoff}) para conversación ${conversation.id}`);
-                    this.analyticsService.trackEvent({
-                        tenantId, eventType: 'handoff_triggered',
-                        conversationId: conversation.id, contactId: conversation.contact_id || undefined,
-                        data: { reason: postToolHandoff, afterIntake: true },
-                    }).catch(() => {});
                     // The intake answer says nothing about the transfer, so the
                     // receipt appends the deterministic transferring sentence.
-                    await this.escalateWithinTurn(tenantId, conversation, msg, postToolHandoff, 'transferring',
-                        userLanguage, inboundMessageId, replyProvenance);
+                    if (await escalateOrSimulate(postToolHandoff, 'transferring', userLanguage) === 'opened') {
+                        this.logger.warn(`[Pipeline] HANDOFF post-intake (${postToolHandoff}) para conversación ${conversation.id}`);
+                        this.analyticsService.trackEvent({
+                            tenantId, eventType: 'handoff_triggered',
+                            conversationId: conversation.id, contactId: conversation.contact_id || undefined,
+                            data: { reason: postToolHandoff, afterIntake: true },
+                        }).catch(() => {});
+                    }
                 } catch (e: any) {
                     // Nunca romper el turno por la escalada: el cliente ya recibió su
                     // respuesta y el intake quedó guardado.
@@ -6651,8 +6657,9 @@ export class ConversationsService {
                 if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
             } else if (!draftMode && !postToolHandoff && promisesHumanHandoff(finalResponse)) {
                 try {
-                    if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                    if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                    if (session) await escalateOrSimulate('agent_promised_handoff', 'none', userLanguage);
+                    else if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
+                    else if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
                         this.logger.warn(
                             `[Pipeline] HANDOFF por promesa del agente en conversación ${conversation.id}`,
                         );
@@ -6674,13 +6681,14 @@ export class ConversationsService {
                     );
                     finalResponse = handoffText(userLanguage).unavailable;
                 }
-            } else if (!draftMode && !postToolHandoff && allowHumanHandoff && repeatsAcceptedHumanOffer(finalResponse, userText, lastOutboundText)) {
+            } else if (!draftMode && !postToolHandoff && (allowHumanHandoff || !!session) && repeatsAcceptedHumanOffer(finalResponse, userText, lastOutboundText)) {
                 // The same offer is never made twice in a row (F4300-25, production QA): the customer said yes to the offer
                 // of a person («Sí, por favor pídalo.», «Yes, please check with the team.») and the reply offered it again
                 // or only said «Un momento, por favor». The yes is honoured here, deterministically and with no model
                 // retry: the reply becomes the transfer notice and the handoff opens through the same path as a promise.
                 try {
-                    if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                    if (session) await escalateOrSimulate('customer_accepted_human_offer', 'none', userLanguage);
+                    else if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
                         this.logger.warn(`[Pipeline] HANDOFF: el cliente aceptó la oferta y la respuesta la repetía en ${conversation.id}`);
                         this.recordAgentSignal(tenantId, 'human_offer_repeat_honored', session);
                         this.analyticsService.trackEvent({
@@ -6716,8 +6724,9 @@ export class ConversationsService {
                     if (!session && allowHumanHandoff) await this.rememberHumanOffer(schemaName, conversation.id, finalResponse);
                 } else if (teamAction === 'honour') {
                     try {
-                        if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
-                        if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
+                        if (session) await escalateOrSimulate('customer_accepted_human_offer', 'none', userLanguage);
+                        else if (!allowHumanHandoff) throw new Error('human_delivery_unavailable');
+                        else if (!(await this.handoffService.isInHandoff(tenantId, conversation.id))) {
                             this.logger.warn(`[Pipeline] HANDOFF: el cliente aceptó la oferta y la respuesta dice que pasó la consulta al equipo en ${conversation.id}`);
                             this.recordAgentSignal(tenantId, 'team_request_claim_honored', session);
                             this.analyticsService.trackEvent({

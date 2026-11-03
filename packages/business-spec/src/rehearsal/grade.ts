@@ -94,13 +94,13 @@ export const UNKNOWN_MARKER = rx([
 /** Traspaso a una persona en ES/EN/PT/FR (evidencia de HUM). Nombrar «una persona» no es traspasar. */
 export const HANDOFF_MARKER = rx([
     '\\b(dejeme|dejame|permitame|permiteme|voy a) (conectarle|conectarte|comunicarle|comunicarte|pasarle|pasarte|transferirle|transferirte|derivarle|derivarte)\\b',
-    '\\b(le|te) (comunico|paso|conecto|transfiero|derivo|pongo en contacto)\\b', '\\b(ponerle|ponerte|ponerlo|ponerla) en contacto\\b',
+    '\\b(le|te) (comunico|paso|conecto|transfiero|derivo|pongo en contacto)\\b', '\\b(le|te) estoy (transfiriendo|pasando|comunicando|conectando)\\b','\\b(ponerle|ponerte|ponerlo|ponerla) en contacto\\b',
     '\\b(pase|pasemos|comunique|conecte|transfiera) con\\b', '\\b(pasarle|pasarte|comunicarle|comunicarte|conectarle|conectarte|transferirle) con\\b',
     '\\balguien del equipo\\b', '\\b(un|una) (miembro|integrante) del equipo\\b', '\\b(un|una|el|la|nuestro|nuestra) (asesor|asesora|agente humano|especialista|ejecutivo|ejecutiva)\\b',
     '\\bpersona del equipo\\b', '\\bnuestro equipo (le|te|lo|la) (contacta|contactara|atiende|atendera|escribe|escribira|llama|llamara)\\b',
     '\\b(transferir|derivar|escalar) (su|tu) (caso|consulta|solicitud)\\b',
-    "\\b(let me|i('ll| will)|i can) (connect|transfer|put) you\\b", '\\bsomeone from (the|our) team\\b', '\\ba (team member|member of (the|our) team|human (agent|colleague))\\b', '\\bhand (you )?over\\b',
-    '\\b(vou|posso) (te |lhe )?(transferir|encaminhar|passar)\\b', '\\b(um|uma) atendente\\b', '\\balguem da (nossa )?equipe\\b',
+    "\\b(let me|i('ll| will)|i can) (connect|transfer|put) you\\b", "\\bi'?m transferring you\\b",'\\bsomeone from (the|our) team\\b', '\\ba (team member|member of (the|our) team|human (agent|colleague))\\b', '\\bhand (you )?over\\b',
+    '\\b(vou|posso) (te |lhe )?(transferir|encaminhar|passar)\\b', '\\bestou (te |lhe )?transferindo\\b','\\b(um|uma) atendente\\b', '\\balguem da (nossa )?equipe\\b',
     '\\bje (vous )?(transfere|mets en relation|passe)\\b', '\\bun conseiller\\b', "\\bquelqu'un de (l'|notre )equipe\\b",
 ]);
 

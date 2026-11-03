@@ -10,6 +10,7 @@ import { buildTurnContract, evaluate, fromLegacyRows, type LegacyTenantRows } fr
 import { loadSpec } from '@parallext/business-spec/load';
 import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
 import { resolveEvaluationTurnContext } from './evaluation-turn-context';
+import { EVIDENCE_VERIFIER_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 
 const FIXTURES = path.resolve(__dirname, '../../../../../packages/business-spec/test/fixtures/qa-tenants');
 const NOW = new Date('2026-10-30T12:00:00.000Z');
@@ -51,13 +52,13 @@ describe('D1a · contrato de conocimiento sellado en la foto de evaluación', ()
         }));
     });
 
-    it('D1b: con la bandera sellada, la frase sin respaldo se quita y se agrega el aviso; sin bandera, no hay llamada', async () => {
+    it('D1b: con la bandera sellada, la frase sin respaldo se quita y se agrega el aviso; apagada a mano, no hay llamada', async () => {
         const contract = dentalContract();
         const reply = 'Nuestro horario es de lunes a viernes de 8 a 18. ¿Le ayudo con algo más?';
         for (const on of [true, false]) {
             const { f } = fixtureWith(contract);
             f.prisma.tenant.findUnique.mockResolvedValue({ operatingCountry: 'CO', industry: 'health',
-                settings: on ? { featureFlags: { 'agentRuntime.evidenceVerifier': true } } : {} });
+                settings: { featureFlags: { 'agentRuntime.evidenceVerifier': on } } });
             f.llmRouter.execute.mockImplementation(async (req: any) => req.traceContext?.stage === 'evidence_verifier'
                 ? { content: JSON.stringify({ violations: [{ sentence: 'Nuestro horario es de lunes a viernes de 8 a 18.', kind: 'claim', requirementId: 'CORE.HOURS.REGULAR' }] }), usage: {} }
                 : { content: reply, model: 'test', usage: { promptTokens: 20, completionTokens: 5 }, cost: 0.001 });
@@ -77,6 +78,12 @@ describe('D1a · contrato de conocimiento sellado en la foto de evaluación', ()
                 expect(response.reply).toContain('lunes a viernes de 8 a 18');
             }
         }
+    });
+
+    it('E2h: un tenant sin valor guardado tiene el verificador encendido; apagarlo a mano lo apaga', () => {
+        expect(resolveFeatureFlag({}, EVIDENCE_VERIFIER_FLAG)).toBe(true);
+        expect(resolveFeatureFlag(undefined, EVIDENCE_VERIFIER_FLAG)).toBe(true);
+        expect(resolveFeatureFlag({ [EVIDENCE_VERIFIER_FLAG]: false }, EVIDENCE_VERIFIER_FLAG)).toBe(false);
     });
 
     it('una foto sin contrato (anterior a D1a o sin evaluación) corre sin el bloque y sin leer el contrato vivo', async () => {

@@ -236,6 +236,10 @@ E2h corrió el 2-nov-2026 con D1k desplegado (7 tenants, k = 3, juez v5), sin er
 - C17 sube a 83% y C09 se mantiene en 100%.
 - C15 (disponibilidad con stock) cae a 38%: el agente dice «disponible» sin la cifra de stock. Ya estaba en la lista para el dueño. No lo toca D1k.
 
+### Verificador encendido por defecto
+
+Decisión del dueño (3-nov-2026): el verificador queda encendido para todos los tenants, no tenant por tenant. La bandera `agentRuntime.evidenceVerifier` pasa a `default: true` (categoría beta). Los 16 tenants sin valor guardado lo toman; un tenant puede apagarlo guardando `false`. Una foto sellada antes del cambio conserva lo que tenía.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

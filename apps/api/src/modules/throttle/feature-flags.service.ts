@@ -99,7 +99,7 @@ export const FEATURE_FLAGS_REGISTRY: Array<{
     // availability and record fields as tokens (⟦fact:id⟧ / ⟦count:id⟧ / ⟦avail:id⟧) the server renders from the verified
     // facts; an amount or count the model typed itself is replaced by a template, and the claim/price corrective retries
     // are skipped. Off = the prompt and the reply pipeline are exactly the previous ones.
-    { key: EVIDENCE_VERIFIER_FLAG, label: 'Evidence verifier', description: 'Before sending, a classifier flags sentences that state or deny something the business has not confirmed (per the turn knowledge contract); the server removes them and adds the fixed not-confirmed notice', category: 'experimental', default: false },
+    { key: EVIDENCE_VERIFIER_FLAG, label: 'Evidence verifier', description: 'Before sending, a classifier flags sentences that state or deny something the business has not confirmed (per the turn knowledge contract); the server removes them and adds the fixed not-confirmed notice. On by default since E2h (ADR 0016)', category: 'beta', default: true },
     { key: RENDERED_FACTS_FLAG, label: 'Rendered facts', description: 'Prices, counts, availability and record fields reach the customer as values rendered by the server from the verified facts (the model writes tokens); a figure the model typed itself is replaced by a safe template', category: 'experimental', default: false },
     // F4300-24 (apps/api/src/modules/conversations/runtime/catalog-over-faq.ts): for an agent that reads a service catalogue
     // (list_services), a FAQ or document naming a service the catalogue does not list is marked not_in_catalogue, the

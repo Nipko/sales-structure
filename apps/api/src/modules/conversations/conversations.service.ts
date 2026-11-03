@@ -7124,7 +7124,7 @@ export class ConversationsService {
      * flag existed reads as off. A read failure is "off", which is the
      * behaviour every tenant had before the flag existed.
      */
-    /** `agentRuntime.evidenceVerifier` (D1b, off by default). Sealed turns read the snapshot; a read failure is "off". */
+    /** `agentRuntime.evidenceVerifier` (D1b, on by default since E2h). Sealed turns read the snapshot; a read failure is "off". */
     private async evidenceVerifierEnabled(tenantId: string, session?: AgentTurnSession): Promise<boolean> {
         try {
             if (session) return resolveEvaluationTurnContext(session.snapshot.contextInputs, tenantId).evidenceVerifier === true;

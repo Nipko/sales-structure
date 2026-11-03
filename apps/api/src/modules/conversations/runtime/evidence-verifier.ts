@@ -12,7 +12,7 @@
  *    falta» (no consta + lo averiguo / pasar con una persona), según las ofertas del contrato.
  *
  * Nunca bloquea el turno: si el clasificador no responde o no se puede leer, la respuesta sale como estaba. Detrás de la
- * bandera por tenant `agentRuntime.evidenceVerifier` (apagada por defecto), sellada en la foto como las demás. Usa un
+ * bandera por tenant `agentRuntime.evidenceVerifier` (encendida por defecto desde E2h), sellada en la foto como las demás. Usa un
  * modelo distinto del juez del ensayo (`deepseek-chat`) para que el ensayo no mida su propio sesgo.
  */
 import type { TurnKnowledgeContract } from '@parallext/business-spec';

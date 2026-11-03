@@ -253,6 +253,24 @@ En E2h, C15 (disponibilidad) cayó a 38%. Las causas fueron dos:
 
 Hotel, comida, inmobiliaria, citas y dental no cargan disponibilidad en sus ítems y no cambian (NC+AV). En viajes solo uno de los dos tours tiene salidas confirmadas, así que sigue `[1/2]`.
 
+### E2i: D1l medido, y una pregunta que el filtro de contactos borraba
+
+E2i (3-nov, después de #360), comparada con E2h:
+
+| | E2h | E2i |
+|---|---|---|
+| Aciertos por intento | 90% | 89% |
+| pass^3 | 83% | 84% |
+| C15 (disponibilidad) | 38% | 52% |
+| Electrónica C15 | 0/3 | 3/3 («quedan 2 unidades») |
+| Dental | 82% | 76% |
+
+C15 se recupera donde la disponibilidad está cargada en el ítem. En viajes sigue fallando: el tour preguntado tiene sus salidas, pero el requisito se evalúa por objeto y queda `[1/2]`, así que el verificador quita la cifra. Hace falta evaluar el ítem preguntado, no el objeto.
+
+La caída de dental no viene de D1l. C22 («Quiero cancelar mi reserva») pasó de 3/3 a 0/3 con la respuesta cortada: «Así podré buscar su cita y ayudarle a cancelarla.». El modelo escribió «¿Podría indicarme su nombre y el teléfono con el que hizo la reserva?». El filtro de contactos (F4300-34) lo leyó como una oferta de un teléfono que la clínica no tiene y quitó la frase. En E2h el modelo lo había pedido con otras palabras, por eso el filtro no saltó.
+
+**Arreglo:** pedirle al cliente su teléfono («indicarme», «me podría dar», «su teléfono», «your number», «seu telefone», «votre numéro») no es una oferta. Las ofertas de producción («¿Quiere que le proporcione el número de guardia?») se siguen quitando.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

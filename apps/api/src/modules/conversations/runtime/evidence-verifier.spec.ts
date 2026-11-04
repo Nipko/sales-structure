@@ -171,6 +171,8 @@ describe('EvidenceVerifier (D1b)', () => {
         const read = [{ result: { available: false, seatsLeft: 0, reason: 'no_departure_on_date' } }];
         expect(explicitUnavailable(read)).toBe(true);
         expect(explicitUnavailable([{ result: { available: false, seatsLeft: 0 } }])).toBe(false);
+        expect(explicitUnavailable([{ result: { available: false, seatsLeft: 'unlimited', reason: 'party_size_required' } }])).toBe(false);
+        expect(explicitUnavailable([{ result: { available: false, seatsLeft: 3, reason: 'not_enough_seats' } }])).toBe(true);
         expect(explicitUnavailable([{ result: { cleaningFee: 0, parking: false } }])).toBe(false);
         expect(dropBackedViolations(v, new Set(), { reply, explicitUnavailable: true }).dropped).toHaveLength(1);
         expect(dropBackedViolations(v, new Set(), { reply, explicitUnavailable: false }).kept).toHaveLength(1);

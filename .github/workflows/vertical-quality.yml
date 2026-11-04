@@ -11,6 +11,7 @@ on:
       - 'apps/whatsapp/**'
       - 'infra/docker/**'
       - 'packages/shared/**'
+      - 'packages/business-spec/**'
       - 'docs/vertical-competitive-evidence.json'
       - 'docs/vertical-competitive-matrix-2026-08.md'
       - '.github/workflows/vertical-quality.yml'
@@ -24,6 +25,7 @@ on:
       - 'apps/whatsapp/**'
       - 'infra/docker/**'
       - 'packages/shared/**'
+      - 'packages/business-spec/**'
       - '.github/workflows/vertical-quality.yml'
   schedule:
     - cron: '17 5 * * *'

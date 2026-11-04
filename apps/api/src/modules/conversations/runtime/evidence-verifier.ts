@@ -214,16 +214,20 @@ export function explicitUnavailable(reads: ReadonlyArray<{ result: unknown }> | 
 /** D1n: una salida que una lectura de este turno devolvió (fecha, hora y cupos). */
 export interface ReadDeparture { readonly year: number; readonly month: number; readonly day: number; readonly time?: string; readonly seats?: number }
 
+/** D1p (E2m): en el turno las lecturas llevan `Date` de Prisma, no el texto ISO del JSON que ve el modelo. */
+const textOf = (value: unknown): string => value instanceof Date ? (isNaN(value.getTime()) ? '' : value.toISOString()) : typeof value === 'string' ? value : '';
+
 /** D1n: las salidas de las lecturas del turno: objetos con `date` (AAAA-MM-DD…) y `seatsLeft` (upcomingDepartures, nextDepartures). */
 export function readDepartures(reads: ReadonlyArray<{ result: unknown }> | undefined): ReadDeparture[] {
     const out: ReadDeparture[] = [];
     const walk = (value: unknown, depth: number): void => {
         if (depth > 8 || !value || typeof value !== 'object') return;
         if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
+        if (value instanceof Date) return;
         const record = value as Record<string, unknown>;
-        const date = typeof record.date === 'string' ? record.date.match(/^(\d{4})-(\d{2})-(\d{2})/) : null;
+        const date = textOf(record.date).match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (date && 'seatsLeft' in record) {
-            const clock = String(record.time ?? record.departureTime ?? '').match(/(?:^|T)(\d{2}):(\d{2})/);
+            const clock = textOf(record.time ?? record.departureTime).match(/(?:^|T)(\d{2}):(\d{2})/);
             out.push({ year: Number(date[1]), month: Number(date[2]), day: Number(date[3]),
                 ...(clock ? { time: `${Number(clock[1])}:${clock[2]}` } : {}),
                 ...(typeof record.seatsLeft === 'number' ? { seats: record.seatsLeft } : {}) });

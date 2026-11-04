@@ -381,12 +381,15 @@ See `docs/operations/billing-runbook.md` for readiness, DIAN and Mercado Pago re
 
 ---
 
-### Billing audit scripts (read-only by default)
+### Audit scripts (read-only by default)
 
-Two diagnostics in `apps/api/scripts/` run inside the API container:
+Diagnostics in `apps/api/scripts/` that run inside the API container:
 
 - `docker exec parallext-api node scripts/audit-plan-drift.js` lists tenants whose usable plan (`tenants.plan`, limits) differs from the billed one (`billing_subscriptions.plan_id`). `--apply` aligns limits with the billed plan; review the list first, because a deliberate override from `PUT /billing-admin/tenants/:id/plan` looks the same as drift.
 - `docker exec parallext-api node scripts/audit-fiscal-reality.js` (read-only) lists issued DIAN invoices and their payment, flags those for money that probably never arrived (own tenant, sandbox, zero amount, retired provider) and the tenants whose renewal engine is still armed.
+- `docker exec parallext-api node scripts/verify-wompi-flow.js [--tenant <uuid>]` (read-only) checks our Wompi billing cycle end to end: the catalog sells, sign-up arms the renewal engine, the charge attempt is created and the sweep runs it. `verify-wompi-sandbox.js` covers the provider contract instead.
+- `docker exec parallext-api node scripts/fiscal-backfill-report.js` (read-only) lists Colombian tenants with a missing or incomplete fiscal profile and their failed fiscal invoices. Run it before turning on `fiscal.gate_enabled`.
+- `node apps/api/scripts/audit-uuid-casts.js` (repository only, no database) checks every `::uuid` cast in raw SQL against the real column type in `tenant-schema.sql`, the migrations and runtime `CREATE TABLE`; it exits 1 on a mismatch.
 
 One-off migration and test scripts that used to live next to them were removed in K3 (ADR 0005).
 

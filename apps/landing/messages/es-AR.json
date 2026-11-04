@@ -12,9 +12,6 @@
       }
     }
   },
-  "tools": {
-    "title": "Mirá todo lo que podés hacer"
-  },
   "solutions": {
     "heroSubtitle": "Elegí tu industria y completá la configuración guiada. Cada una muestra su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
     "ctaTitle": "¿No encontrás tu industria?"
@@ -129,12 +126,6 @@
   "labelledDemos": {
     "subtitle": "Cada panel de este sitio dice qué es antes de mostrar un resultado. Ninguno de estos cuatro es una grabación de un cliente ni de una prueba: son ejemplos dibujados, y lo que hay detrás de cada uno lo podés ir a leer en el código.",
     "closingNote": "Nada de esto certifica un canal ni un rubro: el reporte de cierre auditado no certifica ninguno todavía. Lo que sí te conviene revisar antes de contratar es quién te cobra qué."
-  },
-  "mobileApp": {
-    "downloadApp": "Descargá en Google Play",
-    "heroSubtitle": "Atendé conversaciones, tomá el relevo de la IA, actualizá contactos y gestioná las operaciones habilitadas desde Android. Descargá la app de Parallly en Google Play e iniciá sesión con tu cuenta.",
-    "accessTitle": "Llevá a tu equipo a Parallly para Android",
-    "accessSubtitle": "Descargá la app en Google Play e iniciá sesión con tu cuenta de Parallly para continuar la atención y el seguimiento desde el teléfono."
   },
   "productOperations": {
     "mobile": {

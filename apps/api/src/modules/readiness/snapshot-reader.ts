@@ -29,7 +29,7 @@ export const TENANT_TABLE_COLUMNS: Readonly<Record<string, string>> = {
     products: 'id, name, description, category, price, currency, is_available, stock, requires_prescription, payment_policy, deposit_percent, deposit_amount, created_at, updated_at',
     ecommerce_products: 'id, provider, title, description, product_type, price_cents, currency, status, created_at, synced_at',
     properties: 'id, name, description, address, city, max_guests, bedrooms, bathrooms, night_price, cleaning_fee, currency, min_nights, check_in_time, check_out_time, amenities, house_rules, is_active, payment_policy, deposit_percent, deposit_amount, created_at, updated_at',
-    tour_packages: 'id, name, description, duration_type, duration_value, price, currency, departure_location, destination, languages, includes, excludes, cancellation_policy, is_active, payment_policy, deposit_percent, deposit_amount, created_at, updated_at',
+    tour_packages: 'id, name, description, duration_type, duration_value, min_party_size, max_capacity, price, currency, departure_location, destination, languages, includes, excludes, cancellation_policy, is_active, payment_policy, deposit_percent, deposit_amount, created_at, updated_at',
     tour_inventory: 'id, package_id, departure_date, available_seats, total_seats, is_active, created_at, updated_at',
     // R1.1 F3: dirección, privacidad declarada (metadata.address_privacy) y financiación del listado
     real_estate_listings: "id, name, transaction_type, property_kind, price, currency, hoa_fee, deposit, bedrooms, bathrooms, area_m2, address, metadata->>'address_privacy' AS address_privacy, financing_available, neighborhood, city, country, description, status, is_active, created_at, updated_at",

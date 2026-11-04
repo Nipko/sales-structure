@@ -53,6 +53,16 @@ describe('ficha de alojamiento', () => {
     });
 });
 
+describe('ficha de tour', () => {
+    it('E2m: lleva el mínimo y el máximo de viajeros del paquete, que el agente lee', () => {
+        const rows = factRows({ tenant: { ref: 't', name: 'Agencia', settings: {} }, companies: [], policies: [], requirement_values: [] });
+        rows.tour_packages = [{ id: 'k1', name: 'Tour', destination: 'X', duration_type: 'hours', duration_value: 4, min_party_size: 2, max_capacity: 12,
+            price: 125, currency: 'EUR', is_active: true, created_at: '2026-10-20 10:00:00', updated_at: '2026-10-21 10:00:00' }];
+        const [tour] = fromLegacyRows(rows).items.tour_booking;
+        expect(tour.fields).toMatchObject({ min_group: 2, max_group: 12 });
+    });
+});
+
 describe('expresiones de applies_when', () => {
     const env = {
         objectEnabled: (o: string) => o === 'service_request', variant: () => 'repair_order', writeMode: () => 'request_to_business' as const,

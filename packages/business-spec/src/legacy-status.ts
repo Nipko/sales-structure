@@ -412,6 +412,8 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             includes: jsonList(r.includes), excludes: jsonList(r.excludes), meeting_point: str(r.departure_location),
             // R1.1 F4: idiomas del guía (campo opcional guide_languages del objeto)
             guide_languages: jsonList(r.languages).map(String),
+            // E2m: el agente lee minPartySize/maxCapacity en get_package_details; sin ellos el juez da por inventado «de 1 a 10»
+            min_group: num(r.min_party_size), max_group: num(r.max_capacity),
             // R1.1 F4: salidas futuras activas del paquete (dato de disponibilidad: availability_data.departures[])
             departures: (departuresByPackage.get(String(r.id)) ?? []).map(d => ({ date: String(d.departure_date).slice(0, 10), seats_left: num(d.available_seats) })),
         });

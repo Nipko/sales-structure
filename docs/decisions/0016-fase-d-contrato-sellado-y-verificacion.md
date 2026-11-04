@@ -342,6 +342,24 @@ En hotel, seis fallos de C07/C08 marcan como inventados «1 habitación y 1 bañ
 
 Quedan abiertos tres patrones. El agente escribe «desde 150.000 COP» con un precio fijo (C16 de hotel). «Sin cargo por limpieza» sale de un `cleaningFee: 0` por defecto. El salón promete «reservaremos» sin modo de escritura (C16).
 
+### E2m: la ficha de alojamiento medida; D1p, las salidas llegan como Date
+
+E2m (4-nov, después de #365), comparada con E2l:
+
+| | E2l | E2m |
+|---|---|---|
+| Aciertos por intento | 90% | 91% |
+| pass^3 | 82% | 84% |
+| Hotel | 86% | 91% |
+| Citas | 83% | 87% |
+| Viajes | 95% | 90% |
+
+En hotel, C07 y C08 dejaron de fallar. En viajes, el C15 del Spark QA Tour (AFIRMA) falló las tres veces: el verificador quitó «La próxima salida disponible es el 15 de diciembre de 2026 a las 9:00, con 10 cupos». D1n nunca había funcionado en producción. El probe con `dropBackedViolations` enganchado muestra `departures: []` aunque la lectura sí trae la salida. En el turno, las lecturas llevan los `Date` de Prisma, no el texto ISO que ve el modelo y que usaban las pruebas, y `readDepartures` solo aceptaba texto.
+
+**D1p:** `readDepartures` lee la fecha y la hora sean texto o `Date`. La prueba de D1n ahora usa también `Date`.
+
+Siguen abiertos el «1 a 10 personas» de viajes (C08 y C17: el agente da `minPartySize`/`maxCapacity`, que la ficha del juez no trae) y el «desde» del precio de hotel.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

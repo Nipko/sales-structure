@@ -187,6 +187,9 @@ describe('EvidenceVerifier (D1b)', () => {
             nextDepartures: [{ date: '2026-12-15T00:00:00.000Z', time: '1970-01-01T09:00:00.000Z', seatsLeft: 10 }] } }];
         const departures = readDepartures(reads);
         expect(departures).toEqual([{ year: 2026, month: 12, day: 15, time: '9:00', seats: 10 }]);
+        // D1p (E2m): en el turno la lectura lleva los Date de Prisma, no el texto ISO
+        expect(readDepartures([{ result: { nextDepartures: [{ date: new Date('2026-12-15T00:00:00.000Z'), time: new Date('1970-01-01T09:00:00.000Z'), seatsLeft: 10 }] } }]))
+            .toEqual(departures);
         const claim = 'La próxima salida disponible es el 15 de diciembre de 2026 a las 9:00 a.m., con 10 cupos disponibles.';
         expect(departureBacked(claim, departures)).toBe(true);
         expect(departureBacked('The next departure is on December 15 at 09:00 with 10 seats left.', departures)).toBe(true);

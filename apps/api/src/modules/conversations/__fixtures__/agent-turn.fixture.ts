@@ -12,6 +12,33 @@ import { RegionalProfileService } from '../../tenants/regional-profile.service';
 import { sealStructuredKnowledgeCapture } from '../../evaluation-revision/evaluation-structured-knowledge';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../../common/types/execution-context';
 import { evaluationKnowledgeFixture } from './evaluation-knowledge.fixture';
+import { CATALOG_OVER_FAQ_FLAG, FACTS_LEDGER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG,
+    REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG } from '../../throttle/feature-flags.service';
+
+/** The runtime flags that default on: a spec of «flag off» or of one flag alone starts from all of them explicitly off. */
+export const RUNTIME_FLAGS_OFF: Readonly<Record<string, boolean>> = Object.freeze(Object.fromEntries([FACTS_LEDGER_FLAG, RENDERED_FACTS_FLAG,
+    CATALOG_OVER_FAQ_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_TOURS_FLAG,
+    REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG].map(key => [key, false])));
+
+/**
+ * A tenant row as these specs mean it: a flag the spec does not set is off, as it was before the runtime flags defaulted
+ * on. Specs that test a flag set it explicitly; a spec of the defaults reads `FEATURE_FLAGS_REGISTRY` directly.
+ */
+function withRuntimeFlagsOff(row: any): any {
+    if (!row || typeof row !== 'object') return row;
+    const settings = row.settings && typeof row.settings === 'object' ? row.settings : {};
+    return { ...row, settings: { ...settings, featureFlags: { ...RUNTIME_FLAGS_OFF, ...(settings.featureFlags ?? {}) } } };
+}
+
+/** `tenant.findUnique` whose resolved rows get `withRuntimeFlagsOff`, also when a spec replaces the value. */
+function tenantFindUnique(): jest.Mock {
+    const mock = jest.fn();
+    const resolved = mock.mockResolvedValue.bind(mock);
+    const resolvedOnce = mock.mockResolvedValueOnce.bind(mock);
+    mock.mockResolvedValue = (row: any) => resolved(withRuntimeFlagsOff(row));
+    mock.mockResolvedValueOnce = (row: any) => resolvedOnce(withRuntimeFlagsOff(row));
+    return mock.mockResolvedValue({ settings: {} });
+}
 
 /** Real orchestration/engines/guards; only I/O boundaries are substitutes. */
 export function agentTurnFixture(overrides: Record<string, any> = {}) {
@@ -19,7 +46,7 @@ export function agentTurnFixture(overrides: Record<string, any> = {}) {
     const redis = { get: forbidden('redis.get'), getJson: forbidden('redis.getJson'),
         set: forbidden('redis.set'), setJson: forbidden('redis.setJson'), del: forbidden('redis.del') };
     const prisma = {
-        tenant: { findUnique: jest.fn().mockResolvedValue({ settings: {} }) },
+        tenant: { findUnique: tenantFindUnique() },
         executeInTenantSchema: jest.fn(async (_schema: string, sql: string) => {
             if (!/^\s*(SELECT|WITH)\b/i.test(sql)) throw new Error(`unexpected SQL write: ${sql}`);
             return [];

@@ -146,6 +146,19 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 4 cupos.', 'El tour dura 4 horas.']);
     });
 
+    it('D1q: en una frase de tamaño de grupo, el mínimo y el máximo de la ficha respaldan la frase', () => {
+        const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
+        const { kept, dropped } = dropBackedViolations([
+            v('El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 1 persona y un máximo de 10 personas.'),
+            v('La habitación es para 2 huéspedes.'),
+            v('El grupo máximo es de 12 personas.'),
+            v('El tour dura 4 horas.'),
+        ], new Set([1, 10, 2, 4]));
+        expect(dropped.map(d => d.sentence)).toEqual([
+            'El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 1 persona y un máximo de 10 personas.', 'La habitación es para 2 huéspedes.']);
+        expect(kept.map(k => k.sentence)).toEqual(['El grupo máximo es de 12 personas.', 'El tour dura 4 horas.']);
+    });
+
     it('D1i: una cifra que dijo el cliente no se comprueba; un trozo marcado se lee en su frase entera', () => {
         const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
         const reply = 'Actualmente tenemos en stock solo 2 unidades del Audífono QA Aurora, por lo que no sería posible pedir 3. '

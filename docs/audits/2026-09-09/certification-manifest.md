@@ -5,7 +5,7 @@ Generado por `docs/audits/2026-09-09/generate-certification-manifest.cjs`. **Nin
 `requiredScenarios` que exige el reporte de certificación, y cuyas tarifas salen del catálogo del propio
 router. La cifra que se pide autorizar y la que se factura no pueden ser dos listas de precios distintas.
 
-Revisión: `e4d6cfa4b90a4c1501d801e70f02097ed0e6eba8`. **Este documento no contiene ni requiere ningún secreto**: las variables se
+Revisión: `0908eec0eb47b53457d08919cf40cb23b79f1331`. **Este documento no contiene ni requiere ningún secreto**: las variables se
 nombran, no se leen.
 
 ## Qué se pide

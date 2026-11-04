@@ -301,6 +301,26 @@ En viajes, el «no hay salida el sábado» ya llega al cliente, y con D1m el age
 
 **D1n:** una afirmación que nombra la fecha de una salida leída en este turno (`upcomingDepartures` o `nextDepartures`) queda respaldada si sus horas y cupos son los de esa salida. La fecha puede venir escrita en es/en/pt/fr o en formato numérico. Lo resuelve el código (`readDepartures` y `departureBacked`), sin modelo. Otra hora, otros cupos u otra fecha no la respaldan.
 
+### E2k: D1n medido; D1o deja de respaldar «party_size_required»
+
+E2k (3-nov, después de #363), comparada con E2j:
+
+| | E2j | E2k |
+|---|---|---|
+| Aciertos por intento | 90% | 91% |
+| pass^3 | 85% | 85% |
+| Inmobiliaria | 82% | 86% |
+| Viajes | 88% | 94% |
+| C15 | 57% | 60% |
+| C01 | 38% | 52% |
+| C10 | 100% | 83% |
+
+La caída de C10 y de C17 viene de casos sueltos sin un patrón común, y entra en la variación entre corridas.
+
+El C15 de viajes de E2k pregunta por el Tour QA Aurora, que no tiene salidas programadas. `check_package_availability` sin número de viajeros devuelve `available: false` con `reason: party_size_required` y cupo «unlimited». El agente lo leyó como «no tiene disponibilidad el sábado», y D1m lo daba por respaldado porque aceptaba cualquier motivo.
+
+**D1o:** solo un motivo de falta respalda la negación: `no_departure_on_date`, `not_enough_seats`, `party_size_too_small` o `party_size_too_large`. El prompt del verificador dice además que «party_size_required» no es un «no». Con eso la frase se cambia por «no tengo ese dato confirmado», que es lo que pide la especificación cuando la fuente de disponibilidad está ausente.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

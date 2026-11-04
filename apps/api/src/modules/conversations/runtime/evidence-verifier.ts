@@ -53,7 +53,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
     'Un 0 o false en la evidencia NO respalda una negación: suele ser el valor por defecto del campo, no un «no» del negocio. «Sin cargo por limpieza» con cleaningFee 0 es una violación.',
-    'Excepción: una lectura de este turno que responde «available»: false con un motivo («reason», por ejemplo no_departure_on_date) SÍ respalda decir que no hay salida, cupo o disponibilidad en esa fecha.',
+    'Excepción: una lectura de este turno que responde «available»: false con un motivo de falta («reason»: no_departure_on_date, not_enough_seats, party_size_too_small o party_size_too_large) SÍ respalda decir que no hay salida, cupo o disponibilidad en esa fecha. «party_size_required» NO es un «no»: solo falta saber cuántos viajan.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
     'Responde SOLO JSON: {"violations": [{"sentence": "la frase exacta", "kind": "claim" | "denial", "requirementId": "ID del unknown o null"}]}. Sin violaciones: {"violations": []}.',
 ].join('\n');
@@ -197,10 +197,17 @@ const DATE_AVAILABILITY = /\b(salidas?|departures?|sa[ií]das?|départs?|cupos?|
  * D1m (E2i, C15): una lectura de este turno que contesta «available: false» con un motivo («no_departure_on_date») es un
  * «no» del negocio para esa fecha, no un valor por defecto: respalda «no hay salida ese día».
  */
+const UNAVAILABLE_REASONS = new Set(['no_departure_on_date', 'not_enough_seats', 'party_size_too_small', 'party_size_too_large']);
+
+/**
+ * D1o (E2k, C15): solo los motivos de falta cuentan. «party_size_required» también llega con «available: false», pero dice
+ * que falta el número de viajeros (a veces con cupo ilimitado): respaldarlo dejó pasar «no tiene disponibilidad el sábado».
+ */
 export function explicitUnavailable(reads: ReadonlyArray<{ result: unknown }> | undefined): boolean {
     return (reads ?? []).some(r => {
         const result = r.result as Record<string, unknown> | null;
-        return !!result && typeof result === 'object' && result.available === false && typeof result.reason === 'string' && !!result.reason;
+        return !!result && typeof result === 'object' && result.available === false
+            && typeof result.reason === 'string' && UNAVAILABLE_REASONS.has(result.reason);
     });
 }
 

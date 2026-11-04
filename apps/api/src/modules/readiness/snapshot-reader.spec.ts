@@ -47,6 +47,7 @@ describe('SnapshotReader (solo lectura)', () => {
         // E2l: la dirección y los baños de la unidad que el agente lee; sin ellos el juez los daba por inventados
         expect(TENANT_TABLE_COLUMNS.properties).toMatch(/\baddress\b/);
         expect(TENANT_TABLE_COLUMNS.properties).toMatch(/\bbathrooms\b/);
+        expect(TENANT_TABLE_COLUMNS.tour_packages).toMatch(/\bmin_party_size\b.*\bmax_capacity\b/);
         // de metadata solo sale la privacidad declarada, nunca el JSON completo
         expect(TENANT_TABLE_COLUMNS.real_estate_listings).toContain("metadata->>'address_privacy' AS address_privacy");
         expect(TENANT_TABLE_COLUMNS.real_estate_listings).not.toMatch(/(^|,\s*)metadata\s*(,|$)/);

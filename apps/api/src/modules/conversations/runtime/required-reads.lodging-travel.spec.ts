@@ -118,14 +118,14 @@ describe('required reads PR7: slots of the message', () => {
 });
 
 describe('required reads PR7: runner', () => {
-    it('price with no dates: list_properties then the one property\'s details; the price is marked as a "desde" price', async () => {
+    it('price with no dates: list_properties then the one property\'s details; the price is marked as the nightly price', async () => {
         const h = harness({ list_properties: () => ({ properties: [PROPERTY] }), get_property_details: args => ({ ...DETAILS, id: args.propertyId }) });
         const run = await runRequiredReads(op('property_info'), h.io);
         expect(h.calls).toEqual([{ name: 'list_properties', args: {} }, { name: 'get_property_details', args: { propertyId: CABANA } }]);
         expect(run.outcome).toBe('read');
         const list = run.results[0].result;
         expect(list).toMatchObject({ properties: [expect.objectContaining({ nightPrice: 150000, minNights: 1 })], complete: true, total: 1, hasMore: false,
-            priceBasis: 'from_nightly_price', priceNote: FROM_PRICE_NOTE });
+            priceBasis: 'nightly_price', priceNote: FROM_PRICE_NOTE });
         expect(run.reads[0]).toMatchObject({ tool: 'list_properties', status: 'read', rows: 1, complete: true, total: 1 });
     });
 

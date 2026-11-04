@@ -21,7 +21,7 @@
  *
  * PR7 extends the same runner to hotel / vacation rental (`properties`) and travel (`tours`). Production QA (Telegram):
  *   - hotel «¿cuánto cuesta la noche?» with no dates → asked for dates, then «no tengo un precio base», while list_properties
- *     returns `nightPrice` (150.000 COP, minNights 1): without dates the answer is the "desde" price;
+ *     returns `nightPrice` (150.000 COP, minNights 1): without dates the answer is the nightly price;
  *   - hotel «¿tienen disponible del 3 al 5 de diciembre para 2?» → availability claimed with no availability read: dates in the
  *     message now read the list for those dates and `check_property_availability` for the one property;
  *   - hotel «¿a qué hora es el check-in?» → only `get_property_details` has checkInTime/checkOutTime, so it runs on the one
@@ -179,8 +179,12 @@ const BOUNDED_SEARCHES: Readonly<Record<string, { container: string; limit: numb
     search_listings: Object.freeze({ container: 'listings', limit: 8 }),
 });
 
-/** What the model is told about a property list read without dates: the nightly price is a "from" price, not a quote. */
-export const FROM_PRICE_NOTE = 'Sin fechas: nightPrice es el precio por noche "desde" de cada alojamiento (minNights es la estadía mínima). Dalo como "desde"; el total depende de las fechas y se consulta con check_property_availability.';
+/**
+ * What the model is told about a property list read without dates: nightPrice is THE nightly price (the total is
+ * nightPrice × nights + cleaningFee, no per-date rates), not a "from" price. E2m: «desde 150.000 COP» was graded as an
+ * invented qualifier on a fixed price (hotel C16, 3/3 in E2k–E2m).
+ */
+export const FROM_PRICE_NOTE = 'Sin fechas: nightPrice es el precio por noche de cada alojamiento, fijo: no lo presentes como "desde" ni "a partir de" (minNights es la estadía mínima). El total de una estadía (noches × nightPrice más cleaningFee) depende de las fechas y se consulta con check_property_availability.';
 
 /**
  * Bounded arguments a pilot reader runs with when nothing narrows it. Lists ask
@@ -595,7 +599,7 @@ export async function runRequiredReads(operation: OperationDefinition, io: Requi
         }
         const evidence = withListEvidence(name, args, result);
         if (name === 'list_properties' && !args.checkIn && Array.isArray(evidence.result?.properties) && evidence.result.properties.length) {
-            evidence.result = { ...evidence.result, priceBasis: 'from_nightly_price', priceNote: FROM_PRICE_NOTE };
+            evidence.result = { ...evidence.result, priceBasis: 'nightly_price', priceNote: FROM_PRICE_NOTE };
         }
         answers.set(name, evidence.result);
         results.push({ name, args, result: evidence.result });

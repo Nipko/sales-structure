@@ -8,7 +8,7 @@ import { REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_
  *
  * Production QA (Telegram, the flag would be on):
  *   - hotel «¿cuánto cuesta la noche?» with no dates → asked for dates, then «no tengo un precio base» (list_properties returns
- *     nightPrice 150.000 COP, minNights 1): the answer is the "desde" price;
+ *     nightPrice 150.000 COP, minNights 1): the answer is the nightly price;
  *   - hotel «¿tienen disponible del 3 al 5 de diciembre para 2?» → availability claimed without check_property_availability;
  *   - hotel «¿a qué hora es el check-in?» / «¿a qué hora hay que entregar la habitación?» → only get_property_details has the times;
  *   - travel «¿qué planes manejan?» → asked for filters instead of listing the packages.
@@ -72,7 +72,7 @@ function fixture(vertical: Vertical, flags: Record<string, boolean>, classifier:
         if (details && /entregar|salida|check-?out/i.test(req.messages.filter((m: any) => m.role === 'user').pop()?.content ?? '')) {
             return { ...usage, content: `La habitación se entrega a las ${details.checkOutTime}.` };
         }
-        if (properties && properties.priceBasis === 'from_nightly_price') return { ...usage, content: 'La noche está desde 150.000 COP.' };
+        if (properties && properties.priceBasis === 'nightly_price') return { ...usage, content: 'La noche cuesta 150.000 COP.' };
         if (packages) return { ...usage, content: `Manejamos: ${packages.packages.map((p: any) => p.name).join(', ')}.` };
         // What production did without the reads.
         return { ...usage, content: vertical === 'hotel' ? '¿Para qué fechas sería su estadía?' : '¿A qué destino y en qué fechas le gustaría viajar?' };
@@ -101,7 +101,7 @@ const toolNames = (calls: any[]) => calls.map(c => (c.tools || []).map((t: any) 
 afterEach(() => jest.restoreAllMocks());
 
 describe('required reads through the turn: hotel (PR7)', () => {
-    it('«¿cuánto cuesta la noche?» with no dates: list_properties and the details before the model, answered as a "desde" price', async () => {
+    it('«¿cuánto cuesta la noche?» with no dates: list_properties and the details before the model, answered as the nightly price', async () => {
         const h = fixture('hotel', { [REQUIRED_READS_PROPERTIES_FLAG]: true }, '{"operationKey":"property_info","confidence":0.93}');
         const { result, requiredReads } = await h.turn('cuánto cuesta la noche?');
         expect(result.debug.runtimeError).toBeUndefined();
@@ -110,8 +110,8 @@ describe('required reads through the turn: hotel (PR7)', () => {
             { name: 'get_property_details', args: { propertyId: CABANA } },
         ]));
         const [list] = h.requiredReadBodies();
-        expect(list).toMatchObject({ priceBasis: 'from_nightly_price', properties: [expect.objectContaining({ nightPrice: 150000, minNights: 1 })] });
-        expect(result.reply).toBe('La noche está desde 150.000 COP.');
+        expect(list).toMatchObject({ priceBasis: 'nightly_price', properties: [expect.objectContaining({ nightPrice: 150000, minNights: 1 })] });
+        expect(result.reply).toBe('La noche cuesta 150.000 COP.');
         expect(result.reply).not.toMatch(/fechas|precio base/i);
         expect(requiredReads[0].metadata).toMatchObject({
             pilot: 'properties', operation: 'property_info', outcome: 'read',

@@ -9,6 +9,7 @@ import { ReadinessContextService } from './readiness-context.service';
 import { ReadinessController } from './readiness.controller';
 import { ReadinessInvalidationListener } from './readiness-invalidation.listener';
 import { ReadinessService } from './readiness.service';
+import { ReadinessScheduler } from './readiness.scheduler';
 
 /**
  * Preparación del negocio (C0 §1): motor de @parallext/business-spec + historial + caché (R2), la única puerta de
@@ -18,7 +19,7 @@ import { ReadinessService } from './readiness.service';
  */
 @Module({
     imports: [PrismaModule, RedisModule],
-    providers: [ReadinessService, BusinessFactsService, BusinessFactsReader, ReadinessInvalidationListener, BusinessFactsCacheListener, GoLiveService, ReadinessContextService],
+    providers: [ReadinessService, ReadinessScheduler, BusinessFactsService, BusinessFactsReader, ReadinessInvalidationListener, BusinessFactsCacheListener, GoLiveService, ReadinessContextService],
     controllers: [ReadinessController],
     exports: [ReadinessService, BusinessFactsService, BusinessFactsReader, GoLiveService, ReadinessContextService],
 })

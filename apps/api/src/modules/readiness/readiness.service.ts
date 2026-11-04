@@ -18,7 +18,7 @@ import { RedisService } from '../redis/redis.service';
 import { SnapshotReader, type SqlJsonRunner } from './snapshot-reader';
 
 /** Quién pidió la evaluación (columna `trigger`). */
-export type ReadinessTrigger = 'on_demand' | 'refresh' | 'invalidated';
+export type ReadinessTrigger = 'on_demand' | 'refresh' | 'invalidated' | 'scheduled';
 
 export interface ReadinessView {
     /** Fila de `readiness_evaluations` con este resultado; null si el historial no se pudo escribir. */

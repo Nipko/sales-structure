@@ -188,6 +188,12 @@ const HEDGE = /\b(no (tengo|tenemos (registrad|informaci|ese dato|esa informaci|
 /** D1g: una frase de cupos o stock dice cifras chicas («quedan 10 cupos», «hay 2 unidades»): esas sí se comprueban. */
 const AVAILABILITY = /\b(cupos?|plazas?|lugares|disponib\w*|unidades|stock|existencias|quedan?|spots?|seats?|available|units?|in stock|vagas?|dispon[ií]ve\w*)\b/i;
 
+/**
+ * D1q (E2o, viajes C08): una frase de tamaño de grupo («mínimo 1 y máximo 10 personas», «para 2 huéspedes») dice cifras
+ * chicas que la ficha trae (minPartySize, maxCapacity, maxGuests): también se comprueban, igual que los cupos.
+ */
+const GROUP_SIZE = /\b(personas?|pax|viajeros?|hu[eé]spedes|pasajeros?|participantes|grupos?|capacidad|m[ií]nimo|m[aá]ximo|people|persons?|guests?|travell?ers?|participants|group|capacity|minimum|maximum|pessoas|viajantes|h[oó]spedes)\b/i;
+
 const NEGATION = /\b(no|sin|ning[uú]n|without|sem|não)\b/i;
 
 /** D1m: una frase sobre la salida, el cupo o la disponibilidad de una fecha. */
@@ -294,8 +300,8 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
         const all = sentenceNumbers(text);
         const figures = all.filter(n => !echoed.has(n));
         const nums = figures.filter(n => n > MAX_MULTIPLE || !Number.isInteger(n));
-        // D1g: en una frase de cupos o stock, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
-        const small = AVAILABILITY.test(text) ? figures.filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
+        // D1g/D1q: en una frase de cupos, stock o tamaño de grupo, una cifra chica cuenta si está tal cual en los datos (no como múltiplo).
+        const small = AVAILABILITY.test(text) || GROUP_SIZE.test(text) ?figures.filter(n => Number.isInteger(n) && n > 0 && n <= MAX_MULTIPLE) : [];
         return { any: all.length > 0, checked: nums.length + small.length > 0,
             ok: !figures.includes(0) && !/\b\d{1,2}:\d{2}\b/.test(text) && nums.every(backed) && small.every(n => backed(n) && numbers.has(n)) };
     };

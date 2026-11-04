@@ -120,9 +120,23 @@ export function evaluate(spec: CompiledSpec, snap: TenantSnapshot, now?: Date): 
         else if (r.gap?.rootCause) delete r.gap.rootCause;
     }
 
+    // Alarma (dueño, 4-nov): sin modo declarado el agente ya actúa con el modo por defecto del objeto. El aviso lo dice
+    // y el hueco va primero entre los bloqueantes, para que la tarjeta de Inicio lo muestre.
+    const liveDefaults: string[] = [];
+    for (const o of facts.objects) {
+        const w = facts.writeModes[o.object];
+        const id = `OBJ.${o.object.toUpperCase()}.WRITE_MODE`;
+        if (!w || w.declared || w.mode === 'none' || !evalById.get(id)?.gap) continue;
+        const noun = OBJECT_NOUNS[o.object]?.records ?? o.object;
+        const doing = w.mode === 'direct_commit' ? `ya confirma ${noun} directamente` : `ya deja solicitudes de ${noun}`;
+        qualityWarnings.unshift({ id, uiTarget: evalById.get(id)?.gap?.uiTarget ?? null,
+            message: `Tu agente ${doing} con el modo por defecto de la plataforma, sin que lo hayas decidido. Elige cómo se reservan.` });
+        liveDefaults.push(id);
+    }
+
     const applicable = requirements.filter(r => r.applies);
     const failingAt = (lvl: Level) => [...counted.entries()].filter(([, ls]) => ls.has(lvl)).map(([id]) => id);
-    const blockingGaps = failingAt('bloqueante');
+    const blockingGaps = [...liveDefaults.filter(id => counted.get(id)?.has('bloqueante')), ...failingAt('bloqueante').filter(id => !liveDefaults.includes(id))];
     const necessaryFailing = failingAt('necesario');
     const recommendedFailing = failingAt('recomendado');
     const verdict = blockingGaps.length ? 'no_listo' : necessaryFailing.length ? 'limitado' : 'listo';

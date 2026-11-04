@@ -360,6 +360,12 @@ En hotel, C07 y C08 dejaron de fallar. En viajes, el C15 del Spark QA Tour (AFIR
 
 Siguen abiertos el «1 a 10 personas» de viajes (C08 y C17: el agente da `minPartySize`/`maxCapacity`, que la ficha del juez no trae) y el «desde» del precio de hotel.
 
+### Decisión del dueño: el modo de reserva por defecto es una alarma de salud
+
+En el salón (C16), el agente dice «agendaremos» aunque el negocio no declaró cómo se reserva. La evaluación de salud ya lo sabía: `config.objects` muestra `appointment · direct_commit (por defecto)`. Pero solo aparecía como uno más de 11 bloqueantes.
+
+Decisión (4-nov): el agente sigue como está, y la falta se vuelve una alarma para el tenant. Cuando un objeto habilitado actúa con su modo por defecto (`direct_commit` o `request_to_business`) sin modo declarado, `evaluate` agrega un aviso: «Tu agente ya confirma citas directamente con el modo por defecto de la plataforma, sin que lo hayas decidido. Elige cómo se reservan.» Además pone ese hueco primero entre los bloqueantes, para que la tarjeta de Inicio lo muestre siempre.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

@@ -321,6 +321,27 @@ El C15 de viajes de E2k pregunta por el Tour QA Aurora, que no tiene salidas pro
 
 **D1o:** solo un motivo de falta respalda la negación: `no_departure_on_date`, `not_enough_seats`, `party_size_too_small` o `party_size_too_large`. El prompt del verificador dice además que «party_size_required» no es un «no». Con eso la frase se cambia por «no tengo ese dato confirmado», que es lo que pide la especificación cuando la fuente de disponibilidad está ausente.
 
+### E2l: D1o medido; la ficha del juez no traía dirección ni baños
+
+E2l (4-nov, después de #364), comparada con E2k:
+
+| | E2k | E2l |
+|---|---|---|
+| Aciertos por intento | 91% | 90% |
+| pass^3 | 85% | 82% |
+| Viajes | 94% | 95% |
+| Inmobiliaria | 86% | 90% |
+| Citas | 92% | 83% |
+| Hotel | 92% | 86% |
+
+En viajes, el C15 ya responde «no tengo ese dato confirmado» en dos intentos; el tercero cortó por un timeout de lectura. Citas y hotel bajaron sin relación con D1o. En citas los fallos son de siempre (C01, C04, C16, P11), con más repeticiones en esta corrida.
+
+En hotel, seis fallos de C07/C08 marcan como inventados «1 habitación y 1 baño» y la dirección. El probe muestra que el agente los leyó: `get_property_details` trae `bedrooms: 1`, `bathrooms: 1` y `address`. Era la ficha del juez la que no los tenía. `SnapshotReader` no seleccionaba `properties.address`, y `fromLegacyRows` solo pasaba `bedrooms` como `beds`, sin `bathrooms`.
+
+**Corrección:** el lector selecciona `address`, y la ficha de alojamiento lleva `bedrooms` y `bathrooms`, que el catálogo declara como campos opcionales. `beds` se mantiene porque es obligatorio.
+
+Quedan abiertos tres patrones. El agente escribe «desde 150.000 COP» con un precio fijo (C16 de hotel). «Sin cargo por limpieza» sale de un `cleaningFee: 0` por defecto. El salón promete «reservaremos» sin modo de escritura (C16).
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

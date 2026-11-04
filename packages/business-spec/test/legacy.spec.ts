@@ -2,7 +2,8 @@
 import { createHash } from 'node:crypto';
 import { evalExpr, parseExpr, validateExpr } from '../src/expr';
 import { canonicalJson, sha256 } from '../src/hash';
-import { normalizeHours, rowStatus } from '../src/legacy-status';
+import { factRows } from '../src/business-facts';
+import { fromLegacyRows, normalizeHours, rowStatus } from '../src/legacy-status';
 import { fixtureSnapshot } from './helpers';
 
 describe('reglas L de datos heredados', () => {
@@ -39,6 +40,16 @@ describe('reglas L de datos heredados', () => {
         expect(normalizeHours({ schedule: { monday: { enabled: true, open: '08:00', close: '18:00' }, sunday: { enabled: false, open: '', close: '' } } }))
             .toEqual({ always_open: false, timezone: null, days: { mon: [{ open: '08:00', close: '18:00' }], sun: [] } });
         expect(normalizeHours({ schedule: { mon: '09:00-13:00, 14:00-18:00' } })?.days.mon).toHaveLength(2);
+    });
+});
+
+describe('ficha de alojamiento', () => {
+    it('E2l: lleva dormitorios, baños y dirección de la unidad, que el agente lee', () => {
+        const rows = factRows({ tenant: { ref: 't', name: 'Hotel', settings: {} }, companies: [], policies: [], requirement_values: [] });
+        rows.properties = [{ id: 'p1', name: 'Doble', description: null, address: 'Calle 1', city: 'Ciudad', max_guests: 2, bedrooms: 1, bathrooms: 1,
+            night_price: 150000, min_nights: 1, amenities: [], is_active: true, created_at: '2026-10-20 10:00:00', updated_at: '2026-10-21 10:00:00' }];
+        const [unit] = fromLegacyRows(rows).items.lodging_booking;
+        expect(unit.fields).toMatchObject({ bedrooms: 1, bathrooms: 1, address: 'Calle 1', city: 'Ciudad', price_per_night: 150000 });
     });
 });
 

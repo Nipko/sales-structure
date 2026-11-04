@@ -385,6 +385,8 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
         snap.items.lodging_booking = rows.properties.map(r => {
             const base = item('properties', r, {
                 unit_name: r.name, max_guests: num(r.max_guests), beds: num(r.bedrooms), description: str(r.description),
+                // E2l: el agente lee bedrooms y bathrooms de la ficha; sin ellos el juez solo ve «beds» y da por inventado «1 baño»
+                bedrooms: num(r.bedrooms), bathrooms: num(r.bathrooms),
                 price_per_night: num(r.night_price) && num(r.night_price)! > 0 ? num(r.night_price) : null, min_nights: num(r.min_nights),
                 amenities: jsonList(r.amenities),
                 // E1.1b: ubicación de la unidad (el agente la usa para «¿dónde quedan?»; el juez debe poder verificarla)

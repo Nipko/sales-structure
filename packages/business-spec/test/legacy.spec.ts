@@ -59,7 +59,7 @@ describe('ficha de tour', () => {
         rows.tour_packages = [{ id: 'k1', name: 'Tour', destination: 'X', duration_type: 'hours', duration_value: 4, min_party_size: 2, max_capacity: 12,
             price: 125, currency: 'EUR', is_active: true, created_at: '2026-10-20 10:00:00', updated_at: '2026-10-21 10:00:00' }];
         const [tour] = fromLegacyRows(rows).items.tour_booking;
-        expect(tour.fields).toMatchObject({ min_group: 2, max_group: 12 });
+        expect(tour.fields).toMatchObject({ min_group: 2, max_group: 12, currency: 'EUR' });
     });
 });
 

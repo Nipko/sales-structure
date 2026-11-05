@@ -20,6 +20,13 @@ describe('F4300-53 · a generic marker in the FAQ question is not another topic'
         expect(pickTopicFallbackFaq([WARRANTY, SHIPPING], message)?.id).toBe('w');
     });
 
+    it.each([
+        '¿Audífono QA Aurora tiene garantía?',
+        'Does the Audífono QA Aurora have a warranty?',
+    ])('E2o: «plazo» in the FAQ question is a side of the topic, not another one: %s', (message) => {
+        expect(pickTopicFallbackFaq([WARRANTY, SHIPPING], message)?.id).toBe('w');
+    });
+
     it('a different named topic still does not substitute («Faro Azul» for «Faro Rojo»)', () => {
         const azul = faq('a', '¿Cuánto dura el tour Faro Azul?', 'El tour Faro Azul dura 3 horas.');
         expect(pickTopicFallbackFaq([azul], '¿cuánto dura el tour Faro Rojo?')).toBeNull();

@@ -366,6 +366,49 @@ En el salón (C16), el agente dice «agendaremos» aunque el negocio no declaró
 
 Decisión (4-nov): el agente sigue como está, y la falta se vuelve una alarma para el tenant. Cuando un objeto habilitado actúa con su modo por defecto (`direct_commit` o `request_to_business`) sin modo declarado, `evaluate` agrega un aviso: «Tu agente ya confirma citas directamente con el modo por defecto de la plataforma, sin que lo hayas decidido. Elige cómo se reservan.» Además pone ese hueco primero entre los bloqueantes, para que la tarjeta de Inicio lo muestre siempre.
 
+### E2n y decisión del dueño: el agente medido es el de todos los tenants
+
+E2n (4-nov, después de #366): 92% de aciertos por intento y 87% pass^3, la mejor medición hasta ahora. Ningún tenant baja más de 4 puntos de pass^3 respecto de E2m.
+
+Al revisar las banderas aparece una brecha. El registro de hechos, la ficha renderizada, «el catálogo manda sobre las FAQ» y las lecturas obligatorias por rubro estaban encendidos solo en los 7 tenants de QA. Los otros 16 usaban el agente anterior. El verificador ya venía encendido por defecto desde E2h.
+
+**Decisión (dueño, 4-nov):** esas 9 banderas quedan encendidas por defecto en el registro. Un tenant que apague una de forma explícita la mantiene apagada.
+
+Siguen apagados por defecto:
+- `readiness.goLiveGate`: los 23 tenants están en `go_live_state = off`, y encenderlo dejaría a todos sin respuestas de la IA en canales reales;
+- `readiness.writeModeCapability`;
+- `agentRuntime.safetyTriage`, que requiere revisión clínica.
+
+Las pruebas del turno que dan por hecho las banderas apagadas usan ahora un `agentTurnFixture` cuyo tenant las tiene apagadas salvo que la prueba las encienda.
+
+### Decisión del dueño: la salud se evalúa sola en todos los tenants
+
+El 4-nov, 16 de los 23 tenants nunca habían tenido una evaluación de salud. La evaluación solo corría al abrir el panel, al conversar o al guardar un dato, así que nadie les avisaba qué les faltaba.
+
+Decisión: `ReadinessScheduler` evalúa cada tenant activo cada 6 horas, con trigger `scheduled` y con candado de cron. El historial sigue guardando una fila solo cuando el resultado cambia. Un tenant que falla no detiene a los demás.
+
+El control de salida (`readiness.goLiveGate`) sigue apagado. Se enciende cuando cada negocio haya visto sus faltantes y tenga un periodo de aviso.
+
+### D1q (#375): el mínimo y el máximo del grupo respaldan la respuesta
+
+El probe del 4-nov sobre la imagen de #367 mostró que el verificador seguía borrando «mínimo 1 y máximo 10 personas». Esto pasaba aunque `get_package_details` traía `minPartySize: 1` y `maxCapacity: 10` en ese mismo turno. #367 llevó esos campos a la ficha de salud y al juez, pero no al verificador en tiempo real. La comprobación de cifras chicas de D1g solo corría en frases de cupos o stock.
+
+Decisión: una frase de tamaño de grupo («personas», «huéspedes», «mínimo», «máximo», «capacidad», y sus equivalentes en EN y PT) también pasa por esa comprobación. La regla no cambia: cada cifra chica tiene que estar tal cual en los datos del turno, sin contar múltiplos.
+
+### E2o: #367, #368, #369 y D1q medidos (parcial)
+
+E2o corrió el 4-nov de 15:48 a 17:50 UTC sobre la imagen de #375. Las 21 corridas se detuvieron al llegar al límite de 2 horas, con 30 a 37 de los 40 casos hechos; E2n se había completado. Es una lectura indicativa: 238 casos y 695 intentos, de los cuales 201 casos coinciden con E2n.
+
+| | E2n | E2o |
+|---|---|---|
+| aciertos por intento | 92% | 92% |
+| pass^3 | 87% | 87% |
+| hotel | 92% | 96% |
+| citas | 89% | 96% |
+| inmobiliaria | 96% | 89% |
+
+C16 (precio de la noche) sube del 52% al 71% y C01 del 62% al 94%. Inmobiliaria baja y queda para revisar caso por caso. El probe tras desplegar D1q mostró que la frase «mínimo 1 y máximo 10 personas» ya no se borra.
+
 ## Consecuencias
 
 - Los ensayos, Agent Test y evaluaciones ahora reflejan el turno vivo en lo que sabe el agente. Las cifras de E1 subestiman al agente vivo en la parte que dependía del bloque.

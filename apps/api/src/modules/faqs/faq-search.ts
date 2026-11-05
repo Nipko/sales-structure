@@ -261,6 +261,11 @@ export function pickTopicFaq(rows: FAQ[], topic: string, message: string, echoTi
 }
 
 const FILLER_CANON = new Set([...QUESTION_FILLER].map(canon));
+/** Words that name which side of a topic a FAQ answers («el PLAZO de garantía», «warranty PERIOD»), never another topic. */
+const ASPECT_CANON = new Set(['plazo', 'tiempo', 'duracion', 'periodo', 'term', 'duration', 'period', 'length', 'prazo', 'tempo',
+    'duracao', 'delai', 'duree', 'periode'].map(canon));
+/** Asking words that only ask whether something exists («¿TIENE garantía?», «is THERE…», «HAS it…»). */
+const EXISTENCE_CANON = new Set(['tiene', 'tienen', 'tener', 'hay', 'have', 'has', 'there', 'tem', 'ha', 'ont'].map(canon));
 /** Comparison form of the topic words of a message (`topicTermsOf`, canonicalised). */
 const topicCanonOf = (message: string): string[] => canonTerms(message).filter(t => !FILLER_CANON.has(t));
 
@@ -279,7 +284,8 @@ function questionExtras(question: string, message: Set<string>): string[] {
     }
     // F4300-53 (production QA 28-oct): «audífono DE PRUEBA», «QA», «test» mark a seeded record, not another topic — the warranty FAQ
     // «¿Cuál es el plazo de garantía QA del audífono de prueba?» never answered «¿cuánto dura la garantía del Audífono QA Aurora?».
-    return own.filter(t => !message.has(t) && !alternates.has(t) && !GENERIC_SET.has(t));
+    // E2o (store P03-4/C26, 3 of 3): nor «¿Audífono QA Aurora tiene garantía?» — «plazo» says which side of the topic the FAQ answers.
+    return own.filter(t => !message.has(t) && !alternates.has(t) && !GENERIC_SET.has(t) && !ASPECT_CANON.has(t));
 }
 
 /**
@@ -308,7 +314,9 @@ export function pickTopicFallbackFaq(rows: FAQ[], message: string): FAQ | null {
         const content = canonTokens(`${row.question} ${row.answer}`);
         const covered = topic.filter(t => question.has(t));
         const questionAsks = canonTerms(row.question).filter(t => FILLER_CANON.has(t));
-        const asksOther = asks.length > 0 && questionAsks.length > 0 && !questionAsks.some(t => asks.includes(t));
+        // «¿TIENE garantía?» only asks whether the topic exists: «¿Cuál es el PLAZO de garantía?» answers it (E2o).
+        const asksOther = asks.length > 0 && !asks.every(t => EXISTENCE_CANON.has(t)) && questionAsks.length > 0
+            && !questionAsks.some(t => asks.includes(t));
         const substitutes = asksOther || (questionExtras(row.question, said).length > 0 && topic.some(t => !content.has(t)));
         return { row, covered: covered.length, coveredTerms: covered, echo: words.filter(t => question.has(t)).length, substitutes };
     });

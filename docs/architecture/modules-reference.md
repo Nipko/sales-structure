@@ -470,7 +470,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 
 #### 21. crm
 - **Purpose:** Full CRM — contacts, leads, opportunities, custom attributes, segments, scoring, analytics, AI insights, pipeline stages, import/export
-- **Services:** `contacts.service.ts`, `activity.service.ts`, `crm-analytics.service.ts`, `crm-insights.service.ts`, `custom-attributes.service.ts`, `import-export.service.ts`, `lead-scoring.service.ts`, `notes.service.ts`, `segments.service.ts`, `tasks.service.ts`
+- **Services:** `activity.service.ts`, `crm-analytics.service.ts`, `crm-insights.service.ts`, `custom-attributes.service.ts`, `import-export.service.ts`, `lead-scoring.service.ts`, `notes.service.ts`, `segments.service.ts`, `tasks.service.ts`
 - **Repositories:** `leads.repository.ts`, `opportunities.repository.ts`, `catalog.repository.ts`
 - **Controller:** `crm.controller.ts`
 - **Endpoints:**

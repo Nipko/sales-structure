@@ -1865,18 +1865,6 @@
     "sendOutcomeUnknown": "Se guardó tu respuesta y se envió, pero el canal no contestó: puede haber llegado. No la vuelvas a enviar — se está verificando.",
     "whatsappMayBeCharged": "Responder por WhatsApp puede tener costo: Meta le cobra a tu cuenta cada mensaje entregado."
   },
-  "smsNotificationsIntegration": {
-    "title": "Avisos por SMS",
-    "subtitle": "Avisa a tus agentes por SMS cuando la IA escala una conversación",
-    "enable": "Activar avisos por SMS",
-    "enableHint": "Envía un SMS al agente asignado (o a admins/supervisores) cuando ocurre un handoff",
-    "events": "Eventos a notificar",
-    "eventHandoff": "Conversación escalada (handoff)",
-    "channelHint": "Requiere tener el canal SMS conectado. Los SMS se envían desde tu número de Twilio y tienen costo por mensaje.",
-    "planHint": "Disponible en los planes Pro y superiores.",
-    "saved": "Configuración guardada",
-    "saveFailed": "No se pudo guardar"
-  },
   "slackIntegration": {
     "title": "Slack",
     "subtitle": "Recibe alertas de Parallly en tu canal de Slack",
@@ -5315,15 +5303,11 @@
     },
     "analytics": {
       "tab": "Analíticas",
-      "title": "Analíticas de KB",
-      "subtitle": "Uso, rendimiento y preguntas sin respuesta",
-      "period": "Últimos {days} días",
       "overview": {
         "uniqueQueries": "Consultas únicas",
         "totalRetrievals": "Búsquedas medidas",
         "hitRate": "Búsquedas con coincidencia relevante",
         "avgScore": "Relevancia media",
-        "medianScore": "Relevancia mediana",
         "observedRate": "Cita o coincidencia literal"
       },
       "topDocuments": "Documentos más consultados",
@@ -5332,8 +5316,6 @@
       "unanswered": "Preguntas sin respuesta",
       "pendingMoved": "Lo que el agente no supo responder ahora se atiende en Conocimiento pendiente: ahí respondes, lo guardas como dato y el cliente recibe la respuesta.",
       "pendingOpen": "Abrir conocimiento pendiente",
-      "occurrences": "Veces",
-      "lastSeen": "Última vez",
       "noData": "No hay datos de analytics aún. Se empiezan a recopilar con las conversaciones.",
       "planRequired": "Las analíticas de KB requieren plan Starter o superior.",
       "dailyVolume": "Volumen diario",
@@ -5432,48 +5414,21 @@
       "partial": "Algunas comprobaciones no están disponibles. Los valores pendientes no significan que no haya problemas; vuelve a cargar el análisis.",
       "tab": "Brechas",
       "title": "Análisis de brechas de contenido",
-      "subtitle": "Identifica preguntas sin respuesta y documentos con bajo rendimiento",
-      "loading": "Cargando análisis...",
       "pendingMoved": "Las preguntas sin respuesta se atienden en Conocimiento pendiente.",
       "kpi": {
         "lowSatisfaction": "Docs baja satisfacción",
         "stale": "Docs desactualizados",
         "falsePositives": "Falsos positivos"
       },
-      "unansweredQueries": "Consultas sin respuesta",
-      "unansweredDesc": "Preguntas de usuarios que no encontraron respuesta en la base de conocimiento",
-      "query": "Consulta",
-      "occurrences": "Ocurrencias",
-      "lastSeen": "Última vez",
-      "lowSatisfactionDocs": "Documentos con baja satisfacción",
-      "lowSatisfactionDesc": "Documentos que recibieron feedback negativo de los usuarios",
-      "document": "Documento",
-      "satisfactionScore": "Satisfacción",
-      "feedbackCount": "Feedbacks",
       "staleDocs": {
         "retrievalCount": "Consultas recientes",
         "title": "Documentos desactualizados",
         "description": "Documentos que necesitan actualización",
         "document": "Documento",
-        "daysSinceUpdate": "Días sin actualizar",
-        "freshnessScore": "Puntaje frescura"
+        "daysSinceUpdate": "Días sin actualizar"
       },
-      "staleDesc": "Documentos que necesitan actualización basado en frecuencia de consultas y antigüedad",
-      "daysSinceUpdate": "Días sin actualizar",
-      "queryFrequency": "Frecuencia consultas",
-      "freshnessScore": "Puntaje frescura",
       "noData": "No hay datos de brechas disponibles",
       "allClear": "Sin alertas en estas métricas. Revisa por separado los posibles conflictos entre fuentes.",
-      "noUnanswered": "No hay consultas sin respuesta",
-      "noLowSat": "Todos los documentos tienen buena satisfacción",
-      "noStale": "Todos los documentos están actualizados",
-      "unanswered": {
-        "title": "Consultas sin respuesta",
-        "description": "Preguntas de usuarios que no encontraron respuesta en la base de conocimiento",
-        "query": "Consulta",
-        "occurrences": "Ocurrencias",
-        "lastSeen": "Última vez"
-      },
       "lowSatisfaction": {
         "title": "Documentos con baja satisfacción",
         "description": "Documentos que recibieron feedback negativo de los usuarios",
@@ -7399,42 +7354,6 @@
     "errorProcessing": "Lo siento, no pude procesar tu solicitud. Intenta de nuevo.",
     "errorConnection": "Error de conexión. Verifica tu internet e inténtalo de nuevo."
   },
-  "checklist": {
-    "title": "Configuración inicial",
-    "description": "Guía de puesta en marcha; no representa la calidad del agente.",
-    "essentials": "Esenciales",
-    "recommended": "Recomendados",
-    "complete": "de la configuración",
-    "progressLabel": "Progreso de la configuración inicial",
-    "expand": "Expandir guía de configuración",
-    "collapse": "Contraer guía de configuración",
-    "dismiss": "Cerrar guía",
-    "reopenChecklist": "Ver progreso de configuración",
-    "items": {
-      "createAccount": "Crear cuenta",
-      "configureAgent": "Configurar agente IA",
-      "connectChannel": "Conectar un canal de mensajería",
-      "sendTestMessage": "Enviar mensaje de prueba",
-      "addKnowledgeBase": "Agregar Knowledge Base (FAQs)",
-      "configureVerticalCatalog": "Configurar el catálogo operativo",
-      "inviteTeam": "Invitar equipo",
-      "connectInstagram": "Conectar Instagram",
-      "createAutomation": "Crear reglas de automatización",
-      "customizeTemplates": "Personalizar plantillas de email"
-    },
-    "actions": {
-      "connect": "Conectar",
-      "configure": "Configurar",
-      "try": "Probar",
-      "invite": "Invitar",
-      "create": "Crear",
-      "edit": "Editar"
-    },
-    "time": {
-      "min": "~{n} min"
-    },
-    "advanced": "Avanzado"
-  },
   "catalog": {
     "hub": {
       "title": "Catálogo",
@@ -8689,92 +8608,6 @@
       "inbox": "Los mensajes de tus clientes llegarán aquí",
       "appointments": "Agenda tu primera cita",
       "broadcast": "Envía campañas a tus contactos"
-    }
-  },
-  "verticalChecklist": {
-    "salud": {
-      "configureAgent": "Configura tu asistente médico",
-      "connectChannel": "Conecta WhatsApp para recibir pacientes",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus servicios médicos y FAQs",
-      "inviteTeam": "Invita a tu equipo del consultorio"
-    },
-    "moda_belleza": {
-      "configureAgent": "Configura tu asistente de belleza",
-      "connectChannel": "Conecta WhatsApp para recibir clientes",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus servicios y precios",
-      "inviteTeam": "Invita a tu equipo del salón"
-    },
-    "inmobiliaria": {
-      "configureAgent": "Configura tu asesor inmobiliario virtual",
-      "connectChannel": "Conecta WhatsApp para recibir interesados",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tu portafolio de propiedades",
-      "inviteTeam": "Invita a tus asesores"
-    },
-    "restaurantes": {
-      "configureAgent": "Configura tu asistente de restaurante",
-      "connectChannel": "Conecta WhatsApp para reservas",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tu menú y horarios",
-      "inviteTeam": "Invita a tu equipo"
-    },
-    "automotriz": {
-      "configureAgent": "Configura tu asesor automotriz",
-      "connectChannel": "Conecta WhatsApp para recibir prospectos",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tu inventario de vehículos",
-      "inviteTeam": "Invita a tu equipo de ventas"
-    },
-    "turismo": {
-      "configureAgent": "Configura tu asesor de viajes",
-      "connectChannel": "Conecta WhatsApp para recibir viajeros",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus destinos y paquetes",
-      "inviteTeam": "Invita a tu equipo de agentes"
-    },
-    "education": {
-      "configureAgent": "Configura tu asistente educativo",
-      "connectChannel": "Conecta WhatsApp para recibir estudiantes",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus cursos y programas",
-      "inviteTeam": "Invita a tu equipo docente"
-    },
-    "finanzas": {
-      "configureAgent": "Configura tu asistente financiero",
-      "connectChannel": "Conecta WhatsApp para recibir consultas",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus productos y políticas",
-      "inviteTeam": "Invita a tus asesores"
-    },
-    "servicios_profesionales": {
-      "configureAgent": "Configura tu recepción virtual",
-      "connectChannel": "Conecta WhatsApp para recibir consultas",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tus servicios y honorarios",
-      "inviteTeam": "Invita a tu equipo profesional"
-    },
-    "retail": {
-      "configureAgent": "Configura tu vendedora virtual",
-      "connectChannel": "Conecta WhatsApp e Instagram para recibir compradores",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tu catálogo de productos",
-      "inviteTeam": "Invita a tu equipo de ventas"
-    },
-    "technology": {
-      "configureAgent": "Configura tu SDR virtual",
-      "connectChannel": "Conecta WhatsApp y Messenger para captar leads",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga features, precios y FAQs técnicas",
-      "inviteTeam": "Invita a tu equipo de ventas y soporte"
-    },
-    "default": {
-      "configureAgent": "Configura tu agente IA",
-      "connectChannel": "Conecta un canal de mensajería",
-      "sendTestMessage": "Envía un mensaje de prueba",
-      "addKnowledgeBase": "Carga tu base de conocimiento",
-      "inviteTeam": "Invita a tu equipo"
     }
   },
   "verticalWelcome": {

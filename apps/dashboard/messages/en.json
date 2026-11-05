@@ -1865,18 +1865,6 @@
     "sendOutcomeUnknown": "Your reply was saved and sent, but the channel gave no answer: it may have arrived. Do not send it again — it is being reconciled.",
     "whatsappMayBeCharged": "Replying on WhatsApp may cost money: Meta charges your account for every delivered message."
   },
-  "smsNotificationsIntegration": {
-    "title": "SMS alerts",
-    "subtitle": "Text your agents when the AI escalates a conversation",
-    "enable": "Enable SMS alerts",
-    "enableHint": "Send an SMS to the assigned agent (or admins/supervisors) on handoff",
-    "events": "Events to notify",
-    "eventHandoff": "Escalated conversation (handoff)",
-    "channelHint": "Requires a connected SMS channel. Messages are sent from your Twilio number and cost per message.",
-    "planHint": "Available on Pro plans and above.",
-    "saved": "Settings saved",
-    "saveFailed": "Couldn't save"
-  },
   "slackIntegration": {
     "title": "Slack",
     "subtitle": "Get Parallly alerts in your Slack channel",
@@ -5315,15 +5303,11 @@
     },
     "analytics": {
       "tab": "Analytics",
-      "title": "KB Analytics",
-      "subtitle": "Usage, performance and unanswered questions",
-      "period": "Last {days} days",
       "overview": {
         "uniqueQueries": "Unique queries",
         "totalRetrievals": "Measured searches",
         "hitRate": "Searches with relevant matches",
         "avgScore": "Mean relevance",
-        "medianScore": "Median relevance",
         "observedRate": "Citation or literal overlap"
       },
       "topDocuments": "Most queried documents",
@@ -5332,8 +5316,6 @@
       "unanswered": "Unanswered questions",
       "pendingMoved": "What the agent could not answer is now handled in Pending knowledge: answer it there, save it as data, and the customer gets the reply.",
       "pendingOpen": "Open pending knowledge",
-      "occurrences": "Times",
-      "lastSeen": "Last seen",
       "noData": "No analytics data yet. Data is collected as conversations happen.",
       "planRequired": "KB analytics require Starter plan or higher.",
       "dailyVolume": "Daily volume",
@@ -5432,48 +5414,21 @@
       "partial": "Some checks are unavailable. Pending values do not mean there are no issues; reload this analysis.",
       "tab": "Gaps",
       "title": "Content gap analysis",
-      "subtitle": "Identify unanswered questions and underperforming documents",
-      "loading": "Loading analysis...",
       "pendingMoved": "Unanswered questions are handled in Pending knowledge.",
       "kpi": {
         "lowSatisfaction": "Low satisfaction docs",
         "stale": "Outdated docs",
         "falsePositives": "False positives"
       },
-      "unansweredQueries": "Unanswered queries",
-      "unansweredDesc": "User questions that found no answer in the knowledge base",
-      "query": "Query",
-      "occurrences": "Occurrences",
-      "lastSeen": "Last seen",
-      "lowSatisfactionDocs": "Low satisfaction documents",
-      "lowSatisfactionDesc": "Documents that received negative feedback from users",
-      "document": "Document",
-      "satisfactionScore": "Satisfaction",
-      "feedbackCount": "Feedbacks",
       "staleDocs": {
         "retrievalCount": "Recent retrievals",
         "title": "Outdated documents",
         "description": "Documents that need updating",
         "document": "Document",
-        "daysSinceUpdate": "Days since update",
-        "freshnessScore": "Freshness score"
+        "daysSinceUpdate": "Days since update"
       },
-      "staleDesc": "Documents that need updating based on query frequency and age",
-      "daysSinceUpdate": "Days since update",
-      "queryFrequency": "Query frequency",
-      "freshnessScore": "Freshness score",
       "noData": "No gap data available",
       "allClear": "No alerts in these metrics. Review potential conflicts between sources separately.",
-      "noUnanswered": "No unanswered queries",
-      "noLowSat": "All documents have good satisfaction",
-      "noStale": "All documents are up to date",
-      "unanswered": {
-        "title": "Unanswered queries",
-        "description": "User questions that found no answer in the knowledge base",
-        "query": "Query",
-        "occurrences": "Occurrences",
-        "lastSeen": "Last seen"
-      },
       "lowSatisfaction": {
         "title": "Low satisfaction documents",
         "description": "Documents that received negative feedback from users",
@@ -7399,42 +7354,6 @@
     "errorProcessing": "Sorry, I couldn't process your request. Try again.",
     "errorConnection": "Connection error. Check your internet and try again."
   },
-  "checklist": {
-    "title": "Initial setup",
-    "description": "Launch guide; it does not represent agent quality.",
-    "essentials": "Essentials",
-    "recommended": "Recommended",
-    "complete": "of setup",
-    "progressLabel": "Initial setup progress",
-    "expand": "Expand setup guide",
-    "collapse": "Collapse setup guide",
-    "dismiss": "Dismiss guide",
-    "reopenChecklist": "View setup progress",
-    "items": {
-      "createAccount": "Create account",
-      "configureAgent": "Configure AI agent",
-      "connectChannel": "Connect a messaging channel",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Add Knowledge Base (FAQs)",
-      "configureVerticalCatalog": "Configure the operational catalog",
-      "inviteTeam": "Invite team",
-      "connectInstagram": "Connect Instagram",
-      "createAutomation": "Create automation rules",
-      "customizeTemplates": "Customize email templates"
-    },
-    "actions": {
-      "connect": "Connect",
-      "configure": "Configure",
-      "try": "Try",
-      "invite": "Invite",
-      "create": "Create",
-      "edit": "Edit"
-    },
-    "time": {
-      "min": "~{n} min"
-    },
-    "advanced": "Advanced"
-  },
   "catalog": {
     "hub": {
       "title": "Catalog",
@@ -8689,92 +8608,6 @@
       "inbox": "Messages from your customers will appear here",
       "appointments": "Schedule your first appointment",
       "broadcast": "Send campaigns to your contacts"
-    }
-  },
-  "verticalChecklist": {
-    "salud": {
-      "configureAgent": "Set up your medical assistant",
-      "connectChannel": "Connect WhatsApp to receive patients",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your medical services and FAQs",
-      "inviteTeam": "Invite your clinic team"
-    },
-    "moda_belleza": {
-      "configureAgent": "Set up your beauty assistant",
-      "connectChannel": "Connect WhatsApp to receive clients",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your services and prices",
-      "inviteTeam": "Invite your salon team"
-    },
-    "inmobiliaria": {
-      "configureAgent": "Set up your virtual real estate advisor",
-      "connectChannel": "Connect WhatsApp to receive prospects",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your property portfolio",
-      "inviteTeam": "Invite your advisors"
-    },
-    "restaurantes": {
-      "configureAgent": "Set up your restaurant assistant",
-      "connectChannel": "Connect WhatsApp for reservations",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your menu and hours",
-      "inviteTeam": "Invite your team"
-    },
-    "automotriz": {
-      "configureAgent": "Set up your automotive advisor",
-      "connectChannel": "Connect WhatsApp to receive prospects",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your vehicle inventory",
-      "inviteTeam": "Invite your sales team"
-    },
-    "turismo": {
-      "configureAgent": "Set up your travel advisor",
-      "connectChannel": "Connect WhatsApp to receive travelers",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your destinations and packages",
-      "inviteTeam": "Invite your agent team"
-    },
-    "education": {
-      "configureAgent": "Set up your education assistant",
-      "connectChannel": "Connect WhatsApp to receive students",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your courses and programs",
-      "inviteTeam": "Invite your teaching staff"
-    },
-    "finanzas": {
-      "configureAgent": "Set up your financial assistant",
-      "connectChannel": "Connect WhatsApp to receive inquiries",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your products and policies",
-      "inviteTeam": "Invite your advisors"
-    },
-    "servicios_profesionales": {
-      "configureAgent": "Set up your virtual reception",
-      "connectChannel": "Connect WhatsApp to receive inquiries",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your services and fees",
-      "inviteTeam": "Invite your professional team"
-    },
-    "retail": {
-      "configureAgent": "Set up your virtual sales assistant",
-      "connectChannel": "Connect WhatsApp & Instagram to receive shoppers",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your product catalog",
-      "inviteTeam": "Invite your sales team"
-    },
-    "technology": {
-      "configureAgent": "Set up your virtual SDR",
-      "connectChannel": "Connect WhatsApp & Messenger to capture leads",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload features, pricing and technical FAQs",
-      "inviteTeam": "Invite your sales and support team"
-    },
-    "default": {
-      "configureAgent": "Set up your AI agent",
-      "connectChannel": "Connect a messaging channel",
-      "sendTestMessage": "Send a test message",
-      "addKnowledgeBase": "Upload your knowledge base",
-      "inviteTeam": "Invite your team"
     }
   },
   "verticalWelcome": {

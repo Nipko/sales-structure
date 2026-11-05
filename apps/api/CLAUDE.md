@@ -19,7 +19,7 @@ NestJS 10 backend with 101 `*.module.ts` files across 93 folders in `src/modules
 - `settings/` — Platform settings CRUD from `platform_settings` table
 
 **Message pipeline** (the core flow):
-- `channels/` — Adapter pattern (`IChannelAdapter`). WhatsApp/Instagram/Messenger/Telegram/Email (subcarpetas `whatsapp`,`instagram`,`messenger`,`telegram`,`email`). `ChannelGatewayService` routes. El Web Chat Widget vive en su propio módulo `widget/`. **SMS conversacional descartado**: `channels/sms/sms.adapter.ts` (Twilio) queda como legacy; SMS hoy es solo notificación one-way (ver `sms-credits/` + `sms-notifications/`)
+- `channels/` — Adapter pattern (`IChannelAdapter`). WhatsApp/Instagram/Messenger/Telegram/Email (subcarpetas `whatsapp`,`instagram`,`messenger`,`telegram`,`email`). `ChannelGatewayService` routes. El Web Chat Widget vive en su propio módulo `widget/`. **SMS es un producto retirado** (`sms.platform_enabled` apagado; créditos, checkout y notificaciones responden `sms_product_retired`): `channels/sms/sms.adapter.ts` (Twilio), `sms-credits/` y `sms-notifications/` quedan como legado hasta que el dueño decida su retiro (ADR 0017)
 - `channels/channel-token.service.ts` — Resolves access tokens per tenant (cached 5min in Redis). **Multi-cuenta por tipo**: acepta `accountId` opcional y lee el token por-cuenta desde `channel_accounts.access_token` (sin migración global); `getChannelToken(tenantId, channelType, accountId?)`
 - `channels/outbound-queue.service.ts` — BullMQ queue (3 retries, priority by tenant plan)
 - `channels/channel-management.controller.ts` — Generic channel connect/status/config endpoints + Instagram OAuth + Messenger FB SDK token exchange
@@ -165,11 +165,6 @@ await this.prisma.executeInTenantSchema(schemaName,
 - custom: unlimited, all features
 
 **6 built-in templates:** Sales Advisor, Support Agent, FAQ Bot, Appointment Scheduler, Lead Qualifier, Blank
-
-### SMS/Twilio Channel (April 2026)
-- `channels/sms/sms.adapter.ts` — Twilio SMS adapter implementing IChannelAdapter
-- Webhook handling, text message sending
-- Channel management endpoints for connect/disconnect
 
 ## Infrastructure (April 2026)
 - PgBouncer: transaction mode pooler between services and PostgreSQL

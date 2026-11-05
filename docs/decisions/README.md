@@ -18,6 +18,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0012](0012-copiloto-de-onboarding-r6.md) | Copiloto de onboarding: el LLM propone con cita verificada, el código decide y una persona aprueba (R6) | aprobada | 2026-10-30 |
 | [0013](0013-ensayo-antes-de-salir-r7.md) | Ensayo antes de salir: banco determinista desde la especificación, verdad de `qaTruth`, Agent Test sin efectos y calificación determinista primero (R7) | aprobada | 2026-10-30 |
 | [0014](0014-calibracion-del-instrumento-del-ensayo-e11.md) | Calibración del instrumento del ensayo: el requisito que responde la pregunta, marcadores con guardas, juez con los hechos y recalificación sin agente (E1.1) | aprobada | 2026-10-31 |
+| [0017](0017-limpieza-k3-segunda-pasada.md) | Limpieza K3, segunda pasada: código muerto, textos huérfanos y documentos sin lector | aprobada | 2026-11-04 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

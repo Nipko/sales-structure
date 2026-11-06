@@ -68,7 +68,7 @@ export type CapabilityExclusionReason =
     /**
      * El canal no es una superficie conversacional certificada.
      *
-     * SMS es notificación de una sola vía en esta plataforma y el correo es un
+     * SMS es un producto retirado (ADR 0020) y el correo es un
      * adaptador de entrada interno sin autoservicio certificado. Un turno que
      * llegue por ahí puede leer y derivar; comprometer al negocio por un canal
      * que no sostiene la conversación de vuelta, no.

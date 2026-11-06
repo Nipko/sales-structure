@@ -166,7 +166,6 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "channelInstagram", pattern: "/admin/channels/instagram", titleKey: "navigation.routes.channelInstagram", scope: "tenant", parentId: "channels" },
   { id: "channelInstagramCallback", pattern: "/admin/channels/instagram/callback", titleKey: "navigation.routes.channelInstagramCallback", scope: "tenant", parentId: "channelInstagram", discoverable: false },
   { id: "channelMessenger", pattern: "/admin/channels/messenger", titleKey: "navigation.routes.channelMessenger", scope: "tenant", parentId: "channels" },
-  { id: "channelSms", pattern: "/admin/channels/sms", titleKey: "navigation.routes.channelSms", scope: "tenant", parentId: "channels", discoverable: false },
   { id: "channelTelegram", pattern: "/admin/channels/telegram", titleKey: "navigation.routes.channelTelegram", scope: "tenant", parentId: "channels" },
   { id: "channelWhatsapp", pattern: "/admin/channels/whatsapp", titleKey: "navigation.routes.channelWhatsapp", scope: "tenant", parentId: "channels" },
   { id: "channelWhatsappProfile", pattern: "/admin/channels/whatsapp/profile", titleKey: "navigation.routes.channelWhatsappProfile", scope: "tenant", parentId: "channelWhatsapp" },
@@ -248,7 +247,6 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "settingsPayments", pattern: "/admin/settings/integrations/payments", titleKey: "settings.items.payments.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsReviews", pattern: "/admin/settings/integrations/reviews", titleKey: "settings.items.reviews.label", scope: "tenant", parentId: "settingsIntegrations" },
   { id: "settingsSlack", pattern: "/admin/settings/integrations/slack", titleKey: "settings.items.slack.label", scope: "tenant", parentId: "settingsIntegrations" },
-  { id: "settingsSmsNotifications", pattern: "/admin/settings/integrations/sms-notifications", titleKey: "settings.items.smsNotifications.label", scope: "tenant", parentId: "settingsIntegrations", discoverable: false },
   // Contextual destination for turismo/hotel and alquiler_vacacional. It is
   // linked from Vertical Integrations only when the subtype can use it; a
   // global command-palette entry would advertise a plan/subtype-gated screen
@@ -287,7 +285,6 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformDemoAllowance", pattern: "/admin/demo-allowance", titleKey: "nav.items.demoAllowance", scope: "platform" },
   { id: "platformPlans", pattern: "/admin/plans", titleKey: "nav.items.plans", scope: "platform" },
   { id: "platformBillingOps", pattern: "/admin/billing-ops", titleKey: "nav.items.billingOps", scope: "platform" },
-  { id: "platformSmsPackages", pattern: "/admin/sms-packages", titleKey: "nav.items.smsPackages", scope: "platform" },
   { id: "platformSettingsAiConfig", pattern: "/admin/settings/ai-config", titleKey: "settings.items.aiConfig.label", scope: "platform", parentId: "settings" },
   { id: "platformSettingsAiProviders", pattern: "/admin/settings/ai-providers", titleKey: "settings.items.aiProviders.label", scope: "platform", parentId: "settings" },
   { id: "platformSettingsChannels", pattern: "/admin/settings/channels", titleKey: "settings.items.channelConfig.label", scope: "platform", parentId: "settings" },
@@ -313,7 +310,6 @@ export const NAVIGATION_I18N_KEYS_REQUIRED = [
   "navigation.routes.channelInstagram",
   "navigation.routes.channelInstagramCallback",
   "navigation.routes.channelMessenger",
-  "navigation.routes.channelSms",
   "navigation.routes.channelTelegram",
   "navigation.routes.channelWhatsapp",
   "navigation.routes.channelWhatsappProfile",

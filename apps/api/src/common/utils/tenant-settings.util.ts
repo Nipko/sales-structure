@@ -38,6 +38,8 @@ export const RESERVED_TENANT_SETTING_KEYS = [
     'brandColor',
     'nurturing',
     'pipeline',
+    // Retired SMS product (ADR 0020): legacy rows may still hold this branch
+    // (agent phone numbers), so it stays hidden from the generic contract.
     'smsNotifications',
     'recallConfig',
     'businessInfoDraft',

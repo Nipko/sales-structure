@@ -24,7 +24,6 @@ describe('PlatformMonitorService queue-specific failure thresholds', () => {
             {} as any,
             incidents as any,
             {} as any,
-            {} as any,
             alertConfig as any,
             {} as any,
             {} as any,

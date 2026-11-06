@@ -237,9 +237,13 @@ export async function readUncertainHandoffEffects(query: HandoffEffectQuery, sch
     })));
 }
 
-/** The six consumers the single `announced` flag used to cover between them. */
+/**
+ * The consumers the single `announced` flag used to cover between them. `sms`
+ * left the list with the SMS retirement (ADR 0020); it stays a valid destination
+ * name only because rows written before it remain in `agent_handoff_effects`.
+ */
 export const HANDOFF_ANNOUNCEMENT_DESTINATIONS: readonly HandoffEffectDestination[] =
-    Object.freeze(['inbox', 'crm', 'webhooks', 'push', 'slack', 'sms']);
+    Object.freeze(['inbox', 'crm', 'webhooks', 'push', 'slack']);
 
 /**
  * The four aggregate keys the receipt has always carried, recomputed from the

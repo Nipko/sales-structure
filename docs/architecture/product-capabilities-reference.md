@@ -44,7 +44,7 @@ indicados abajo.
 | WhatsApp, Instagram, Messenger y Telegram | Canales conversacionales con flujos de conexión administrados desde la plataforma, sujetos a rol, plan y configuración vigente |
 | Web Chat Widget | Superficie conversacional operativa con configuración, snippet público, sesiones y mensajería por Socket.IO |
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
-| SMS | Producto retirado para altas, configuración, compras y campañas nuevas; solo conserva saldo/historial/callbacks/cierre y administración necesarios para obligaciones legacy |
+| SMS | Producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)): no hay canal, créditos, compras, avisos ni campañas SMS, ni pantallas para configurarlo. Un mensaje heredado con canal SMS se descarta sin enviarse |
 
 Conectar una superficie crea la conexión técnica, pero no publica un agente. La
 configuración del agente se guarda como borrador, se prueba, se prepara y aprueba como

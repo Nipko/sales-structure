@@ -68,7 +68,6 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
     { prefix: "/admin/storage", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/plans", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/billing-ops", roles: [ROLE_KEYS.SUPER_ADMIN] },
-    { prefix: "/admin/sms-packages", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/financials", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/health", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/usage", roles: [ROLE_KEYS.SUPER_ADMIN] },

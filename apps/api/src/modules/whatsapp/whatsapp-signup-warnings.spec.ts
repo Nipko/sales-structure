@@ -95,7 +95,7 @@ describe('GET /channels/:channelType/status carries them for WhatsApp', () => {
             $queryRawUnsafe: jest.fn(query),
         };
         const controller = new ChannelManagementController(
-            prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
+            prisma as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         );
         jest.spyOn((controller as any).logger, 'warn').mockImplementation(() => undefined);
         return { controller, prisma };

@@ -37,7 +37,7 @@ function createMonitor(tenants: Array<{ name: string; schemaName: string; summar
     const alertConfig = { get: jest.fn(async () => config) };
     const monitor = new PlatformMonitorService(
         {} as any, {} as any, prisma as any, {} as any, {} as any,
-        incidents as any, {} as any, {} as any, alertConfig as any, {} as any,
+        incidents as any, {} as any, alertConfig as any, {} as any,
         {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         {} as any, {} as any,
     );

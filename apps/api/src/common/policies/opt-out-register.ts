@@ -2,7 +2,7 @@
  * ═══ ONE DEFINITION OF "THIS PERSON ASKED US TO STOP" ═══
  *
  * `ComplianceService.isBlocked` answers it for a single phone or lead id and is
- * what drip, nurturing, the temporal evaluator and SMS ask. The producers that
+ * what drip, nurturing and the temporal evaluator ask. The producers that
  * pick their audience in SQL (recall, broadcast) or revalidate inside the
  * outbox admission transaction cannot call a service that goes through Redis
  * and its own connection, so the same semantics live here as SQL.

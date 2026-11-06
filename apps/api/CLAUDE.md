@@ -59,7 +59,7 @@ Folder names under `src/modules/`. One line each; details in `modules-reference.
 
 **Platform surface.** `public-api` (API keys, outgoing webhook subscriptions), `webhooks`, `integrations` (integration outbox), `customer-portal` (magic-link portal for end customers), `white-label` (gated by the `whiteLabel` plan feature), `managed` (done-for-you tier, super_admin), `compliance` (legal texts, consent, opt-out, erasure, audit), `media` (uploads and serving, `MEDIA_STORAGE_PATH`), `email`, `email-templates`.
 
-**SMS.** Retired product (ADR 0018): `sms.platform_enabled` defaults to off and credits, checkout and notifications answer `sms_product_retired`; its modules are being removed. Do not build on them.
+**SMS.** Retired product (ADR 0020): `sms.platform_enabled` defaults to off and credits, checkout and notifications answer `sms_product_retired`; its modules are being removed. Do not build on them.
 
 ## Redis keys owned by the API
 

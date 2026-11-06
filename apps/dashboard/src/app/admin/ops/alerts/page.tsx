@@ -29,7 +29,7 @@ interface AlertConfig {
     storageQuotaPct: number;
     diskProjectionDays: number;
     backupStaleHours: number;
-    channels: { email: boolean; telegram: boolean; sms: boolean };
+    channels: { email: boolean; telegram: boolean };
 }
 
 export default function AlertConfigPage() {
@@ -69,7 +69,7 @@ export default function AlertConfigPage() {
         setSaved(false);
     }
 
-    function setChannel(key: "email" | "telegram" | "sms", val: boolean) {
+    function setChannel(key: "email" | "telegram", val: boolean) {
         setCfg(prev => prev ? { ...prev, channels: { ...prev.channels, [key]: val } } : prev);
         setSaved(false);
     }
@@ -193,15 +193,14 @@ export default function AlertConfigPage() {
                     <section className="bg-card border border-border rounded-xl p-4">
                         <h3 className="text-sm font-semibold mb-3">{t("channelsTitle")}</h3>
                         <div className="space-y-2">
-                            {(["email", "telegram", "sms"] as const).map(ch => (
+                            {(["email", "telegram"] as const).map(ch => (
                                 <label key={ch} className="flex items-center justify-between py-1.5 cursor-pointer">
-                                    <span className="text-sm capitalize">{ch === "sms" ? "SMS" : ch}</span>
+                                    <span className="text-sm capitalize">{ch}</span>
                                     <input type="checkbox" checked={cfg.channels[ch]} onChange={e => setChannel(ch, e.target.checked)} className="h-4 w-4 accent-indigo-500" />
                                 </label>
                             ))}
                         </div>
                         <p className="text-xs text-muted-foreground mt-2">{t("channelsHint")}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{t("smsCriticalOnly")}</p>
                     </section>
 
                     <div className="flex items-center gap-3">

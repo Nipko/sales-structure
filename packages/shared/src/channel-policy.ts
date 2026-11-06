@@ -13,7 +13,7 @@ export type ConversationalChannelType = Exclude<ChannelType, 'sms' | 'email'>;
 
 /**
  * Single product boundary for self-service conversational channels.
- * Email is internal inbound only and SMS is retained solely for legacy data.
+ * Email is internal inbound only and SMS (a retired product, ADR 0020) is retained solely for legacy data.
  */
 export const CERTIFIED_SELF_SERVICE_CHANNELS: readonly ConversationalChannelType[] =
     Object.freeze(['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget']);

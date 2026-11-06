@@ -106,8 +106,8 @@ that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig
 ## Phase 4 — Channel setup (added, focus: how to connect)
 7 channel setup pages now have help: `channelsEmail`, `channelsInstagram`,
 `channelsMessenger`, `channelsTelegram`, `channelsWhatsapp`, `channelsWhatsappProfile`,
-`channelsWhatsappTemplates`. (`channels/sms` is a redirect stub — its `channelsSms`
-content is staged in i18n for when the SMS UI ships.) GIFs of the connect flow are
+`channelsWhatsappTemplates`. (SMS is a retired product, ADR 0020: there is no SMS page
+and no `channelsSms` help.) GIFs of the connect flow are
 high-value here — prioritize `channelsWhatsapp` and `channelsInstagram`.
 
 ## New pages to add help to

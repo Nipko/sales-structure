@@ -12,7 +12,7 @@ SMS is **no longer a Parallly product**: it has been retired entirely. You canno
 
 ## What this means for your business
 
-- **Credits and purchases**: the SMS credits section is not offered, and the server rejects any attempt to buy or activate SMS. If you see a balance from an earlier period, contact support to find out what to do with it; do not expect it to be spendable.
+- **Credits and purchases**: there is no SMS credits section and no way to buy or activate SMS: the platform no longer has that feature. If you bought credits in an earlier period, contact support to find out what happens to them; they cannot be spent.
 - **Campaigns**: the **AI & growth → Campaigns** editor works with **WhatsApp** only. To reach a group of customers, use a WhatsApp template approved by Meta (see **Campaigns and broadcasts**).
 - **Reminders and automations**: no action sends SMS. Appointment reminders go out over WhatsApp or Telegram, depending on the channel the customer wrote from, and, for the 24-hour one, also by email when the customer left an email address.
 - **Alerts to your team**: do not expect SMS alerts. Use the notifications in the dashboard and the mobile app.

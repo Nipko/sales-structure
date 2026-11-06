@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
-import { SmsCreditsService } from './sms-credits.service';
-import { SmsCreditsController } from './sms-credits.controller';
 import { TenantNotificationSmsService } from './tenant-notification-sms.service';
-import { SmsKillSwitchService } from './sms-kill-switch.service';
 
+/**
+ * Remnant of the retired SMS product (ADR 0020). Only `ConversationsModule`
+ * still imports it, for the identity-verification fallback in
+ * `chat-identity.service.ts`; `conversations/` is outside the retirement PR, so
+ * the module stays as an always-refusing stub until that import is removed.
+ */
 @Module({
-    providers: [SmsCreditsService, TenantNotificationSmsService, SmsKillSwitchService],
-    controllers: [SmsCreditsController],
-    exports: [SmsCreditsService, TenantNotificationSmsService, SmsKillSwitchService],
+    providers: [TenantNotificationSmsService],
+    exports: [TenantNotificationSmsService],
 })
 export class SmsCreditsModule { }

@@ -50,7 +50,6 @@ Páginas/áreas que operan bajo este modelo (todas requieren regla explícita en
 - `/admin/communications` — correos administrativos a usuarios de tenants, con borradores, audiencia guardada, prueba y confirmación de envío. Ver [Comunicaciones generales](../operations/platform-communications.md).
 - `/admin/storage`, `/admin/incidents` — almacenamiento por tenant, incidentes
 - `/admin/plans`, `/admin/billing-ops` — catálogo de planes + billing cross-tenant (sync MP, refund, reconciliación)
-- `/admin/sms-packages` — tiers de créditos SMS
 - `/admin/fiscal` — configuración fiscal DIAN
 - Auditoría / audit log
 

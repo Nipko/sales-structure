@@ -72,10 +72,10 @@ for (const locale of ['es', 'en', 'pt', 'fr']) it(locale + ' initial Recall chan
   const h1 = Array.from(container.querySelectorAll('h1')).filter(n => n.textContent?.trim() === copy.title);
   if (h1.length !== 1 || selects.length !== 1) throw new Error('Prerequisite: own heading and unique native channel select');
   const select = selects[0], group = select.parentElement!, options = Array.from(select.options);
-  const expectedOptions = [{value:'whatsapp',text:'WhatsApp'},{value:'instagram',text:'Instagram DM'},{value:'messenger',text:'Messenger'},{value:'telegram',text:'Telegram'},{value:'sms',text:'SMS'}];
+  const expectedOptions = [{value:'whatsapp',text:'WhatsApp'},{value:'instagram',text:'Instagram DM'},{value:'messenger',text:'Messenger'},{value:'telegram',text:'Telegram'}];
   const labels = Array.from(group.querySelectorAll('label')).filter(n => n.textContent?.trim() === copy.channelLabel);
   const hints = Array.from(group.querySelectorAll('p')).filter(n => n.textContent?.trim() === copy.channelHelp);
-  if (select.disabled || !visibleInOwnedDom(select) || labels.length !== 1 || hints.length !== 1 || !visibleInOwnedDom(labels[0]) || !visibleInOwnedDom(hints[0]) || JSON.stringify(options.map(n=>({value:n.value,text:n.textContent?.trim()}))) !== JSON.stringify(expectedOptions) || select.value !== 'telegram' || select.selectedIndex !== 3 || JSON.stringify(options.map(n=>n.selected)) !== JSON.stringify([false,false,false,true,false])) throw new Error('Prerequisite: own channel label/help and LIVE nondefault selection');
+  if (select.disabled || !visibleInOwnedDom(select) || labels.length !== 1 || hints.length !== 1 || !visibleInOwnedDom(labels[0]) || !visibleInOwnedDom(hints[0]) || JSON.stringify(options.map(n=>({value:n.value,text:n.textContent?.trim()}))) !== JSON.stringify(expectedOptions) || select.value !== 'telegram' || select.selectedIndex !== 3 || JSON.stringify(options.map(n=>n.selected)) !== JSON.stringify([false,false,false,true])) throw new Error('Prerequisite: own channel label/help and LIVE nondefault selection');
   const toggles = Array.from(container.querySelectorAll<HTMLButtonElement>('button.w-11.h-6'));
   const numbers = Array.from(container.querySelectorAll<HTMLInputElement>('input[type="number"]')), texts = Array.from(container.querySelectorAll('textarea'));
   const buttons = Array.from(container.querySelectorAll('button')), save = buttons.filter(n=>n.textContent?.trim()===copy.save), run = buttons.filter(n=>n.textContent?.trim()===copy.runNow);

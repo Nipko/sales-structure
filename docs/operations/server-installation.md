@@ -30,7 +30,6 @@ GitHub y ≥1 LLM son obligatorias para arrancar; el resto habilita features con
 | **Wompi** | Si para suscripciones pagadas | Public/Private key, Events secret, Integrity secret, webhook | comercios.wompi.co |
 | **Wompi/Mercado Pago por tenant** | Opcional (cobros tenant→cliente) | Cada tenant conecta sus propias llaves Wompi o credenciales Mercado Pago en el panel; no son secretos de plataforma | comercios.wompi.co / mercadopago.com.co/developers |
 | **Factus (DIAN Colombia)** | Opcional (factura electronica) | Base URL, Client ID/Secret, Username/Password | factus.com.co |
-| **Twilio** | Opcional (alertas + SMS creditos) | Account SID, Auth Token, numero/sender | twilio.com |
 | **S3-compatible (Cloudflare R2 / Backblaze B2 / AWS S3)** | Opcional (backups offsite) | Bucket, endpoint, access/secret key | dash.cloudflare.com (R2) / backblaze.com |
 | **HubSpot / Pipedrive** | Opcional (CRM externo) | OAuth Client ID + Secret | developers.hubspot.com / pipedrive.com |
 | **Sentry** | Opcional | DSN + Auth Token/Org/Project (source maps) | sentry.io |
@@ -236,13 +235,6 @@ FACTUS_USERNAME=CAMBIAR
 FACTUS_PASSWORD=CAMBIAR
 # Retencion legal 5 anios (XML+PDF) en el volumen parallext-fiscal-data
 FISCAL_STORAGE_PATH=/data/invoices
-
-# ---- SMS platform alerts (Twilio) ----
-SMS_ALERT_ACCOUNT_SID=CAMBIAR
-SMS_ALERT_AUTH_TOKEN=CAMBIAR
-SMS_ALERT_FROM=CAMBIAR
-SMS_ALERT_TO=CAMBIAR
-SMS_SENDER_ID=CAMBIAR
 
 # ---- Telegram platform alerts (Ops Center) ----
 TELEGRAM_ALERT_BOT_TOKEN=CAMBIAR

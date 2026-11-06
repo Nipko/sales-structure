@@ -23,8 +23,6 @@ describe('high-risk tenant role authorization contract', () => {
             'disconnectMessenger',
             'instagramOAuthConnect',
             'disconnectInstagram',
-            'connectSms',
-            'disconnectSms',
             'connect',
             'disconnectAccount',
         ];

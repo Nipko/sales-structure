@@ -144,7 +144,7 @@ export async function recordChannelConnected(
         logger.warn(`onboardingStage advance (${channelType}) failed for ${tenantId}: ${e?.message}`);
     }
 
-    // SMS is a one-way notification product and Email is an internal inbound
+    // SMS is a retired product (ADR 0020) and Email is an internal inbound
     // adapter. They may reuse this housekeeping path, but neither belongs in
     // the self-service conversational activation funnel.
     if (isOperationalChannel) {

@@ -16,13 +16,11 @@ import { PersonaModule } from '../persona/persona.module';
 import { BusinessInfoModule } from '../business-info/business-info.module';
 import { BillingModule } from '../billing/billing.module';
 import { VerticalsModule } from '../verticals/verticals.module';
-import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { PlatformNotificationModule } from '../platform-notifications/platform-notification.module';
 
 @Module({
     imports: [
         PersonaModule,
-        SmsCreditsModule,
         BusinessInfoModule,
         BillingModule,
         VerticalsModule,

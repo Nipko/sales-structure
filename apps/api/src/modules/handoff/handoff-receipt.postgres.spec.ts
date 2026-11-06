@@ -48,7 +48,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
         return { service, redis, events, templates, announced };
     }
 
-    const ALL_DESTINATIONS = ['crm', 'inbox', 'push', 'slack', 'sms', 'webhooks']
+    const ALL_DESTINATIONS = ['crm', 'inbox', 'push', 'slack', 'webhooks']
         .map(name => `handoff.escalated.${name}`).sort();
     /** How many times each destination was attempted. The number that matters. */
     const attemptsByDestination = async (receiptId: string) => Object.fromEntries(
@@ -354,7 +354,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // Only the destination that never settled ran again, and the
             // attempt counters say so per destination rather than in aggregate.
             expect(await attemptsByDestination(first.id)).toEqual({
-                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, sms: 1, email: 1,
+                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, email: 1,
             });
         });
 
@@ -372,7 +372,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             expect(await sql('SELECT id FROM internal_notes')).toHaveLength(1);
             const [receipt] = await sql('SELECT id FROM agent_handoff_receipts');
             expect(await attemptsByDestination(receipt.id)).toEqual({
-                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, sms: 1, email: 1,
+                assignment: 1, cache: 1, inbox: 1, crm: 1, webhooks: 1, push: 1, slack: 1, email: 1,
             });
         });
 
@@ -388,7 +388,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 name === 'handoff.escalated.slack' ? Promise.reject(new Error('slack_unreachable')) : []);
 
             const first = await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
-            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 1, sms: 1 });
+            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 1 });
             const [failed] = await sql(
                 "SELECT state, error_code FROM agent_handoff_effects WHERE receipt_id=$1::uuid AND destination='slack'",
                 [first.id]);
@@ -399,7 +399,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             await service.executeHandoffOnce(tenantId, f.conversationId, message, 'explicit_request', request);
 
             expect(announced()).toEqual(['handoff.escalated.slack']);
-            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 2, sms: 1 });
+            expect(await attemptsByDestination(first.id)).toMatchObject({ inbox: 1, slack: 2 });
         });
 
         it('never retries a destination whose provider timed out after the request',async()=>{

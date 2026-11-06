@@ -152,7 +152,7 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
                 checkCampaignCompletion: async () => undefined,
             },
             abTestService: { updateVariantStats: async () => undefined },
-            messagingService: {}, cryptoService: {}, emailService: {}, tenantSms: {},
+            messagingService: {}, cryptoService: {}, emailService: {},
             logger: { log: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
         });
     });

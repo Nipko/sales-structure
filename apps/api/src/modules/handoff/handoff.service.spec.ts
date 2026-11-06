@@ -143,7 +143,7 @@ describe('HandoffService structured handoff', () => {
         // One event per destination. The single `handoff.escalated` used to
         // reach six consumers at once, so a failure in any of them re-announced
         // the transfer to the five that had already succeeded.
-        for (const destination of ['inbox', 'crm', 'webhooks', 'push', 'slack', 'sms']) {
+        for (const destination of ['inbox', 'crm', 'webhooks', 'push', 'slack']) {
             expect(h.events.emitAsync).toHaveBeenCalledWith(`handoff.escalated.${destination}`,
                 expect.objectContaining({
                     tenantId,

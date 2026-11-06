@@ -2013,7 +2013,6 @@ export const api = {
     deletePaymentSource: (tenantId: string, sourceId: string) =>
         apiDelete(`/billing/payment-sources/${tenantId}/${sourceId}`),
 
-    // --- SMS credits (monetized notification packages) ---
     // ─── Cobros del tenant a SU cliente final (no confundir con billing, que
     // es lo que el tenant nos paga a nosotros) ───
     getTenantPaymentsConfig: (tenantId: string) => apiGet<TenantPaymentsConfig>(`/tenant-payments/${tenantId}/config`),
@@ -2041,20 +2040,6 @@ export const api = {
     disconnectTenantPaymentsProvider: (tenantId: string, provider: TenantPaymentProvider) =>
         apiDelete(`/tenant-payments/${tenantId}/config/${provider}`),
     disconnectTenantPayments: (tenantId: string) => apiDelete(`/tenant-payments/${tenantId}/config`),
-    getSmsPackages: () => apiGet(`/sms-credits/packages`),
-    getSmsBalance: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/balance`),
-    getSmsLedger: (tenantId: string, limit?: number) =>
-        apiGet(`/sms-credits/${tenantId}/ledger${limit ? `?limit=${limit}` : ""}`),
-    getSmsOrders: (tenantId: string) => apiGet(`/sms-credits/${tenantId}/orders`),
-    buySmsPackage: (tenantId: string, packageId: string) =>
-        apiPost(`/sms-credits/${tenantId}/checkout`, { packageId }),
-    // super admin
-    getSmsConfig: () => apiGet(`/sms-credits/admin/config`),
-    updateSmsConfig: (data: { enabled?: boolean; senderId?: string; packages: any[] }) =>
-        apiPut(`/sms-credits/admin/config`, data),
-    getSmsBalances: () => apiGet(`/sms-credits/admin/balances`),
-    adjustSmsBalance: (tenantId: string, data: { delta: number; reason: string }) =>
-        apiPost(`/sms-credits/admin/${tenantId}/adjust`, data),
 
     // ─── Public booking config ───
     getPublicBookingConfig: (tenantId: string) =>

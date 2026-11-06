@@ -3,7 +3,7 @@ id: modulos-industria
 title: "Ferramentas e módulos para o seu setor"
 routes: ["/admin/appointments", "/admin/properties", "/admin/stays", "/admin/tours", "/admin/tour-bookings", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/repair-orders", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/service-catalog", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/cases", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["setor", "indústria", "vertical", "tipo de negócio", "perfil de negocio", "lista de espera", "somente contas existentes", "planejamento de eventos", "construcao", "modulos", "menu", "trabalho do dia", "catalogo e recursos", "imoveis", "estadias", "tours", "reservas de tours", "veiculos", "aluguel", "ordens da oficina", "casos", "pacotes e servicos", "cardapio", "pedidos", "matriculas", "aulas", "cursos", "seguros", "tratamentos", "pets", "fotografia", "estoque", "receita", "outros"]
+keywords: ["setor", "indústria", "vertical", "tipo de negócio", "perfil de negocio", "lista de espera", "somente contas existentes", "planejamento de eventos", "construcao", "modulos", "menu", "trabalho do dia", "catalogo e recursos", "imoveis", "estadias", "tours", "reservas de tours", "veiculos", "aluguel", "ordens da oficina", "casos", "pacotes e servicos", "cardapio", "pedidos", "matriculas", "aulas", "cursos", "seguros", "tratamentos", "pets", "fotografia", "estoque", "receita", "outros", "ical", "airbnb", "fotos"]
 ---
 
 # Ferramentas e módulos para o seu setor
@@ -58,3 +58,12 @@ O que aparece já escrito quando você ativa um setor vem de uma **receita**: o 
 Nem todo setor tem receita própria. Só seis têm: moda e beleza, saúde, restaurantes, varejo, educação e serviços domésticos; educação acrescenta ainda uma camada por tipo de negócio para as academias de dança e de música ou arte, as aulas particulares e a autoescola. Os demais setores nascem com a definição base, sem receita. Se você escolher **Outros**, o Parallly propõe uma receita escrita com IA a partir da frase que você informou no cadastro sobre o que seu negócio faz; ela aparece como sugestão e nunca substitui o que você já alterou. Se a geração falhar, a conta mantém a definição genérica.
 
 Uma receita **nunca inventa um dado do seu negócio**. Ela não sabe seu endereço, seu telefone, suas formas de pagamento nem com quantas horas de antecedência dá para cancelar. Onde iria esse dado, ela deixa um espaço como `[dirección]` ou `[precio]` para você preencher. Um dado inventado que soa bem é pior que um espaço vazio: o espaço se vê e se preenche; a invenção sai pelo WhatsApp.
+
+## Propriedades: sincronização iCal e fotos
+
+Em hotel e aluguel de temporada, cada propriedade (no menu, «Quartos» ou «Acomodações») abre em abas: **Calendário**, **Dados**, **Fotos**, **Reservas**, **Sincronização iCal** e **Check-in**.
+
+- **Importar Airbnb ou Booking.com**: em **Sincronização iCal**, adicione uma conexão com a URL `.ics` que essa plataforma fornece. A Parallly importa as reservas e bloqueios, sincroniza de novo a cada 30 minutos e você pode forçar com **Sincronizar agora**.
+- **Exportar seu calendário**: cada conexão tem sua própria URL de exportação. Copie a de cada plataforma e cole na extranet dela: assim a plataforma vê as reservas feitas na Parallly sem receber de volta os próprios bloqueios.
+- **O que o iCal não faz**: um calendário iCal só bloqueia datas, nunca as reabre. Se você cancelar uma reserva na Parallly, o Airbnb costuma liberar as datas sozinho, mas no Booking.com é preciso abri-las à mão. Além disso, cada plataforma lê os calendários com atraso, então duas reservas quase simultâneas em sites diferentes podem colidir; se você vende em várias plataformas ao mesmo tempo, um channel manager protege melhor.
+- **Fotos**: em propriedades e imóveis você pode enviar até 5 fotos de no máximo 2 MB cada, arrastando ou selecionando. A primeira é a capa, e é a foto que o agente envia primeiro no chat; use **Definir como capa** ou as setas para reordenar. Um arquivo que não é imagem ou passa de 2 MB é recusado pelo nome, sem bloquear as outras fotos.

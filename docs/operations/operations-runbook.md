@@ -516,7 +516,7 @@ LIMIT 50;
 
 Full index: [`docs/README.md`](../README.md). Changes: GitHub releases and merged PRs.
 
-- [`../domain/user-manual.md`](../domain/user-manual.md) — end-user documentation
+- [`../../apps/api/kb/assistant/`](../../apps/api/kb/assistant/) — end-user help (Parallly Assist KB, the single source of user help)
 - [`../architecture/architecture-detail.md`](../architecture/architecture-detail.md) — internal architecture
 - [`../architecture/modules-reference.md`](../architecture/modules-reference.md) — modules and their files (snapshot)
 - [`../architecture/analytics-billing-reference.md`](../architecture/analytics-billing-reference.md) — analytics / billing / financials

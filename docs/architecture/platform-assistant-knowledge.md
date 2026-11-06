@@ -1,10 +1,12 @@
 # Conocimiento de Parallly Assist — contrato documental
 
-_Estado: agosto de 2026_
+_Estado: noviembre de 2026_
 
-Este documento evita una confusión importante: el manual de usuario y Parallly Assist
-son dos superficies distintas. Editar `docs/domain/user-manual.md` **no actualiza** las
-respuestas del asistente.
+La KB de Parallly Assist es la **única fuente de ayuda al usuario** de la web. El antiguo
+manual narrativo para tenants (`docs/domain/user-manual.md`) se retiró en K3: lo que tenía
+de vigente y único pasó a estos artículos, y no se vuelve a escribir ayuda de usuario
+fuera de `apps/api/kb/assistant/`. La app móvil conserva su manual funcional
+(`docs/domain/mobile-user-manual.md`).
 
 ## Fuente runtime
 
@@ -33,7 +35,6 @@ del dashboard por sí solo no lo publica.
 | Salud y calidad del agente | `agent-quality-contract.ts`, guards de `/quality/:tenantId/agents*`, `/attention-summary`, `/signals*` y `/admin/agent/quality` |
 | Recorridos guiados ("Mostrarme dónde" / "Mostrarme cómo") | `packages/shared/src/guided-tour-contract.ts` (ids, ruta de entrada, rol mínimo, códigos de calidad que resuelve, artículos de KB relacionados) + `apps/dashboard/src/lib/guided-tours.ts` (pasos y anclajes reales de cada pantalla) |
 | Etapa de onboarding y tarjeta de puesta en marcha | `packages/shared/src/onboarding-stage-contract.ts` (`OnboardingStage` + `resolveOnboardingGuide`), `tenant.settings.onboardingStage` y `components/InitialSetupCard.tsx` |
-| Manual narrativo tenant | `docs/domain/user-manual.md` como apoyo editorial, no como fuente runtime |
 | App móvil | `docs/domain/mobile-user-manual.md` contrastado con `apps/mobile/src` |
 | Cobro de Meta por mensaje de WhatsApp | `whatsapp-rate-table.generated.ts` (`WHATSAPP_FREE_SERVICE_ALLOWANCE` para la cuota y la fecha de vigencia), `apps/api/src/modules/billing/whatsapp-spend/` para lo que se mide, `whatsapp-funding-readiness.ts` y `account-send-pause.ts` para el estado de un número, y `dashboard/messages/*.json` (`whatsappSpend`) para los nombres de la tarjeta y sus botones. Reglas de Meta: `docs/domain/whatsapp-meta-pricing-2026-10.md` |
 
@@ -193,7 +194,7 @@ La colección localizada debe cubrir, además de los artículos funcionales actu
 
 1. Cambiar los cuatro locales en el mismo PR.
 2. Validar frontmatter, IDs, roles, enlaces/rutas y términos retirados.
-3. Comparar contra `docs/domain/user-manual.md` y
+3. Comparar contra el código de la pantalla y
    `docs/architecture/product-capabilities-reference.md`.
 4. Ejecutar las pruebas de Copilot/KB disponibles.
 5. Construir la imagen de API y desplegarla.

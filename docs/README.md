@@ -95,5 +95,4 @@ Artefactos generados, su generador y su comprobación en CI. Los documentos gene
 | Carpeta | Qué es | Por qué sigue en el repositorio |
 |---|---|---|
 | [archive/](archive/README.md) | Históricos citados por un documento vivo o por código | Evidencia; no reflejan el estado actual |
-| `audits/2026-09-09/verify-artifacts.cjs` | Solo reenvía al verificador de `apps/api/scripts/artifacts/` | `deploy.yml` todavía llama esa ruta; se borra en el mismo cambio que apunte `deploy.yml` a `npm run verify:artifacts` |
 | [vertical-competitive-matrix-2026-08.md](vertical-competitive-matrix-2026-08.md) · [vertical-competitive-evidence.json](vertical-competitive-evidence.json) | Evidencia competitiva de la landing | `Dockerfile.landing` y `validate-competitive-evidence.cjs` |

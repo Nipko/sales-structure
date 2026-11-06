@@ -23,8 +23,7 @@
  *   node apps/api/scripts/artifacts/verify-artifacts.cjs   (npm run verify:artifacts)
  *
  * The generated documents live in docs/generated/ (ADR 0005) and their
- * generators next to this file. docs/audits/2026-09-09/verify-artifacts.cjs
- * only forwards here, for the deploy workflow that still calls the old path.
+ * generators next to this file. Run it with `npm run verify:artifacts`.
  */
 const { execFileSync } = require('node:child_process');
 const path = require('node:path');

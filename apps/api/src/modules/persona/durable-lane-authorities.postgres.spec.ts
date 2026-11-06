@@ -181,11 +181,13 @@ const databaseUrl = process.env.PARALLLY_ISOLATION_TEST_URL;
             // A producer missing from here cannot obtain an authority, and
             // therefore cannot write a row at all — which is precisely why the
             // drip, the nurturing nudge, the campaign, the rule action and the
-            // recall were still on the legacy queue.
+            // recall were still on the legacy queue. `pending_answer_ready` is
+            // the R5 notice (#331) that the business answered a pending
+            // question; it was born on the durable lane.
             expect(Object.keys(PROACTIVE_POLICIES).sort()).toEqual([
                 'appointment_cancellation', 'appointment_notification', 'appointment_reminder',
                 'attendance_check', 'automation_rule_action', 'broadcast_message', 'drip_step',
-                'nurturing_followup', 'recall_reminder',
+                'nurturing_followup', 'pending_answer_ready', 'recall_reminder',
             ]);
         });
 

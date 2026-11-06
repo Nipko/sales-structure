@@ -939,7 +939,7 @@ test("vehicle rental opens on requests and never presents pending eligibility as
   await expectHermeticNetwork(page, network);
 });
 
-test("legacy Email and SMS routes return to certified, non-SMS surfaces", async ({ page }) => {
+test("the legacy Email route returns to certified, non-SMS surfaces", async ({ page }) => {
   const network = await bootstrapTenantAdmin(page);
 
   await page.goto("/admin/channels/email");
@@ -952,12 +952,6 @@ test("legacy Email and SMS routes return to certified, non-SMS surfaces", async 
   await expect(page.getByRole("heading", { name: "Email", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "SMS", exact: true })).toHaveCount(0);
 
-  await page.goto("/admin/channels/sms");
-  await expect(page).toHaveURL(/\/admin\/channels$/);
-
-  await page.goto("/admin/settings/integrations/sms-notifications");
-  await expect(page).toHaveURL(/\/admin\/settings$/);
-  await expect(page.getByRole("link", { name: /Notificaciones SMS/i })).toHaveCount(0);
   await expectHermeticNetwork(page, network);
 });
 

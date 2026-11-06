@@ -13,7 +13,7 @@ function harness(values: Record<string, string | null>) {
     const incidents = { resolveByKey: jest.fn(async () => undefined) };
     const monitor = new PlatformMonitorService(
         redis as any, {} as any, {} as any, {} as any, {} as any,
-        incidents as any, {} as any, {} as any,
+        incidents as any, {} as any,
         { get: jest.fn(async () => ALERT_CONFIG_DEFAULTS) } as any,
         {} as any, {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         {} as any, {} as any,

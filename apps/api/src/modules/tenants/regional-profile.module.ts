@@ -7,7 +7,7 @@ import { RegionalConflictCronService } from './regional-conflict-cron.service';
  * La identidad regional del tenant, disponible en todo el backend.
  *
  * Vive en su propio módulo global porque sus consumidores son transversales:
- * identidad de contactos, CRM, import/export, portal del cliente, SMS,
+ * identidad de contactos, CRM, import/export, portal del cliente,
  * reservas públicas y el turno del agente. Colgarlo de `TenantsModule` obligaba
  * a cada uno de esos módulos a importar Tenants entero —con sus controladores y
  * su servicio de administración— sólo para saber en qué país opera el negocio,

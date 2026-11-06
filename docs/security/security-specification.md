@@ -137,7 +137,6 @@ Un super_admin no tiene tenant implicito: para operar dentro del workspace de un
 |------|--------------------|---------|
 | Tokens de acceso WhatsApp | `WhatsappCryptoService.encryptToken/decryptToken` | `whatsapp/services/whatsapp-crypto.service.ts` |
 | **Tokens de canal por-cuenta** (multi-canal por tipo) | `channel_accounts.access_token` cifrado; resuelto por `ChannelTokenService.getChannelToken(tenantId, channelType, accountId?)` (descifra con `WhatsappCryptoService`) | `channels/channel-token.service.ts` |
-| **Credenciales Twilio por-cuenta** (`accountSid:authToken`) | Guardadas en `channel_accounts.access_token` cifrado; `SmsAdapter.parseCredentials()` las separa en uso | `channels/sms/sms.adapter.ts` |
 | Secretos TOTP (2FA) | `AuthService.encryptTotpSecret()` / `decryptTotpSecret()` | `auth/auth.service.ts` |
 | Tokens Google Calendar | `CalendarIntegrationService` | `appointments/calendar-integration.service.ts` |
 | **Refresh token Google Business Profile** (Reviews) | `ReviewsService.encrypt()` (AES-256-GCM, formato `{iv}:{tag}:{ct}`) en `tenant.settings.googleBusiness.encryptedRefreshToken` | `reviews/reviews.service.ts` |
@@ -258,22 +257,9 @@ Ejecutado dentro de transaccion. `SET LOCAL` garantiza que el search_path aplica
 | Almacenamiento | `channelAccount.metadata.webhookSecret` |
 | Validacion | Comparacion en `channels.controller.ts` |
 
-### 5.3 Twilio (SMS entrante)
+### 5.3 Twilio (SMS entrante) — retirado
 
-Validado en `ChannelsController.processSmsWebhook()` / `validateTwilioSignature()` (`channels/channels.controller.ts`), **antes de cualquier efecto secundario**.
-
-| Parametro | Valor |
-|-----------|-------|
-| Algoritmo | HMAC-SHA1 (estandar Twilio) |
-| Proceso | URL completa del webhook + POST params ordenados por clave → HMAC-SHA1 → base64 |
-| Comparacion | `crypto.timingSafeEqual()` (con guard de longitud previo) |
-| Resolucion del auth token | 1) `channelAccount.metadata.twilioAuthToken` (legacy); 2) **credencial cifrada por-cuenta** via `ChannelTokenService.getChannelToken(tenantId, 'sms', phoneNumber)` → `accessToken.split(':')[1]` (formato `accountSid:authToken`); 3) `TWILIO_AUTH_TOKEN` env |
-| Idempotencia **despues** de la firma | El claim atomico `idem:sms:{MessageSid}` (SET NX, 24h) se hace **tras** validar la firma. Ponerlo antes permitia que un `MessageSid` spoofeado quemara la key y el mensaje real firmado se descartara como duplicado |
-| Graceful degradation | Si tras la cascada no hay auth token, log warning y skip de la validacion (no rompe flujo) |
-
-> **Fix (commit `5c7da544`, jul 2026):** antes el webhook buscaba el token solo en `metadata.twilioAuthToken` (nunca se guarda) o en `TWILIO_AUTH_TOKEN` (env inexistente) → `authToken` quedaba `undefined` → la validacion de firma se saltaba y el POST entrante se aceptaba **sin verificar** (vector de spoofing de SMS entrante). La resolucion per-account cerro el hueco.
-
-**Nota:** SMS es solo notificacion one-way por creditos (§18); el adaptador conversacional Twilio (`channels/sms/sms.adapter.ts`) queda como legacy.
+El webhook `POST /channels/webhook/sms/:phoneNumber`, su validacion de firma HMAC-SHA1 y el adaptador `channels/sms/sms.adapter.ts` se eliminaron con el retiro de SMS ([ADR 0018](../decisions/0018-retiro-sms.md)): ya no hay entrada SMS que validar. La ruta responde 404.
 
 ### 5.4 Wompi / Stripe (Billing)
 
@@ -665,7 +651,7 @@ curl -s https://api.parallly-chat.cloud/api/v1/admin/queues
 | Cifrado en reposo | Fuerte | AES-256-GCM: tokens WA/canal per-account, TOTP, Google Calendar, refresh GBP (§2.1) |
 | Rate limiting | Fuerte | Redis (app, IP anti-spoof `CF-Connecting-IP`) + Nginx (infra) |
 | Inyeccion SQL | Fuerte | Parametrizado + whitelists + validacion schema |
-| Webhooks | Fuerte | HMAC + timing-safe en Meta, Telegram, Twilio (firma validada tras `5c7da544`) y MercadoPago/Stripe; provider `mock` bloqueado en prod |
+| Webhooks | Fuerte | HMAC + timing-safe en Meta, Telegram y MercadoPago/Stripe; provider `mock` bloqueado en prod |
 | Control de acceso | Fuerte | 3 guards + super_admin sin tenant implicito + deny-by-default en dashboard (§9.2) |
 | XSS | Bueno | Escape HTML + CSP (mejorable con DOMPurify) |
 | CSRF | Bueno | OAuth state + CORS strict + SameSite cookies |
@@ -687,7 +673,7 @@ Un tenant puede conectar N conexiones del mismo tipo de canal (p. ej. 2 numeros 
 
 ## 18. SMS (producto retirado)
 
-El producto SMS esta **retirado** desde agosto de 2026: el kill switch de plataforma `sms.platform_enabled` esta apagado por defecto y creditos, checkout y notificaciones responden `sms_product_retired` (`sms-kill-switch.service.ts`). Las tablas globales `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` se conservan por trazabilidad contable; su retiro requiere decision del dueño (ver ADR 0005). La validacion de firma Twilio (§5.3) sigue vigente mientras el adaptador legacy exista. El diseño historico esta en `docs/archive/2026-07-sms/`.
+El producto SMS se apago en agosto de 2026 y su codigo se retiro en noviembre de 2026 ([ADR 0018](../decisions/0018-retiro-sms.md)): ya no existen los modulos de creditos, notificaciones y checkout, el adaptador y webhook Twilio, el interruptor `sms.platform_enabled` ni las pantallas. El respaldo SMS del 2FA (`POST /auth/2fa/send-sms`) sigue como concepto OTP, pero su transporte falla siempre antes de contactar a un proveedor. Las tablas globales `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño historico esta en `docs/archive/2026-07-sms/`.
 
 ## 19. Fiscal DIAN (Colombia) — gate collect-before-pay
 
@@ -708,7 +694,7 @@ Scripts `infra/backup/backup.sh` + `restore.sh`, orquestados por cron de producc
 
 ## 21. Ops Center y Hardening de Deploy
 
-**Ops Center (super_admin), modulo `health/`:** liveness `GET /health` + `GET /health/detailed`; `PlatformMonitorService` corre chequeos con cooldown y alerta via email/Telegram/SMS. Cubre salud de contenedores, backup heartbeat (§20), budget/salud de proveedores LLM, y storage por-tenant con quota (`platform-storage.service`). Endpoints de incidentes (`/health/incidents/:id/ack|resolve`) y config de alertas (`GET|PUT /health/alert-config`).
+**Ops Center (super_admin), modulo `health/`:** liveness `GET /health` + `GET /health/detailed`; `PlatformMonitorService` corre chequeos con cooldown y alerta via email/Telegram. Cubre salud de contenedores, backup heartbeat (§20), budget/salud de proveedores LLM, y storage por-tenant con quota (`platform-storage.service`). Endpoints de incidentes (`/health/incidents/:id/ack|resolve`) y config de alertas (`GET|PUT /health/alert-config`).
 
 **Hardening de deploy (Fase C):**
 - **SSH key-only:** se retiro la password del flujo de deploy (`3505f32b`); llaves de deploy en `.gitignore` (`7c39f1a2`). `harden-vps.sh` deja `PermitRootLogin prohibit-password` y prepara el flip a `PasswordAuthentication no`.

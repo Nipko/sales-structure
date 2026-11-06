@@ -12,7 +12,7 @@ SMS **ya no es un producto de Parallly**: se retiró por completo. No puedes com
 
 ## Qué cambia para tu negocio
 
-- **Créditos y compra**: la sección de créditos SMS no se ofrece y el servidor rechaza cualquier intento de comprar o activar SMS. Si ves un saldo de una época anterior, escribe a soporte para saber qué hacer con él; no esperes que se pueda gastar.
+- **Créditos y compra**: no hay sección de créditos SMS ni forma de comprar o activar SMS: la plataforma ya no tiene esa función. Si compraste créditos en una época anterior, escribe a soporte para saber qué pasa con ellos; no se pueden gastar.
 - **Campañas**: el editor de **IA y crecimiento → Campañas** solo trabaja con **WhatsApp**. Para llegar a un grupo de clientes usa una plantilla de WhatsApp aprobada por Meta (consulta **Campañas y difusión**).
 - **Recordatorios y automatizaciones**: ninguna acción envía SMS. Los recordatorios de citas salen por WhatsApp o Telegram, según el canal por el que escribió el cliente, y, el de 24 horas, también por correo cuando el cliente dejó su email.
 - **Avisos a tu equipo**: no esperes recibir avisos por SMS. Usa las notificaciones del panel y de la app móvil.

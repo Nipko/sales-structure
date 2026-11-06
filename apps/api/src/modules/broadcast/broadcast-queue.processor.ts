@@ -8,7 +8,6 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { BroadcastService, BROADCAST_QUEUE, BroadcastJobData } from './broadcast.service';
 import { AbTestService } from './ab-test.service';
-import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import {
     ProactiveDispatchService, effectIsDurable, producerMayAdvance,
@@ -39,7 +38,6 @@ export class BroadcastQueueProcessor extends WorkerHost {
         private readonly prisma: PrismaService,
         private readonly broadcastService: BroadcastService,
         private readonly abTestService: AbTestService,
-        private readonly tenantSms: TenantNotificationSmsService,
         /**
          * The durable lane, which a campaign message could not use before.
          *
@@ -108,23 +106,20 @@ export class BroadcastQueueProcessor extends WorkerHost {
         // ── WHATSAPP IS ITS OWN SHAPE NOW: COMMIT, THEN CLOSE LATER ─────────
         if (channel === 'whatsapp') return this.dispatchWhatsApp(job);
 
+        // SMS is a retired product (ADR 0018): a legacy SMS recipient still in
+        // the queue is closed for good, never retried — there is no transport.
+        if (channel === 'sms') {
+            this.logger.warn(`Broadcast SMS dropped (sms_retired): campaign=${campaignId} recipient=${recipientId}`);
+            await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, 'sms_retired');
+            return 'skipped:sms_retired';
+        }
+
         // --- SEND: the ONLY step allowed to trigger a BullMQ retry ---
         let messageId: string;
         try {
-            messageId = channel === 'sms'
-                ? await this.sendSMS(job.data)
-                : await this.sendEmail(job.data);
+            messageId = await this.sendEmail(job.data);
         } catch (error: any) {
             const errorMessage = error?.message || 'Unknown error';
-
-            // Out-of-credits is permanent for this recipient — mark failed and DO NOT
-            // retry (a retry just re-checks the empty balance; no send, no charge).
-            if (errorMessage === 'INSUFFICIENT_SMS_CREDITS' || errorMessage === 'SMS_DISABLED') {
-                const reason = errorMessage === 'SMS_DISABLED' ? 'sms_disabled' : 'insufficient_sms_credits';
-                this.logger.warn(`Broadcast SMS dropped (${reason}): campaign=${campaignId} recipient=${recipientId}`);
-                await this.markFailed(schemaName, campaignId, recipientId, job.data.variantId, reason);
-                return `skipped:${reason}`;
-            }
 
             this.logger.error(`Broadcast failed: campaign=${campaignId} channel=${channel} attempt=${job.attemptsMade + 1}/3 error=${errorMessage}`);
             if (job.attemptsMade + 1 >= (job.opts?.attempts || 3)) {
@@ -134,9 +129,8 @@ export class BroadcastQueueProcessor extends WorkerHost {
         }
 
         // --- BOOKKEEPING: must NEVER re-trigger the send ---
-        // The message is already delivered (and, for SMS, already charged). A failure
-        // here must not re-queue the job — otherwise the customer gets a duplicate
-        // message and the tenant is double-charged. So we log and swallow.
+        // The message is already delivered. A failure here must not re-queue the
+        // job — otherwise the customer gets a duplicate message. So we log and swallow.
         try {
             await this.markSent(schemaName, campaignId, recipientId, job.data.variantId, messageId);
         } catch (bookErr: any) {
@@ -427,31 +421,9 @@ export class BroadcastQueueProcessor extends WorkerHost {
         return `email-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     }
 
-    private async sendSMS(data: BroadcastJobData): Promise<string> {
-        if (!data.phone) throw new Error('No phone number for SMS recipient');
-        if (!data.smsBody) throw new Error('No SMS body configured');
-
-        // Reseller model: broadcast SMS is delivered via the PLATFORM Twilio sender
-        // and charged to the tenant's prepaid SMS credit balance (1 credit/segment),
-        // NOT the tenant's own Twilio. `ref` is stable per recipient for audit.
-        const res = await this.tenantSms.send(data.tenantId, data.phone, data.smsBody, {
-            reason: 'broadcast',
-            ref: `bcast:${data.campaignId}:${data.recipientId}`,
-            metadata: { campaignId: data.campaignId },
-        });
-        if (res.sent) return res.sid || '';
-        // Both are permanent for this message — surfaced as non-retryable in process().
-        if (res.reason === 'insufficient_credits') throw new Error('INSUFFICIENT_SMS_CREDITS');
-        if (res.reason === 'monetization_disabled') throw new Error('SMS_DISABLED');
-        if (res.reason === 'platform_sms_unconfigured') throw new Error('SMS de plataforma no configurado');
-        throw new Error(`Twilio SMS error: ${res.error || res.reason}`);
-    }
-
     @OnWorkerEvent('failed')
     onFailed(job: Job<BroadcastJobData>, error: Error) {
         this.logger.error({ msg: 'Broadcast job failed', jobId: job.id, campaignId: job.data.campaignId, channel: job.data.channel, error: error.message });
-        // Out-of-credits is an expected business condition, not an incident — keep it out of Sentry.
-        if (error.message === 'INSUFFICIENT_SMS_CREDITS') return;
         // Nor is "the effect has not settled yet": the settling pass is SUPPOSED
         // to keep asking, and every ask would otherwise raise an incident.
         if (error.message.startsWith('broadcast_effect_in_flight')) return;

@@ -116,16 +116,15 @@ describe('what the October WhatsApp rows are allowed to count', () => {
         expect(billable.length).toBeGreaterThan(10);
     });
 
-    it('excludes, BY NAME, the nine the old regex swept in', () => {
+    it('excludes, BY NAME, the ones the old regex swept in that still exist', () => {
         // Named rather than counted. A future edit that quietly re-classifies a
         // token rotation as a customer message would restore the defect, and a
         // count would not notice.
         const excluded = [
-            'human.channel.connection_test',   // the tenant messaging itself on telegram/sms
+            'human.channel.connection_test',   // the tenant messaging itself on telegram
             'ops.platform_alerts',             // our own operators
             'ops.coupon_alerts',               // our own operators
             'channel.email.inbound_reply',     // a customer, but only ever over email
-            'channel.sms.conversational',      // a customer, but only ever over sms
             'meta.channel_management',         // configures an account; sends nobody anything
             'whatsapp.template_management',    // configures an asset
             'whatsapp.business_profile',       // configures an asset

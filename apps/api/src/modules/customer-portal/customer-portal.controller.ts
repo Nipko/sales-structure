@@ -27,8 +27,8 @@ export class CustomerPortalController {
 
     @Post(':tenantId/request-access')
     @UseGuards(AuthThrottleGuard)
-    @AuthThrottle(10, 3600) // 10 code sends per hour per IP — caps SMS/email OTP spam (Twilio cost + phone bombing) while tolerating shared-NAT customers
-    @ApiOperation({ summary: 'Request portal access — sends a 6-digit code via SMS or email' })
+    @AuthThrottle(10, 3600) // 10 code sends per hour per IP — caps OTP spam while tolerating shared-NAT customers
+    @ApiOperation({ summary: 'Request portal access — sends a 6-digit code by email (SMS is retired: a phone request is answered the same way but no code is sent)' })
     async requestAccess(
         @Param('tenantId') tenantId: string,
         @Body() body: { phone?: string; email?: string },

@@ -16,7 +16,6 @@ import { ProrationService } from './recurring/proration.service';
 import { RENEWAL_QUEUE } from './recurring/renewal-scheduler.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { FiscalConfigService } from '../fiscal/fiscal-config.service';
-import { SmsCreditsService } from '../sms-credits/sms-credits.service';
 import { StripeConfigService } from './adapters/stripe-config.service';
 
 /**
@@ -55,10 +54,6 @@ describe('BillingService', () => {
                 create: jest.fn(),
             },
             billingPayment: { create: jest.fn(), findUnique: jest.fn(), updateMany: jest.fn() },
-            smsPackageOrder: {
-                findFirst: jest.fn().mockResolvedValue(null),
-                findUnique: jest.fn().mockResolvedValue(null),
-            },
             auditLog: { create: jest.fn() },
             $queryRawUnsafe: jest.fn().mockResolvedValue([]),
             $executeRawUnsafe: jest.fn().mockResolvedValue(1),
@@ -86,10 +81,6 @@ describe('BillingService', () => {
                 {
                     provide: FiscalConfigService,
                     useValue: { getConfig: jest.fn().mockResolvedValue({ fiscalGateEnabled: false }) },
-                },
-                {
-                    provide: SmsCreditsService,
-                    useValue: { addCredits: jest.fn(), adjust: jest.fn() },
                 },
                 {
                     provide: WompiConfigService,

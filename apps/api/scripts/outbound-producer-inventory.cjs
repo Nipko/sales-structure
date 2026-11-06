@@ -210,7 +210,6 @@ const ROADS = [
     'modules/channels/messenger/messenger.adapter.ts',
     'modules/channels/telegram/telegram.adapter.ts',
     'modules/channels/email/email.adapter.ts',
-    'modules/channels/sms/sms.adapter.ts',
     'modules/channels/channel-gateway.service.ts',
     'modules/channels/outbound-queue.service.ts',
     'modules/channels/outbound-queue.processor.ts',
@@ -225,7 +224,6 @@ const ROADS = [
     // inventory classifies them the same way (`EGRESS_INFRASTRUCTURE`).
     'modules/handoff/handoff-effects.ts',
     'modules/operational-notices/operational-notice-outbox.ts',
-    'modules/sms-notifications/sms-sender.service.ts',
 ];
 
 const CHANNEL_LITERALS = ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget', 'email', 'sms'];

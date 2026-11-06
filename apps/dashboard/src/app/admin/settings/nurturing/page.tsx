@@ -24,7 +24,6 @@ const CHANNEL_OPTIONS = [
     { key: "instagram", label: "Instagram", color: "bg-pink-500" },
     { key: "messenger", label: "Messenger", color: "bg-blue-500" },
     { key: "telegram", label: "Telegram", color: "bg-sky-500" },
-    { key: "sms", label: "SMS", color: "bg-purple-500" },
 ];
 
 export default function NurturingSettingsPage() {

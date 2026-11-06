@@ -41,7 +41,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 
 #### 3. health (Ops Center)
 - **Purpose:** Liveness/readiness + **Centro de Operaciones** del super_admin: monitoreo de plataforma (disco, memoria, colas, SLA, tokens de canal, presupuesto LLM, backups), incidentes, storage por-tenant y umbrales de alerta configurables
-- **Services:** `platform-monitor.service.ts` (crons de chequeo + alerting con cooldown vía email/Telegram/SMS; incluye heartbeat de backup en Redis `backup:last_success`, alerta si edad > `backupStaleHours` default 26h), `incident.service.ts` (abrir/ack/resolver, dedup por clave), `platform-storage.service.ts` (disco + storage por-tenant + quota + history), `alert-config.service.ts` (umbrales), `sms-alert.service.ts`, `telegram-alert.service.ts`, `sentry-stats.service.ts`
+- **Services:** `platform-monitor.service.ts` (crons de chequeo + alerting con cooldown vía email/Telegram; incluye heartbeat de backup en Redis `backup:last_success`, alerta si edad > `backupStaleHours` default 26h), `incident.service.ts` (abrir/ack/resolver, dedup por clave), `platform-storage.service.ts` (disco + storage por-tenant + quota + history), `alert-config.service.ts` (umbrales), `sms-alert.service.ts`, `telegram-alert.service.ts`, `sentry-stats.service.ts`
 - **Controller:** `health.controller.ts`
 - **Endpoints:**
   - `GET /health` — Liveness (no auth; usado por Docker healthcheck + Uptime Kuma)
@@ -134,7 +134,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `POST /auth/2fa/disable` — Disable 2FA (password required)
   - `POST /auth/2fa/verify` — Verify TOTP/email/backup code at login
   - `POST /auth/2fa/send-email` — Send email OTP fallback
-  - `POST /auth/2fa/send-sms` — Send SMS OTP fallback when available
+  - `POST /auth/2fa/send-sms` — SMS OTP fallback; its transport was retired with SMS (ADR 0018), so it always answers that SMS delivery is unavailable
   - `POST /auth/2fa/backup-codes` — Generate/regenerate backup codes
   - `GET /auth/trusted-devices` — List user's trusted devices
   - `POST /auth/trusted-devices/:deviceId/revoke` — Revoke a trusted device
@@ -242,7 +242,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 #### 11. channels
 - **Purpose:** Multi-channel message routing, webhook handling, outbound queue
 - **Services:** `channel-gateway.service.ts`, `channel-token.service.ts`, `outbound-queue.service.ts`, `instagram-token-refresh.service.ts`, `webhook-tap.service.ts`
-- **Adapters:** `whatsapp/whatsapp.adapter.ts`, `instagram/instagram.adapter.ts`, `messenger/messenger.adapter.ts`, `sms/sms.adapter.ts`, `telegram/telegram.adapter.ts`, `email/email.adapter.ts` (EmailAdapter implementing IChannelAdapter)
+- **Adapters:** `whatsapp/whatsapp.adapter.ts`, `instagram/instagram.adapter.ts`, `messenger/messenger.adapter.ts`, `telegram/telegram.adapter.ts`, `email/email.adapter.ts` (EmailAdapter implementing IChannelAdapter)
 - **Email sub-module:** `email/email-channel.service.ts` (persistencia interna + thread tracking; su CRUD no está expuesto como API tenant), `email/email-webhook.controller.ts`
 - **Controllers:** `channels.controller.ts` (webhooks), `channel-management.controller.ts` (management), `webhook-tap.controller.ts` (debug)
 - **Webhook Endpoints:**
@@ -252,7 +252,6 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `POST /channels/webhook/instagram` — Instagram events
   - `GET /channels/webhook/messenger` — Messenger verification
   - `POST /channels/webhook/messenger` — Messenger events
-  - `POST /channels/webhook/sms/:phoneNumber` — SMS/Twilio
   - `POST /channels/webhook/telegram/:botUsername` — Telegram
   - `POST /channels/email/inbound` — Ingreso técnico JSON de Email para integraciones administradas; exige el secret/header de webhook configurado en el servidor y no acepta multipart directo
 - **Management Endpoints:**
@@ -266,9 +265,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `DELETE /channels/messenger/disconnect` — Disconnect Messenger
   - `POST /channels/instagram/oauth-connect` — Instagram OAuth
   - `DELETE /channels/instagram/disconnect` — Disconnect Instagram
-  - `POST /channels/sms/connect` y `POST /channels/sms/test` — retirados; fallan cerrado con `sms_product_retired`
-  - `GET /channels/sms/status` y `DELETE /channels/sms/disconnect` — observación y cierre de conexiones legacy
-  - > **Nota:** SMS está retirado para altas, compras, configuración y campañas nuevas. `channels/sms/sms.adapter.ts`, saldos, ledger, órdenes, callbacks y desconexión quedan solo para obligaciones legacy. `/admin/channels/sms` y `/admin/settings/integrations/sms-notifications` redirigen; las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y Web Chat Widget (`widget/`).
+  - > **Nota:** SMS es un producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)): no hay adaptador Twilio, webhook ni rutas `/channels/sms/*`; un trabajo saliente heredado con `channelType: 'sms'` se descarta como `skipped:sms_retired`. Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y Web Chat Widget (`widget/`).
   - **Email (interno, no autoservicio certificado):**
     - `POST /channels/email/inbound` — ingreso técnico JSON para una integración previamente administrada; falla cerrado si `EMAIL_INBOUND_WEBHOOK_SECRET` no está configurado, valida el header antes de resolver el tenant, enruta solo con un destinatario canónico en `envelope.to` y rechaza direcciones activas ambiguas entre tenants
     - `GET /channels/email/config` — coincide con el handler genérico `/:channelType/config` y solo devuelve instrucciones de webhook; no lee credenciales ni configuración tenant
@@ -635,11 +632,11 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 ### Billing & Finance (4 modules)
 
 #### 26. billing
-- **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende paquetes SMS nuevos
-- **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`, `sms-checkout.service.ts`
+- **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende SMS (producto retirado, ADR 0018)
+- **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`
 - **Adapters (`billing/adapters/`):** `wompi.adapter.ts`, `wompi-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`. Mercado Pago ya no existe como adaptador de plataforma (retirado ago 2026; ver `docs/decisions/previas/mercadopago-retirement-2026-08.md`)
 - **Processors:** `reconciliation.processor.ts`
-- **Controllers:** `billing.controller.ts` (tenant), `billing-admin.controller.ts` (super_admin, billing-ops), `billing-public.controller.ts` (catálogo público), `coupons.controller.ts`, `sms-checkout.controller.ts`, `webhook.controller.ts`
+- **Controllers:** `billing.controller.ts` (tenant), `billing-admin.controller.ts` (super_admin, billing-ops), `billing-public.controller.ts` (catálogo público), `coupons.controller.ts`, `webhook.controller.ts`
 - **Ciclo anual:** el precio mensual y el anual viven en `billing_plans.priceLocalOverrides[country]` (`amountCents` y `annual.amountCents`, este último independiente de mensual × 12) y los cobra el motor recurrente interno con Wompi; no hay catálogo remoto de planes que sincronizar. Los campos históricos `mpPlanId` no autorizan cobros. Ver `docs/domain/billing-annual-cycle.md`
 - **Tenant endpoints (`/billing`):**
   - `GET /billing/plans` — Lista de planes (con overrides por país/moneda + anual)
@@ -676,7 +673,6 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `POST /billing-admin/tenants/:tenantId/comp-plan` — Otorgar plan de cortesía (time-boxed, motivo obligatorio)
   - `PUT /billing-admin/tenants/:tenantId/plan` — Cambio permanente de plan (override de entitlement; invalida cachés + auditoría)
 - **Cupones (`/billing-coupons`):** `GET|POST /admin`, `PUT|DELETE /admin/:id`, `GET /admin/:id/redemptions`, `POST /validate/:tenantId`, `POST /redeem/:tenantId` (percent_off / amount_off / free_months)
-- **SMS legacy (`sms-checkout` → path `/sms-credits`):** `POST /sms-credits/:tenantId/checkout` responde `410 sms_product_retired`; `GET /sms-credits/:tenantId/orders` conserva historial
 - **Webhook:** `POST /billing/webhook/:provider` — Webhook del proveedor (HMAC verificado + idempotencia)
 - **Cron jobs:**
   - `EVERY_HOUR` — reconcilePastDue: barrido de suscripciones en mora
@@ -864,7 +860,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Purpose:** WhatsApp campaign drafts and metrics with A/B testing; other legacy channel rows are read-only historical evidence
 - **Services:** `broadcast.service.ts`, `ab-test.service.ts` (variant management, recipient assignment, z-test significance, auto-winner selection)
 - **Controller:** `broadcast.controller.ts`
-- **Processor:** `broadcast-queue.processor.ts` — Dispatches per channel (WA template send, Email SMTP, SMS Twilio)
+- **Processor:** `broadcast-queue.processor.ts` — Dispatches per channel (WA template send, Email SMTP); a legacy SMS recipient is closed as `sms_retired` with no send
 - **Endpoints:**
   - `POST /broadcast/campaigns` — Create campaign (supports multi-channel: channels[], channelContent per channel)
   - `POST /broadcast/campaigns/:id/launch` — Launch campaign (queues per-recipient per-channel jobs)
@@ -1527,18 +1523,11 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **BullMQ:** `fiscal-invoice` (concurrency 3)
 - **Model:** `FiscalInvoice` (global). Ver `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md`
 
-#### 69. sms-credits
-- **Purpose:** custodia legacy de balance/ledger/órdenes SMS y soporte operativo. P26 retiró catálogo tenant, compra, envío nuevo y claims; no es un producto disponible
-- **Services:** `sms-credits.service.ts` (config histórica + balance/ledger), `tenant-notification-sms.service.ts` (compatibilidad heredada bajo kill-switch)
-- **Controller:** `sms-credits.controller.ts` (`/sms-credits`)
-- **Endpoints:** `GET /sms-credits/packages` devuelve lista vacía + metadata `retired`; `GET|PUT /sms-credits/admin/config`, balances y ajustes permanecen para soporte; tenant puede leer balance, ledger y órdenes históricas
-- **Compra:** `POST /sms-credits/:tenantId/checkout` siempre falla `410 sms_product_retired`
+#### 69. sms-credits (stub del producto retirado)
+- **Purpose:** SMS es un producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)). Solo queda `SmsCreditsModule` con `tenant-notification-sms.service.ts`, un stub que nunca envía (`isAvailable()` → `false`, `send()` → rechazo), porque `conversations/chat-identity.service.ts` todavía lo importa. Sin controlador, endpoints, créditos ni Twilio
 
-#### 70. sms-notifications
-- **Purpose:** compatibilidad de configuraciones/entregas legacy y canales operativos internos (por ejemplo alertas/2FA) separados del producto tenant; no admite nuevas activaciones tenant
-- **Services:** `sms-notifications.service.ts`, `sms-notification-listener.service.ts` (@OnEvent handoff/escalación), `sms-sender.service.ts`, `sms-notification-i18n.ts`
-- **Controller:** `sms-notifications.controller.ts` (`/sms-notifications`)
-- **Endpoints:** `GET /sms-notifications/:tenantId/config` permite soporte legacy; `PUT` solo conserva/edita una activación heredada o la apaga y responde `sms_product_retired` al intentar habilitar una nueva. La ruta dashboard redirige a Configuración
+#### 70. sms-notifications (retirado)
+- Retirado en ADR 0018 junto con el aviso de handoff por SMS (`handoff.escalated.sms` ya no es destino del anuncio). El número de sección se conserva para no renumerar el inventario
 
 #### 71. push
 - **Purpose:** Notificaciones a agentes/admins — **Web Push** (navegador), **Expo** (app móvil `@parallext/mobile`) y preferencias por usuario que también filtran los avisos en vivo del dashboard
@@ -1770,7 +1759,6 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 | `/admin/channels/instagram/callback` | IG OAuth callback | N/A | N/A |
 | `/admin/channels/messenger` | Messenger FB SDK setup | Admin | ✅ |
 | `/admin/channels/telegram` | Telegram bot setup | Admin | ✅ |
-| `/admin/channels/sms` | Ruta legacy que redirige a `/admin/channels`; no admite conexión nueva | Admin | N/A |
 | `/admin/channels/email` | Ruta legacy que redirige a `/admin/channels`; no autoservicio | Admin | N/A |
 
 ### Settings
@@ -1845,7 +1833,6 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 | `/admin/storage` | Storage por-tenant (schema DB + media + quota + history) | ✅ |
 | `/admin/plans` | Gestión de planes (features, precios por país y ciclo, estado de proveedores) | ✅ |
 | `/admin/billing-ops` | Billing-ops cross-tenant (suscripciones/pagos/eventos, reconcile, refund, comp-plan) | ✅ |
-| `/admin/sms-packages` | Tiers de créditos SMS + kill-switch + balances | ✅ |
 | `/admin/fiscal` | Facturación electrónica DIAN (config Factus, facturas, reemisión) | ✅ |
 | `/admin/audit` | Audit log viewer | ✅ |
 | `/admin/llm-stats` | LLM observability (cost/model/tenant) | ✅ |

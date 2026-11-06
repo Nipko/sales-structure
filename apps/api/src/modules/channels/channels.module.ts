@@ -12,7 +12,6 @@ import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
 import { MessengerAdapter } from './messenger/messenger.adapter';
 import { TelegramAdapter } from './telegram/telegram.adapter';
-import { SmsAdapter } from './sms/sms.adapter';
 import { EmailAdapter } from './email/email.adapter';
 import { EmailChannelService } from './email/email-channel.service';
 import { EmailWebhookController } from './email/email-webhook.controller';
@@ -32,7 +31,6 @@ import { WebhookTapController } from './webhook-tap.controller';
 import { InboundQueueModule } from '../inbound/inbound-queue.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
-import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
 import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.module';
 // AnalyticsModule removed — compliance check moved to ConversationsService to avoid DI issues in processor
 
@@ -48,7 +46,6 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         // delivery port exported by ConversationsModule. Keep this cycle deferred.
         forwardRef(() => ConversationsModule),
         forwardRef(() => WhatsappModule),
-        SmsCreditsModule,
         // The money authority. A leaf (Prisma only), so it closes no cycle,
         // and it is imported here rather than injected globally so that the
         // dependency is visible in the module that actually sends.
@@ -66,7 +63,6 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         InstagramAdapter,
         MessengerAdapter,
         TelegramAdapter,
-        SmsAdapter,
         EmailAdapter,
         EmailChannelService,
         EmailWebhookSecurityService,
@@ -80,7 +76,7 @@ import { WhatsappSpendModule } from '../billing/whatsapp-spend/whatsapp-spend.mo
         WhatsappTokenHealthService,
         WebhookTapService,
     ],
-    exports: [ChannelGatewayService, ProactiveSendConnection, ProactiveDispatchService, WhatsAppAdapter, SmsAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
+    exports: [ChannelGatewayService, ProactiveSendConnection, ProactiveDispatchService, WhatsAppAdapter, EmailAdapter, EmailChannelService, OutboundQueueService, ChannelTokenService, WebhookTapService, AgentDispatchOutboxStore, DispatchRolloutService],
 })
 export class ChannelsModule implements OnModuleInit {
     constructor(
@@ -89,7 +85,6 @@ export class ChannelsModule implements OnModuleInit {
         private instagramAdapter: InstagramAdapter,
         private messengerAdapter: MessengerAdapter,
         private telegramAdapter: TelegramAdapter,
-        private smsAdapter: SmsAdapter,
         private emailAdapter: EmailAdapter,
         private widgetAdapter: WidgetChannelAdapter,
         private outboundProcessor: OutboundQueueProcessor,
@@ -105,7 +100,6 @@ export class ChannelsModule implements OnModuleInit {
         this.gateway.registerAdapter(this.instagramAdapter);
         this.gateway.registerAdapter(this.messengerAdapter);
         this.gateway.registerAdapter(this.telegramAdapter);
-        this.gateway.registerAdapter(this.smsAdapter);
         this.gateway.registerAdapter(this.emailAdapter);
         this.gateway.registerAdapter(this.widgetAdapter);
     }

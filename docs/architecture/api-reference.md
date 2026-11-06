@@ -54,8 +54,7 @@
 | Billing | `modules/billing/` | 30+ | Suscripciones Wompi con motor interno (mensual/anual), fuentes reutilizables, admin cross-tenant, checkout público, cupones, webhook y conciliación |
 | Tenant Payments | `modules/tenant-payments/` | 8+ | Credenciales Wompi/Mercado Pago cifradas por tenant, proveedor activo, enlaces tenant→cliente, ledger durable, webhook canónico idempotente y consulta de estado del agente; nunca suscripciones de plataforma |
 | Fiscal DIAN | `modules/fiscal/` | 13 | Facturación electrónica Colombia vía Factus (`IFiscalInvoiceProvider`), gate collect-before-pay |
-| SMS Credits | `modules/sms-credits/` | 7 | Créditos SMS reseller (balance, ledger, paquetes, ajustes admin) |
-| Channel Management | `modules/channels/` | 18 | Multi-canal por tipo: connect/disconnect por-cuenta, OAuth IG/Messenger, Telegram, SMS |
+| Channel Management | `modules/channels/` | 13 | Multi-canal por tipo: connect/disconnect por-cuenta, OAuth IG/Messenger, Telegram |
 | Ops Center | `modules/health/` + `modules/tenants/` | 15+ | Salud plataforma (super_admin): incidentes, storage por-tenant, alert-config, banner de mantenimiento |
 | SAML/SSO | `modules/auth/saml/` | 6 | Enterprise SSO via SAML 2.0 |
 | Widget | `modules/widget/` | 13 + WS | Web chat widget embebible + triggers + Socket.IO `/widget` |

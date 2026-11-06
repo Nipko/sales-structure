@@ -37,11 +37,11 @@ function createMonitor(counters: Record<string, number>, tenantsBySignal: Record
 
     const monitor = new PlatformMonitorService(
         redis as any, {} as any, prisma as any, {} as any, {} as any,
-        incidents as any, {} as any, {} as any, {} as any, {} as any,
+        incidents as any, {} as any, {} as any, {} as any,
         {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         {} as any, {} as any,
     );
-    // The alert pipeline (incident + email + Telegram + SMS cooldown) is exercised
+    // The alert pipeline (incident + email + Telegram cooldown) is exercised
     // by the checks that already ship; here we only care about WHAT fires.
     (monitor as any).alert = jest.fn(async (key: string, subject: string, html: string, value: number) => {
         alerts.push({ key, subject, html, value });

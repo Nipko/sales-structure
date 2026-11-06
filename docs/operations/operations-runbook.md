@@ -2,7 +2,7 @@
 
 _Actualizado: 16 ago 2026._
 
-Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), SMS credits, fiscal DIAN, Wompi billing, tenant-owned Wompi/Mercado Pago links, deploy/auth hardening, and recovery from common edge cases.
+Operational procedures for super_admin. Aimed at production maintenance: tenant lifecycle, channel diagnostics, recall configuration, backups/restore, platform monitoring (Ops Center), fiscal DIAN, Wompi billing, tenant-owned Wompi/Mercado Pago links, deploy/auth hardening, and recovery from common edge cases.
 
 ---
 
@@ -69,7 +69,7 @@ PARALLLY_SUPER_ADMIN_TOKEN="$JWT" \
 
 **RETAINED on purpose (NOT deleted, both paths):** `fiscal_invoices` rows and the `/data/invoices/{tenantId}/` XML+PDF artifacts. Colombian DIAN requires keeping issued electronic invoices ~5 years. Since the `tenants` row disappears, each retained invoice's `metadata` is stamped (`tenantPurgedAt`, `tenantNameSnapshot`, `tenantSchemaSnapshot`) so it stays identifiable; the count comes back in the summary as `fiscal_invoices_retained` (NOT `*_deleted`). `mediaService.deleteAllTenantFiles` only touches `/data/media`, never `/data/invoices`.
 
-**Difference between paths:** API path also calls Meta/Telegram/Instagram/Twilio to unsubscribe webhooks and cancels the payment-provider subscription. SQL fallback skips that — Meta might keep firing webhooks until you clean it up manually in their console, and an active MP/Stripe subscription may stay open.
+**Difference between paths:** API path also calls Meta/Telegram/Instagram to unsubscribe webhooks and cancels the payment-provider subscription. SQL fallback skips that — Meta might keep firing webhooks until you clean it up manually in their console, and an active MP/Stripe subscription may stay open.
 
 ### 1.1b Dejar un chat en cero para probar el agente
 

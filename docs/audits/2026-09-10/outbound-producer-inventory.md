@@ -64,7 +64,7 @@ llevar a la admisión económica.
 
 | Archivo:línea | Método | Carril | Canales | Efectos por respuesta |
 |---|---|---|---|---|
-| `modules/channels/channel-management.controller.ts:650` | `testTelegram` | `inline` | telegram | 1 (read) |
+| `modules/channels/channel-management.controller.ts:638` | `testTelegram` | `inline` | telegram | 1 (read) |
 
 ## Donde una respuesta se vuelve varios cargos
 
@@ -165,13 +165,13 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 249 | `dispatchWhatsApp` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 243 | `dispatchWhatsApp` | `proactive.send` | `dispatch_outbox` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/channels/channel-management.controller.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 650 | `testTelegram` | `.sendTextMessage` | `inline` | HTTP POST telegram/test | telegram | 1 | one effect per invocation; no loop reaches this send |
+| 638 | `testTelegram` | `.sendTextMessage` | `inline` | HTTP POST telegram/test | telegram | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/conversations/conversations.service.ts`
 
@@ -212,7 +212,7 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 639 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 638 | `executeHandoff` | `admitHandoffEffect` | `handoff_effects` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/orders/catalog-order-commands.ts`
 
@@ -290,10 +290,10 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:161` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:177` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
 | `apps/api/src/modules/channels/messenger/messenger.adapter.ts:207` | Graph `/{phone_number_id}/messages` POST | camino | Messenger is not billed per message by its provider |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:685` | strict dispatch transport | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1155` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1211` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
-| `apps/api/src/modules/channels/outbound-queue.processor.ts:1417` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:688` | strict dispatch transport | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1158` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1214` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
+| `apps/api/src/modules/channels/outbound-queue.processor.ts:1381` | `ChannelGatewayService.sendMessage` | si | pide permiso antes de emitir |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:67` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:211` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
 | `apps/api/src/modules/channels/whatsapp/whatsapp.adapter.ts:245` | Graph `/{phone_number_id}/messages` POST | camino | the adapter; reachable only through `ChannelGatewayService.sendMessage` or the strict transport, and every call site of both is classified above |
@@ -321,7 +321,7 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/automation/automation-jobs.processor.ts:447` | `handleSendTemplate` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/drip-sequence.service.ts:800` | `executeStepAction` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/automation/nurturing.service.ts:965` | `dispatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/broadcast/broadcast-queue.processor.ts:249` | `dispatchWhatsApp` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/broadcast/broadcast-queue.processor.ts:243` | `dispatchWhatsApp` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:897` | `replyOnceThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:8913` | `resumeOwnedDispatchBatch` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/conversations/conversations.service.ts:8964` | `dispatchReplyThroughOutbox` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
@@ -359,7 +359,7 @@ direcciones**: lo que el barrido encuentra y ella no nombra, y lo que ella
 nombra y el barrido no encuentra. Un desacuerdo no es un error de ninguno de
 los dos — es exactamente el sitio donde hay que ir a mirar.
 
-Entradas declaradas allí: **72**.
+Entradas declaradas allí: **71**.
 
 ### Encontrados por el barrido y no declarados como productores
 
@@ -394,7 +394,6 @@ esperada y su clasificación queda **fuera del alcance de este generador**.
 | `fiscal.admin_provider_actions` | `inline` | `live` | `modules/fiscal/fiscal-admin.controller.ts` |
 | `fiscal.invoice_email` | `delivery_outbox` | `live` | `modules/fiscal/fiscal-email.service.ts` |
 | `fiscal.invoice_issue` | `domain_queue` | `live` | `modules/fiscal/adapters/factus.adapter.ts` |
-| `handoff.agent_sms` | `handoff_effects` | `off` | `modules/sms-notifications/sms-notification-listener.service.ts` |
 | `handoff.push` | `handoff_effects` | `live` | `modules/push/push-listener.service.ts` |
 | `handoff.sla_escalation.email` | `operational_notice` | `live` | `modules/agent-console/agent-availability.service.ts` |
 | `handoff.slack` | `handoff_effects` | `live` | `modules/slack/slack-listener.service.ts` |
@@ -454,7 +453,6 @@ el conductor):
 - `modules/channels/messenger/messenger.adapter.ts`
 - `modules/channels/telegram/telegram.adapter.ts`
 - `modules/channels/email/email.adapter.ts`
-- `modules/channels/sms/sms.adapter.ts`
 - `modules/channels/channel-gateway.service.ts`
 - `modules/channels/outbound-queue.service.ts`
 - `modules/channels/outbound-queue.processor.ts`
@@ -467,7 +465,6 @@ el conductor):
 - `modules/widget/widget.adapter.ts`
 - `modules/handoff/handoff-effects.ts`
 - `modules/operational-notices/operational-notice-outbox.ts`
-- `modules/sms-notifications/sms-sender.service.ts`
 
 Lo que este generador **no** puede ver, dicho aquí y no en una nota al pie,
 porque un productor que se le escape es un productor que gasta en silencio:

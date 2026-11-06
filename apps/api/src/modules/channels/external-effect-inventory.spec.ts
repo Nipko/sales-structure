@@ -97,8 +97,6 @@ const MESSAGE_EGRESS = [
     // that calls it does.
     /\.renderAndSend\(/,
     /from '[^']*tenant-notification-sms\.service'/,
-    /from '[^']*sms-sender\.service'/,
-    /from '[^']*sms-alert\.service'/,
     /from '[^']*telegram-alert\.service'/,
 ];
 
@@ -450,21 +448,26 @@ describe('the inventory is honest about what is not covered', () => {
     it('reports a switched-off or retained producer instead of omitting it', () => {
         const byId = new Map(EXTERNAL_EFFECT_PRODUCERS.map(row => [row.id, row]));
         // Omitting these is how a list stops being an inventory: the email
-        // channel and conversational SMS are not offered, and their absence
+        // channel and the SMS 2FA transport are not offered, and their absence
         // would read as "there is no such producer" rather than "it is off".
         expect(byId.get('channel.email.inbound_reply')?.status).toBe('internal_only');
-        expect(byId.get('channel.sms.conversational')?.status).toBe('legacy');
-        expect(byId.get('handoff.agent_sms')?.status).toBe('off');
+        expect(byId.get('auth.two_factor_sms')?.status).toBe('off');
         expect(byId.get('billing.stripe')?.status).toBe('off');
         expect(byId.get('integrations.outbox_scaffolding')?.status).toBe('off');
     });
 
-    it('the SMS producers are off because a kill switch says so, not because we hope', () => {
-        const killSwitch = fs.readFileSync(
-            path.join(SRC, 'modules', 'sms-credits', 'sms-kill-switch.service.ts'), 'utf8');
-        // Fails closed: an unreadable setting means no SMS. That is what makes
-        // `off` a fact rather than a configuration everyone assumes.
-        expect(killSwitch).toContain('return false');
+    it('the SMS producers are off because the code cannot send, not because we hope', () => {
+        // SMS is a retired product (ADR 0018). What makes `off` a fact is that
+        // neither remaining SMS seam has a transport: the stub never sends and
+        // the 2FA transport refuses before any provider is contacted.
+        const stub = fs.readFileSync(
+            path.join(SRC, 'modules', 'sms-credits', 'tenant-notification-sms.service.ts'), 'utf8');
+        const platform = fs.readFileSync(
+            path.join(SRC, 'modules', 'auth', 'platform-sms.service.ts'), 'utf8');
+        expect(stub).toContain('return false');
+        expect(stub).not.toMatch(/fetch\(/);
+        expect(platform).toContain("throw new Error('platform_sms_retired')");
+        expect(platform).not.toMatch(/fetch\(/);
         expect(EXTERNAL_EFFECT_PRODUCERS.filter(row => row.status === 'off').length).toBeGreaterThan(2);
     });
 

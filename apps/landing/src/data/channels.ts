@@ -4,7 +4,7 @@
  * `web_widget` was missing here while the product pages claimed five channels,
  * so the home rendered four chat skins under a headline that said five — the
  * reader was left to decide which claim was wrong. Email is an internal inbound
- * adapter and SMS is a one-way credit product; neither is a conversational
+ * adapter and SMS is a retired product (ADR 0018); neither is a conversational
  * channel a tenant can sell through, and neither belongs in this union.
  *
  * The canonical list is `CERTIFIED_SELF_SERVICE_CHANNELS` in

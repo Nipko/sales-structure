@@ -80,11 +80,11 @@ function createMonitor(tenants: TenantFixture[], redis: any = {}) {
 
     const monitor = new PlatformMonitorService(
         redis as any, {} as any, prisma as any, {} as any, {} as any,
-        incidents as any, {} as any, {} as any, alertConfig as any, {} as any,
+        incidents as any, {} as any, alertConfig as any, {} as any,
         {} as any, {} as any, {} as any, {} as any, {} as any, {} as any,
         {} as any, {} as any,
     );
-    // The alert pipeline (incident + email + Telegram + SMS cooldown) already has
+    // The alert pipeline (incident + email + Telegram cooldown) already has
     // its own coverage; here only WHAT fires matters.
     (monitor as any).alert = jest.fn(async (key: string, subject: string, html: string, value: number) => {
         alerts.push({ key, subject, html, value });

@@ -542,17 +542,17 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     producer({
         id: 'human.channel.connection_test',
-        effect: 'The test message a tenant sends to itself when connecting a Telegram bot or an SMS '
-            + 'number, to prove the credential works',
+        effect: 'The test message a tenant sends to itself when connecting a Telegram bot, to prove '
+            + 'the credential works',
         lane: 'inline',
         status: 'live',
         derivation: 'census',
         source: 'modules/channels/channel-management.controller.ts',
         symbol: 'sendTextMessage',
-        egress: 'TelegramAdapter.sendTextMessage / SmsAdapter.sendTextMessage, called directly',
+        egress: 'TelegramAdapter.sendTextMessage, called directly',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: false,
-            channels: ['telegram', 'sms'],
+            channels: ['telegram'],
         },
         properties: uncoveredWithoutPersonalData('a connection test is one deliberate message to the operator who asked '
             + 'for it. It is inline on purpose and carries no record — repeating it is what the button '
@@ -586,8 +586,9 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
 
     producer({
         id: 'handoff.fanout',
-        effect: 'A transfer to a human, announced to seven destinations: assignment, cache, inbox '
-            + 'socket, CRM note, tenant webhooks, web/native push, Slack, agent SMS and agent email',
+        effect: 'A transfer to a human, announced to its destinations: assignment, cache, inbox '
+            + 'socket, CRM note, tenant webhooks, web/native push, Slack and agent email. The `sms` '
+            + 'destination is no longer announced (ADR 0018); it stays valid only for rows written before',
         lane: 'handoff_effects',
         status: 'live',
         derivation: 'census',
@@ -597,7 +598,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             + 'fan out through `eventEmitter.emitAsync(handoff.escalated.{destination})`',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
-            channels: ['email', 'sms', 'push', 'slack'],
+            channels: ['email', 'push', 'slack'],
         },
         properties: HANDOFF_EFFECT_PROPERTIES,
     }),
@@ -636,27 +637,6 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
             channels: ['email'],
         },
         properties: OPERATIONAL_NOTICE_PROPERTIES,
-    }),
-
-    producer({
-        id: 'handoff.agent_sms',
-        effect: 'An SMS to the assigned agent, or to the tenant\'s admins, when a conversation escalates',
-        lane: 'handoff_effects',
-        // The platform SMS kill switch (`platform_settings` key `sms.platform_enabled`) defaults
-        // to false and fails closed, so nothing here reaches a carrier as things stand.
-        status: 'off',
-        derivation: 'census',
-        source: 'modules/sms-notifications/sms-notification-listener.service.ts',
-        symbol: 'onHandoff',
-        egress: 'the admitted `sms` handoff effect calls strict Twilio transport and stores every SID; '
-            + 'a partial fan-out becomes unknown and cannot retry',
-        reach: {
-            class: 'operator_notification', audience: 'tenant_operator', personalData: true,
-            channels: ['sms'],
-        },
-        properties:{...HANDOFF_EFFECT_PROPERTIES,
-            receipt:durable('the handoff effect row stores the Twilio SID list returned by strict transport'),
-            uncertainOutcome:durable('timeouts and any partial recipient fan-out settle `unknown` and cannot retry')},
     }),
 
     producer({
@@ -1224,18 +1204,18 @@ producer({
 
     producer({
         id: 'broadcast.campaign',
-        effect: 'Every message of a campaign a tenant launched — WhatsApp template, email or SMS, one '
+        effect: 'Every message of a campaign a tenant launched — WhatsApp template or email, one '
             + 'job per recipient',
         lane: 'dispatch_outbox',
         status: 'live',
         derivation: 'census',
         source: 'modules/broadcast/broadcast-queue.processor.ts',
         symbol: 'dispatchWhatsApp',
-        egress: 'ProactiveDispatchService.send -> `agent_dispatch_outbox`; the email and SMS branches keep their own domain queue'
-            + 'TenantNotificationSmsService.send from the `broadcast-messages` queue',
+        egress: 'ProactiveDispatchService.send -> `agent_dispatch_outbox`; the email branch keeps its own domain '
+            + 'queue. A legacy SMS recipient is closed as `sms_retired` with no egress (ADR 0018)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['whatsapp', 'email', 'sms'],
+            channels: ['whatsapp', 'email'],
         },
         properties: DISPATCH_OUTBOX_PROPERTIES,
     }),
@@ -1306,14 +1286,16 @@ producer({
 
     producer({
         id: 'auth.two_factor_sms',
-        effect: 'The 2FA code by SMS through the platform Twilio account',
+        effect: 'The 2FA login code a dashboard user asks to receive by SMS',
         lane: 'delivery_outbox',
-        // The platform SMS kill switch defaults to false and fails closed.
+        // SMS is a retired product (ADR 0018): the transport refuses every send in preparation,
+        // before any provider is contacted, so nothing reaches a carrier.
         status: 'off',
         derivation: 'declared',
         source: 'modules/auth/platform-sms.service.ts',
         symbol: 'PlatformSmsService',
-        egress: 'the user challenge revision plus platform_notification_outbox, followed by bounded Twilio',
+        egress: 'the user challenge revision plus platform_notification_outbox; the retired transport '
+            + 'fails the delivery with `platform_sms_retired` before any POST',
         reach: {
             class: 'operator_notification', audience: 'tenant_operator', personalData: true,
             channels: ['sms'],
@@ -1330,21 +1312,22 @@ producer({
 
     producer({
         id: 'customer_portal.access_code',
-        effect: 'The six-digit magic-link code emailed or texted to a customer opening the portal',
+        effect: 'The six-digit magic-link code emailed to a customer opening the portal',
         lane: 'delivery_outbox',
         status: 'live',
         derivation: 'declared',
         source: 'modules/customer-portal/customer-portal-access.service.ts',
         symbol: 'CustomerPortalAccessService',
-        egress: 'customer_portal_access_challenges followed by bounded SMTP or tenant Twilio',
+        egress: 'customer_portal_access_challenges followed by bounded SMTP; a code requested by phone '
+            + 'is closed as `portal_sms_retired` with no egress (ADR 0018)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['email', 'sms'],
+            channels: ['email'],
         },
         properties: {
             authority: durable('the current contact, challenge and delivery intent commit under one database lock before egress'),
             idempotency: durable('one live challenge per destination and a one-minute retry adoption window prevent duplicate delivery'),
-            receipt: durable('the SMTP message id or Twilio sid is required and stored on the exact challenge row'),
+            receipt: durable('the SMTP message id is required and stored on the exact challenge row'),
             uncertainOutcome: durable('claimed and sending are separate; an unanswered provider attempt freezes for reconciliation'),
             erasure: durable('contact erasure deletes matching challenge rows and tenant purge deletes the whole tenant set'),
             recovery: durable('the database sweep retries only work that never crossed the provider boundary'),
@@ -1360,10 +1343,11 @@ producer({
         derivation: 'declared',
         source: 'modules/conversations/chat-identity.service.ts',
         symbol: 'startVerification',
-        egress: 'chat_identity_challenges followed by bounded SMTP or receipt-bearing tenant SMS',
+        egress: 'chat_identity_challenges followed by bounded SMTP. The SMS branch calls the retired '
+            + 'stub `TenantNotificationSmsService`, which never sends (ADR 0018)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['email', 'sms'],
+            channels: ['email'],
         },
         properties: {
             authority: durable('the current contact destination and one leased challenge commit before provider egress'),
@@ -1521,17 +1505,17 @@ producer({
 
     producer({
         id: 'ops.platform_alerts',
-        effect: 'Platform incident alerts to the operators — email, Telegram and SMS — from the Ops '
+        effect: 'Platform incident alerts to the operators — email and Telegram — from the Ops '
             + 'Center monitor',
         lane: 'inline',
         status: 'internal_only',
         derivation: 'census',
         source: 'modules/health/platform-monitor.service.ts',
         symbol: 'PlatformMonitorService',
-        egress: 'EmailService.send, TelegramAlertService.send and SmsAlertService.send, from ten crons',
+        egress: 'EmailService.send and TelegramAlertService.send, from ten crons',
         reach: {
             class: 'platform_notification', audience: 'platform_operator', personalData: false,
-            channels: ['email', 'sms', 'slack'],
+            channels: ['email', 'slack'],
         },
         properties: {
             authority: none('the send happens inline inside the cron tick; nothing records that an '
@@ -1540,7 +1524,7 @@ producer({
                 + 'FAILS OPEN: a Redis outage removes the cooldown and every check re-alerts'),
             receipt: partial('an incident row is written through `IncidentService.record`. That is our '
                 + 'own record of the condition, not a provider id for the alert'),
-            uncertainOutcome: none('all three transports report a boolean or nothing'),
+            uncertainOutcome: none('both transports report a boolean or nothing'),
             erasure: notApplicable('no customer data reaches an operator alert'),
             recovery: none('the next cron pass re-evaluates the condition, which is the recovery an '
                 + 'alert actually wants'),
@@ -1651,26 +1635,6 @@ producer({
             channels: ['email'],
         },
         properties: queued(none('whatever the caller passes; no producer configures this channel today')),
-    }),
-
-    producer({
-        id: 'channel.sms.conversational',
-        effect: 'A conversational SMS reply through the tenant\'s own Twilio account',
-        lane: 'outbound_queue',
-        // Retained code for a reversed decision: SMS is a one-way notification product bought in
-        // credits. The conversational adapter is not offered, and the platform kill switch is off.
-        status: 'legacy',
-        derivation: 'declared',
-        source: 'modules/channels/sms/sms.adapter.ts',
-        symbol: 'SmsAdapter',
-        egress: 'Twilio REST; the outbound worker diverts text SMS to the metered reseller sender '
-            + 'before this can be reached, and drops MMS outright',
-        reach: {
-            class: 'customer_message', audience: 'contact', personalData: true,
-            channels: ['sms'],
-        },
-        properties: queued(none('the worker\'s SMS branch never reaches this adapter for text, so the '
-            + 'legacy path has no live producer to dedupe')),
     }),
 
     // -----------------------------------------------------------------------
@@ -2308,9 +2272,8 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
         reason: 'performs the customer receipt on behalf of a vertical writer and originates '
             + 'none of its own: the caller names the families whose switch governs it' },
     { source: 'modules/health/health.module.ts', kind: 'road', reason: 'dependency injection wiring' },
-    { source: 'modules/sms-credits/sms-credits.module.ts', kind: 'road', reason: 'dependency injection wiring' },
-    { source: 'modules/sms-notifications/sms-notifications.module.ts', kind: 'road',
-        reason: 'dependency injection wiring' },
+    { source: 'modules/sms-credits/sms-credits.module.ts', kind: 'road',
+        reason: 'dependency injection wiring of the retired SMS stub (ADR 0018)' },
     { source: 'modules/operational-notices/operational-notice-outbox.ts', kind: 'road',
         reason: 'the outbox primitive its three producers write through' },
     { source: 'modules/operational-notices/operational-notice.service.ts', kind: 'road',
@@ -2320,8 +2283,6 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
         reason: 'resolves the Wompi base URL and keys; it makes no call of its own' },
 
     // -- Transports ----------------------------------------------------------
-    { source: 'modules/sms-notifications/sms-sender.service.ts', kind: 'transport',
-        reason: 'the SMS wrapper behind the notification listeners. Its producer is `handoff.agent_sms`' },
     { source: 'modules/channels/whatsapp/whatsapp.adapter.ts', kind: 'transport',
         reason: 'the WhatsApp strict transport. Its producers are the dispatch outbox and the queue' },
     { source: 'modules/channels/instagram/instagram.adapter.ts', kind: 'transport',
@@ -2333,10 +2294,6 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
     { source: 'modules/whatsapp/services/whatsapp-messaging.service.ts', kind: 'transport',
         reason: 'the SECOND WhatsApp route — a direct Graph POST used by the manual endpoints, '
             + 'broadcast, reminders, automation rules and drip steps, each inventoried separately' },
-    { source: 'modules/sms-credits/tenant-notification-sms.service.ts', kind: 'transport',
-        reason: 'the metered reseller SMS sender: platform Twilio, tenant credits, atomic ledger' },
-    { source: 'modules/health/sms-alert.service.ts', kind: 'transport',
-        reason: 'the operator SMS alert transport, behind `ops.platform_alerts`' },
     { source: 'modules/health/telegram-alert.service.ts', kind: 'transport',
         reason: 'the operator Telegram alert transport, behind `ops.platform_alerts` and '
             + '`ops.coupon_alerts`' },

@@ -7,7 +7,7 @@ _Actualizado: jul 2026 (2026-07-23) · v2_
 El stack de observabilidad de Parallly combina dos capas:
 
 1. **Stack externo auto-hospedado** en el mismo VPS: logging estructurado (Pino), agregacion de logs (Loki + Promtail + Grafana), monitoreo de endpoints con alertas (Uptime Kuma), visor de logs en tiempo real (Dozzle), panel de colas BullMQ (Bull Board) y error tracking (Sentry cloud).
-2. **Ops Center embebido en la API** (`modules/health/`, solo `super_admin`): `PlatformMonitorService` corre crons que vigilan disco/RAM/Redis/PostgreSQL/PgBouncer/colas/SLA/tokens de canal/presupuesto LLM/pagos/backups y persiste **incidentes** deduplicados (`IncidentService`), con alertas por **email + Telegram + SMS** (`AlertConfigService`, cooldown 1h). UI en el dashboard bajo `/admin/ops`, `/admin/health`, `/admin/incidents`, `/admin/storage`, `/admin/ops/alerts`.
+2. **Ops Center embebido en la API** (`modules/health/`, solo `super_admin`): `PlatformMonitorService` corre crons que vigilan disco/RAM/Redis/PostgreSQL/PgBouncer/colas/SLA/tokens de canal/presupuesto LLM/pagos/backups y persiste **incidentes** deduplicados (`IncidentService`), con alertas por **email + Telegram** (`AlertConfigService`, cooldown 1h). UI en el dashboard bajo `/admin/ops`, `/admin/health`, `/admin/incidents`, `/admin/storage`, `/admin/ops/alerts`.
 
 Produccion corre ~15 contenedores: `parallext-{api, worker, dashboard, whatsapp, landing, postgres, redis, pgbouncer, tunnel, watchtower}` + observabilidad (`grafana, loki, promtail, uptime-kuma, dozzle`). VPS Hostinger (8GB RAM).
 
@@ -31,7 +31,7 @@ Uptime Kuma       Grafana             Dozzle
                      
 Interno (embebido en API — modules/health/):
     Ops Center (PlatformMonitorService) — crons de salud + incidentes + alertas
-      -> email + Telegram + SMS (AlertConfigService, cooldown 1h)
+      -> email + Telegram (AlertConfigService, cooldown 1h)
       -> UI super_admin: /admin/ops, /admin/health, /admin/incidents, /admin/storage
     Bull Board (/api/v1/admin/queues) — Dashboard BullMQ (9 colas)
     Sentry (@OnWorkerEvent) — Error tracking en jobs (10 processors) + stats_v2 (error rate)
@@ -127,7 +127,7 @@ Bull Board registra **9 colas** (`BullBoardModule.forFeature` en `app.module.ts`
 | Cola | Concurrencia | Rate Limit | Proposito |
 |------|-------------|-----------|---------|
 | outbound-messages | 5 | 20/s | Entrega de mensajes a canales |
-| broadcast-messages | 10 | 80/s | Campanas masivas (WA/Email/SMS) |
+| broadcast-messages | 10 | 80/s | Campanas masivas (WA/Email) |
 | automation-jobs | 10 | 30/s | Acciones de automatizacion |
 | nurturing | 5 | 10/s | Follow-up sequences |
 | conversation-snooze | 1 | — | Wake-up de conversaciones |
@@ -287,7 +287,7 @@ x-logging: &default-logging
 3. **Grafana** > requests lentos: `{container_name="parallext-api"} | json | responseTime > 5000`
 4. En el VPS: `docker stats` para ver CPU/RAM
 
-### "Llego una alerta del Ops Center (email/Telegram/SMS)"
+### "Llego una alerta del Ops Center (email/Telegram)"
 1. **Ops Center** > `/admin/incidents` > localizar el incidente por su `key` (ej. `disk:critical`, `queue:outbound-messages:critical`, `llm:unhealthy`, `backup:stale`)
 2. El cuerpo del incidente trae la remediacion concreta. Ackear mientras se atiende, resolver al despejar (o el sistema lo auto-resuelve cuando la condicion baja del umbral)
 3. Umbral demasiado sensible? Ajustar en `/admin/ops/alerts` (persistido en `platform_settings`)
@@ -319,7 +319,7 @@ Las siguientes variables deben estar tanto en **GitHub Actions Secrets** como en
 | `BULL_BOARD_TOKEN` | `BULL_BOARD_TOKEN` | Token para acceder al dashboard de colas BullMQ |
 | `GRAFANA_PASSWORD` | `GRAFANA_PASSWORD` | Password del admin de Grafana |
 | `TELEGRAM_ALERT_BOT_TOKEN` / `TELEGRAM_ALERT_CHAT_ID` | idem | Canal Telegram de alertas del Ops Center (§17) |
-| `SMS_ALERT_ACCOUNT_SID` / `SMS_ALERT_AUTH_TOKEN` / `SMS_ALERT_FROM` / `SMS_ALERT_TO` | idem | Alertas SMS criticas via Twilio (§17) |
+| `SMS_ALERT_ACCOUNT_SID` / `SMS_ALERT_AUTH_TOKEN` / `SMS_ALERT_FROM` / `SMS_ALERT_TO` / `SMS_SENDER_ID` | idem | **Sin lector** desde el retiro de SMS (ADR 0018); `deploy.yml` todavia los escribe en `.env` y se quitan cuando se toque ese workflow |
 | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_API_URL` | idem | Lectura de la tasa de errores de Sentry para `sentry:errors:*` (§17) |
 | `OFFSITE_BUCKET` / `OFFSITE_PROVIDER` / `OFFSITE_REGION` / `OFFSITE_ENDPOINT` / `OFFSITE_ACCESS_KEY` / `OFFSITE_SECRET_KEY` | idem | Backup offsite via rclone a bucket S3-compatible (R2/S3/B2) (§18) |
 
@@ -383,7 +383,7 @@ IMPORTANTE: Los hostnames del Service URL usan el **nombre del servicio** del do
 | `infra/backup/backup.sh` | Backup DB (dentro del contenedor) + media + fiscal + Redis + offsite rclone + heartbeat (§18) |
 | `apps/api/src/main.ts` | Pino logger init + Bull Board auth middleware |
 | `apps/api/src/app.module.ts` | LoggerModule (Pino) + BullBoardModule (9 colas) config |
-| `apps/api/src/modules/health/*` | Ops Center: `platform-monitor`, `incident`, `platform-storage`, `alert-config`, `telegram-alert`, `sms-alert`, `sentry-stats` services + controller (§15-19) |
+| `apps/api/src/modules/health/*` | Ops Center: `platform-monitor`, `incident`, `platform-storage`, `alert-config`, `telegram-alert`, `sentry-stats` services + controller (§15-19) |
 
 ---
 
@@ -457,7 +457,7 @@ Distinto del breaker de disponibilidad: `trackStats()` acumula el gasto mensual 
 
 ## 15. Ops Center — PlatformMonitorService
 
-`modules/health/platform-monitor.service.ts` es el corazon del Centro de Operaciones (`super_admin`). Corre crons que evaluan señales de infraestructura, colas y negocio; cada condicion **persiste un incidente** deduplicado (§16) y dispara alertas throttleadas por email/Telegram/SMS (§17). Los umbrales son configurables en runtime via `AlertConfigService` (defaults abajo).
+`modules/health/platform-monitor.service.ts` es el corazon del Centro de Operaciones (`super_admin`). Corre crons que evaluan señales de infraestructura, colas y negocio; cada condicion **persiste un incidente** deduplicado (§16) y dispara alertas throttleadas por email/Telegram (§17). Los umbrales son configurables en runtime via `AlertConfigService` (defaults abajo).
 
 ### Crons y checks
 
@@ -489,7 +489,7 @@ El boton "correr checks ahora" (`POST /health/checks/run`) invoca `runChecksNow(
 | Profundidad cola automation-jobs | 300 | 1000 |
 | Profundidad cola nurturing | 200 | 500 |
 
-Escalares: `queueFailed=100`, `paymentFailures=5`, `llmBudgetPct=90`, `storageQuotaPct=90`, `diskProjectionDays=14`, `backupStaleHours=26`. Canales por defecto: `email:true, telegram:true, sms:false`. La config se guarda como JSON en `platform_settings` (key `ops.alert_config`) y se cachea en Redis (`ops:alert_config`, TTL 300s).
+Escalares: `queueFailed=100`, `paymentFailures=5`, `llmBudgetPct=90`, `storageQuotaPct=90`, `diskProjectionDays=14`, `backupStaleHours=26`. Canales por defecto: `email:true, telegram:true` (el canal `sms` se retiro con ADR 0018; un valor guardado se ignora). La config se guarda como JSON en `platform_settings` (key `ops.alert_config`) y se cachea en Redis (`ops:alert_config`, TTL 300s).
 
 ### Claves de alerta / incidente (`key`)
 
@@ -521,7 +521,7 @@ UI: `/admin/incidents` (lista + ack/resolve) y el resumen en `/admin/ops`.
 
 ---
 
-## 17. Alertas de plataforma (email + Telegram + SMS)
+## 17. Alertas de plataforma (email + Telegram)
 
 El metodo `PlatformMonitorService.alert(key, subject, html, value)` centraliza el envio:
 
@@ -529,12 +529,11 @@ El metodo `PlatformMonitorService.alert(key, subject, html, value)` centraliza e
 2. Aplica el **cooldown de 1 hora por key** (`COOLDOWN_MS`, en memoria) a los envios; el incidente igual se persiste aunque el envio este en cooldown.
 3. Emite por los canales activos en `AlertConfigService.channels`:
    - **Telegram** (`TelegramAlertService`): bot dedicado del canal de ops (`TELEGRAM_ALERT_BOT_TOKEN` + `TELEGRAM_ALERT_CHAT_ID`), HTML subset. No-op si falta config.
-   - **SMS** (`SmsAlertService`, Twilio REST): **solo severidad critica** (intrusivo/costoso). Vars `SMS_ALERT_ACCOUNT_SID` / `SMS_ALERT_AUTH_TOKEN` / `SMS_ALERT_FROM` / `SMS_ALERT_TO` (E.164 separados por coma). Separado del canal SMS de tenants.
    - **Email** (`EmailService`, nodemailer): a todos los super_admin activos (`role='super_admin', isActive=true`), plantilla HTML.
 
 `SentryStatsService` (`SENTRY_AUTH_TOKEN` + `SENTRY_ORG`, opcional `SENTRY_PROJECT` numerico y `SENTRY_API_URL`) lee la tasa de errores de la ultima hora via la API stats_v2 de Sentry para alimentar `sentry:errors:*`. No-op (retorna `null`) si no esta configurado.
 
-**Vars de entorno nuevas** (recordar: agregar a GitHub Secrets **y** a `deploy.yml`): `TELEGRAM_ALERT_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `SMS_ALERT_ACCOUNT_SID`, `SMS_ALERT_AUTH_TOKEN`, `SMS_ALERT_FROM`, `SMS_ALERT_TO`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_API_URL`.
+**Vars de entorno nuevas** (recordar: agregar a GitHub Secrets **y** a `deploy.yml`): `TELEGRAM_ALERT_BOT_TOKEN`, `TELEGRAM_ALERT_CHAT_ID`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_API_URL`.
 
 ---
 

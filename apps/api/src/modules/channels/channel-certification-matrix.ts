@@ -7,7 +7,7 @@ import { CERTIFIED_SELF_SERVICE_CHANNELS, rollUpOperationalState,
  * The directive's rule for this one is a prohibition rather than a target: *no
  * certifiques alcance inexistente.* Email has an internal inbound adapter and
  * an admin screen that calls tenant routes which do not exist; SMS is a
- * one-way notification product bought in credits. Both have appeared in
+ * retired product (ADR 0018) with no transport at all. Both have appeared in
  * capability lists next to WhatsApp, and a list is exactly where scope that
  * does not exist gets certified by adjacency.
  *
@@ -136,8 +136,8 @@ export interface ChannelCertificationInput {
 const RETAINED_SCOPE: Readonly<Record<string, string>> = Object.freeze({
     email: 'Internal inbound adapter only. `/admin/channels/email` calls tenant '
         + 'configuration routes that do not exist, so there is no self-service connection to certify.',
-    sms: 'One-way notification bought in credits. Never a conversational surface; '
-        + 'the conversational adapter is retained as legacy and is not offered.',
+    sms: 'Retired product (ADR 0018). Never a conversational surface; there is no SMS '
+        + 'adapter, transport or credit balance left to configure.',
 });
 
 /**

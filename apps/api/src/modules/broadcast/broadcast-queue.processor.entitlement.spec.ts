@@ -26,7 +26,6 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
             checkCampaignCompletion: jest.fn().mockResolvedValue(undefined),
         };
         const abTest = { updateVariantStats: jest.fn() };
-        const tenantSms = { send: jest.fn() };
         // The lane and this processor's own queue. Neither is reached here:
         // the entitlement gate refuses before anything is committed, which is
         // the whole point of the case.
@@ -39,7 +38,6 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
             prisma as any,
             broadcast as any,
             abTest as any,
-            tenantSms as any,
             proactive as any,
             queue as any,
         );
@@ -67,6 +65,5 @@ describe('BroadcastQueueProcessor subscription boundary', () => {
         expect(proactive.send).not.toHaveBeenCalled();
         expect(queue.add).not.toHaveBeenCalled();
         expect(email.send).not.toHaveBeenCalled();
-        expect(tenantSms.send).not.toHaveBeenCalled();
     });
 });

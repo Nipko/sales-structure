@@ -71,7 +71,7 @@ const CHANNEL_NAMES: Record<string, string> = {
 };
 
 // The plan catalogue can still carry these keys (the factory seed lists them
-// on the upper plans). SMS is a retired one-way credit product and email is an
+// on the upper plans). SMS is a retired product (ADR 0018) and email is an
 // internal inbound adapter: neither is a conversational channel a plan sells,
 // so they never reach a pricing card or the comparison table.
 const NON_CONVERSATIONAL_CHANNELS = new Set(['sms', 'email']);

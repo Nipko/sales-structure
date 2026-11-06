@@ -409,6 +409,8 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             name: r.name, destination: str(r.destination), description: str(r.description),
             duration: num(r.duration_value) ? { min: num(r.duration_value), unit: r.duration_type } : null,
             price_per_passenger_type: num(r.price) && num(r.price)! > 0 ? { adulto: num(r.price) } : null,
+            // E2o (viajes C12/C16): sin la moneda el juez daba «125 EUR» por no confirmado; la del paquete es la que el agente lee
+            currency: str(r.currency),
             includes: jsonList(r.includes), excludes: jsonList(r.excludes), meeting_point: str(r.departure_location),
             // R1.1 F4: idiomas del guía (campo opcional guide_languages del objeto)
             guide_languages: jsonList(r.languages).map(String),

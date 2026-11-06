@@ -32,8 +32,9 @@ import { ComplianceService } from '../modules/analytics/compliance.service';
                 content TEXT NOT NULL, created_by VARCHAR(255), created_at TIMESTAMP DEFAULT NOW())`,
             `CREATE TABLE analytics_events(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), event_type VARCHAR(100) NOT NULL,
                 contact_id UUID, data JSONB DEFAULT '{}', created_at TIMESTAMP DEFAULT NOW())`,
-            `CREATE TABLE custom_attribute_definitions(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), entity_type VARCHAR(50),
-                attribute_key VARCHAR(100), attribute_label VARCHAR(255), attribute_type VARCHAR(50), options JSONB DEFAULT '[]',
+            // tenant_id NOT NULL as in tenant-schema.sql: the writer fills it since #111.
+            `CREATE TABLE custom_attribute_definitions(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id VARCHAR(255) NOT NULL,
+                entity_type VARCHAR(50), attribute_key VARCHAR(100), attribute_label VARCHAR(255), attribute_type VARCHAR(50), options JSONB DEFAULT '[]',
                 required BOOLEAN DEFAULT false, position INTEGER DEFAULT 0, updated_at TIMESTAMP DEFAULT NOW())`,
             `CREATE TABLE custom_attribute_values(id UUID PRIMARY KEY DEFAULT gen_random_uuid(), definition_id UUID, entity_id UUID,
                 entity_type VARCHAR(50), value_text TEXT, value_number NUMERIC, value_boolean BOOLEAN, value_date TIMESTAMP,

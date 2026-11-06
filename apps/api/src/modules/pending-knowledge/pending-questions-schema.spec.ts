@@ -29,7 +29,9 @@ describe('pending_questions: tenant nuevo = tenant migrado', () => {
         expect(MIGRATION_DIR).toBeDefined();
         expect(code.replace(/ON DELETE CASCADE/g, '')).not.toMatch(/\b(DROP|UPDATE|DELETE|TRUNCATE|RENAME|ALTER)\b/i);
         expect(code).not.toContain('kb_unanswered_queries');
-        expect(template).toContain('"kb_unanswered_queries"');
+        // Since K3c (#387, ADR 0019) a NEW tenant no longer gets the table; existing tenants keep it and its rows
+        // until the owner's phase-2 DROP. Nothing here may drop it.
+        expect(template).not.toMatch(/DROP\s+TABLE[^;]*kb_unanswered_queries/i);
     });
 
     it('las dos definiciones coinciden columna por columna y en los índices', () => {

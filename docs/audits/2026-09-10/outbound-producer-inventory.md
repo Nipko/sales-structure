@@ -237,13 +237,13 @@ mensajes entregados, y un indicador de "escribiendo" no lo es.
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 610 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 629 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/vacation-rental/properties.service.ts`
 
 | Línea | Método | Primitiva | Carril | Disparador | Canales | Efectos por respuesta | Base |
 |---:|---|---|---|---|---|---|---|
-| 728 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
+| 741 | `createBooking` | `enqueueOperationalNotice` | `operational_notice` | called by another service | dynamic | 1 | one effect per invocation; no loop reaches this send |
 
 ### `apps/api/src/modules/whatsapp/whatsapp.controller.ts`
 
@@ -335,8 +335,8 @@ buscar una llamada a la autoridad economica en el codigo del archivo.
 | `modules/orders/catalog-order-commands.ts:227` | `advance` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/pending-knowledge/pending-answer-notifier.service.ts:131` | `send` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/recall/recall.service.ts:255` | `recallOne` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/tours/tours.service.ts:610` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
-| `modules/vacation-rental/properties.service.ts:728` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/tours/tours.service.ts:629` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
+| `modules/vacation-rental/properties.service.ts:741` | `createBooking` | `operational_notice` | `modules/channels/outbound-queue.processor.ts` | si |
 | `modules/whatsapp/whatsapp.controller.ts:921` | `dispatchRest` | `dispatch_outbox` | `modules/channels/outbound-queue.processor.ts` | si |
 
 ### Lo que esta comprobacion no puede ver

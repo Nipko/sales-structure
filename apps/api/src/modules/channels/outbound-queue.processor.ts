@@ -19,7 +19,6 @@ import { RedisService } from '../redis/redis.service';
 import { OutboundMessage, isScopedAddressKey } from '@parallext/shared';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
-import { TenantNotificationSmsService } from '../sms-credits/tenant-notification-sms.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { AgentDispatchOutboxStore } from './agent-dispatch-outbox.store';
@@ -28,10 +27,11 @@ import { transportNotAvailable } from './strict-dispatch-transport';
 import { dispatchPriceFacts } from './dispatch-price-facts';
 import { OutboundQueueService } from './outbound-queue.service';
 import { loadOutboundPayload, markOutboundPayloadSent } from './outbound-payload-store';
-import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
-import { isAiGenerated } from './channel-gateway.service';
 
 export const OUTBOUND_QUEUE = 'outbound-messages';
+
+/** DI token nobody provides: the retired SMS constructor slot resolves to undefined. */
+const RETIRED_SMS_SLOT = 'RETIRED_SMS_SLOT';
 
 /** Per-tenant pending-jobs counter key (queue-depth backpressure). */
 export const pendingJobsKey = (tenantId: string) => `outbound:pending:${tenantId}`;
@@ -118,7 +118,10 @@ export class OutboundQueueProcessor extends WorkerHost {
         private throttle: TenantThrottleService,
         private channelToken: ChannelTokenService,
         private redis: RedisService,
-        private tenantSms: TenantNotificationSmsService,
+        // Retired SMS slot (ADR 0020). SMS has no transport any more; the slot
+        // stays only because specs outside this module construct the processor
+        // positionally. Nothing is injected and nothing reads it.
+        @Optional() @Inject(RETIRED_SMS_SLOT) _retiredSms: unknown,
         private prisma: PrismaService,
         // The economic boundary. NOT optional: this processor can send
         // WhatsApp, and a deployment with a WhatsApp sender and no money
@@ -1275,7 +1278,7 @@ export class OutboundQueueProcessor extends WorkerHost {
 
         // Queued replies, reminders and automations may execute after a trial,
         // paid period or dunning boundary. Revalidate at the last authoritative
-        // point before SMS balance/provider work; HTTP and inbound guards cannot
+        // point before provider work; HTTP and inbound guards cannot
         // protect a job that was enqueued hours earlier.
         const entitlement = await resolveTenantSubscriptionAccess(
             this.prisma,
@@ -1297,50 +1300,11 @@ export class OutboundQueueProcessor extends WorkerHost {
         // already owns one of the counted slots; using it here stranded those
         // retries whenever the window was exactly full.
 
-        // Reseller SMS: text SMS to a tenant's customer goes out via the PLATFORM
-        // Twilio sender and is charged to the tenant's prepaid credit balance —
-        // NOT the tenant's own Twilio. Insufficient credits / unconfigured platform
-        // SMS is a permanent condition for this message: log + drop (don't burn the
-        // 3 retries or fire a Sentry alert). MMS falls through to the legacy path.
-        if (outbound.channelType === 'sms' && outbound.content?.type === 'text' && outbound.content?.text) {
-            const rateEffectId = `outbound:${job.data.outboundRef?.payloadId ?? job.id ?? ''}`;
-            if (rateEffectId === 'outbound:') throw new Error('outbound_rate_effect_identity_missing');
-            const rateReservation = await this.throttle.reserveActionUsage(
-                outbound.tenantId, 'outbound', rateEffectId,
-            );
-            if (!rateReservation.allowed) {
-                await job.moveToDelayed(Date.now() + 60_000, token);
-                throw new DelayedError();
-            }
-            let res: Awaited<ReturnType<TenantNotificationSmsService['send']>>;
-            try {
-                // Reseller SMS skips the gateway, so it strips the internal citation itself.
-                res = await this.tenantSms.send(outbound.tenantId, outbound.to, (isAiGenerated(outbound) ? stripInternalMarkers(outbound.content.text) : outbound.content.text), {
-                    reason: (outbound.metadata as any)?.notificationReason || 'outbound',
-                    ref: (outbound.metadata as any)?.messageId,
-                });
-            } catch (error) {
-                await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
-                throw error;
-            }
-            if (!res.sent) {
-                await this.throttle.releaseActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
-                if (res.reason === 'insufficient_credits' || res.reason === 'platform_sms_unconfigured' || res.reason === 'monetization_disabled') {
-                    this.logger.warn(`[Outbound][SMS] ${res.reason} tenant=${outbound.tenantId} to=${outbound.to} — dropped`);
-                    return `skipped:${res.reason}`;
-                }
-                throw new Error(`SMS send failed to ${outbound.to}: ${res.error || res.reason}`);
-            }
-            await this.throttle.commitActionUsage(outbound.tenantId, 'outbound', rateEffectId).catch(() => undefined);
-            if (job.id) await this.redis.set(sentKey, res.sid || 'sms-sent', 86400).catch(() => {});
-            this.logger.log(`[Outbound][SMS] sent to ${outbound.to} tenant=${outbound.tenantId} segments=${res.segments}`);
-            return res.sid || 'sms-sent';
-        }
-        // Non-text SMS (MMS) is not supported on the reseller platform sender — drop
-        // instead of falling through to a tenant Twilio token the reseller model has none of.
+        // SMS is a retired product (ADR 0020): there is no transport, so a
+        // legacy SMS job is dropped for good instead of burning its retries.
         if (outbound.channelType === 'sms') {
-            this.logger.warn(`[Outbound][SMS] non-text (MMS) not supported on reseller SMS — dropped tenant=${outbound.tenantId} to=${outbound.to}`);
-            return 'skipped:sms_mms_unsupported';
+            this.logger.warn(`[Outbound][SMS] retired product — dropped tenant=${outbound.tenantId} to=${outbound.to}`);
+            return 'skipped:sms_retired';
         }
 
         // ── A RECIPIENT THIS LANE CANNOT ADDRESS ────────────────────────────

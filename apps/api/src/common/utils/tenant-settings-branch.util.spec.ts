@@ -53,7 +53,6 @@ describe('tenant settings branch writers', () => {
         'ecommerce/ecommerce.service.ts',
         'mcp/mcp-client.service.ts',
         'managed/managed.service.ts',
-        'sms-notifications/sms-notifications.service.ts',
     ];
 
     it.each(serviceFiles)('%s never replaces the complete settings snapshot', (relative) => {

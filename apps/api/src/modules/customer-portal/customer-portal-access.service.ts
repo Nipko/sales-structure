@@ -4,9 +4,6 @@ import { createHash, randomInt, randomUUID, timingSafeEqual } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CronLockService } from '../redis/cron-lock.service';
 import { EmailService } from '../email/email.service';
-import { SmsSenderService } from '../sms-notifications/sms-sender.service';
-import { RegionalProfileService } from '../tenants/regional-profile.service';
-import { normalizePhoneE164 } from '../../common/utils/phone.util';
 import { cpmsg } from './customer-portal-i18n';
 
 type PortalChannel = 'email' | 'sms';
@@ -20,8 +17,6 @@ export class CustomerPortalAccessService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly email: EmailService,
-        private readonly sms: SmsSenderService,
-        private readonly regionalProfile: RegionalProfileService,
         private readonly cronLock: CronLockService,
     ) {}
 
@@ -194,20 +189,23 @@ export class CustomerPortalAccessService {
         if (claim.state !== 'claimed') return `portal:${claim.state}`;
 
         const row = claim.row;
+        // SMS is a retired product (ADR 0020): a code requested by phone has no
+        // transport, so the challenge is closed for good instead of retried.
+        if (row.channel === 'sms') {
+            await this.prisma.$executeRawUnsafe(`UPDATE customer_portal_access_challenges
+                SET state='suppressed',error_code='portal_sms_retired',
+                    lease_token=NULL,lease_expires_at=NULL,updated_at=NOW()
+                WHERE id=$1::uuid AND state='claimed' AND lease_token=$2::uuid`, id, lease);
+            return 'portal:suppressed';
+        }
         const message = cpmsg(row.language, 'auth.codeMessage').replace('{code}', row.code);
         let send: () => Promise<string>;
         try {
-            if (row.channel === 'sms') {
-                const region = await this.regionalProfile.phoneRegionFor(row.tenant_id);
-                const to = normalizePhoneE164(row.recipient, region) || row.recipient;
-                send = await this.sms.prepareBoundedSend(row.tenant_id, to, message);
-            } else {
-                send = this.email.prepareBoundedSend({
-                    to: row.recipient,
-                    subject: cpmsg(row.language, 'auth.codeSubject'),
-                    html: `<p style="font-size:16px;font-family:sans-serif">${message}</p>`,
-                });
-            }
+            send = this.email.prepareBoundedSend({
+                to: row.recipient,
+                subject: cpmsg(row.language, 'auth.codeSubject'),
+                html: `<p style="font-size:16px;font-family:sans-serif">${message}</p>`,
+            });
         } catch (error: any) {
             await this.failBeforeSend(id, lease, error?.message || 'portal_preflight_failed');
             throw error;

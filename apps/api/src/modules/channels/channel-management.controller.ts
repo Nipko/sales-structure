@@ -7,7 +7,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappCryptoService } from '../whatsapp/services/whatsapp-crypto.service';
 import { ChannelTokenService } from './channel-token.service';
 import { TelegramAdapter, TelegramUnreachableError } from './telegram/telegram.adapter';
-import { SmsAdapter } from './sms/sms.adapter';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -86,7 +85,6 @@ export class ChannelManagementController {
         private cryptoService: WhatsappCryptoService,
         private channelToken: ChannelTokenService,
         private telegramAdapter: TelegramAdapter,
-        private smsAdapter: SmsAdapter,
         private throttle: TenantThrottleService,
         private redis: RedisService,
         private events: EventEmitter2,
@@ -141,16 +139,6 @@ export class ChannelManagementController {
         const body = response as Record<string, unknown>;
         if (body.error !== META_CONNECT_ERROR.PLAN_LIMIT || 'retryable' in body) return e;
         return new ForbiddenException({ ...body, retryable: false });
-    }
-
-    private rejectRetiredSms(operation: 'connect' | 'test'): void {
-        throw new GoneException({
-            error: 'sms_product_retired',
-            operation,
-            message: operation === 'connect'
-                ? 'SMS no admite conexiones nuevas. Solo se conserva trazabilidad para cuentas heredadas.'
-                : 'SMS no admite nuevos envíos ni pruebas desde el producto.',
-        });
     }
 
     /**
@@ -427,7 +415,7 @@ export class ChannelManagementController {
 
     /**
      * Gate channel connection behind the plan's `channels` allow-list.
-     * emprendedor=whatsapp-only; starter adds ig/messenger/telegram; pro+ adds sms.
+     * emprendedor=whatsapp-only; starter adds ig/messenger/telegram.
      * WhatsApp is in every plan, so its connect path doesn't need this.
      */
     private async assertChannelAllowed(tenantId: string, channelType: string): Promise<void> {
@@ -1480,217 +1468,6 @@ export class ChannelManagementController {
     }
 
     // ==========================================
-    // SMS / Twilio
-    // ==========================================
-
-    @Post('sms/connect')
-    @Roles('tenant_admin')
-    @ApiOperation({ summary: 'Connect Twilio SMS — validates credentials, stores encrypted' })
-    async connectSms(
-        @Body() body: { accountSid: string; authToken: string; phoneNumber: string; displayName?: string },
-        @Req() req: any,
-    ) {
-        this.rejectRetiredSms('connect');
-        const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new BadRequestException('Tenant ID required');
-
-        await this.assertChannelAllowed(tenantId, 'sms');
-
-        const { accountSid, authToken, phoneNumber, displayName } = body;
-        if (!accountSid || !authToken || !phoneNumber) {
-            throw new BadRequestException('accountSid, authToken, and phoneNumber are required');
-        }
-
-        // 1. Validate credentials
-        const account = await this.smsAdapter.validateCredentials(accountSid, authToken);
-        if (!account) {
-            throw new BadRequestException('Invalid Twilio credentials');
-        }
-
-        // Enforce the plan's per-type account limit before storing anything.
-        await this.assertChannelAccountQuota(tenantId, 'sms', [phoneNumber]);
-
-        // 2. Configure webhook URL for inbound SMS
-        const apiUrl = this.configService.get<string>('API_BASE_URL')
-            || this.configService.get<string>('NEXT_PUBLIC_API_URL')
-            || 'https://api.parallly-chat.cloud/api/v1';
-        const baseUrl = apiUrl.replace('/api/v1', '');
-        const webhookUrl = `${baseUrl}/api/v1/channels/webhook/sms/${encodeURIComponent(phoneNumber)}`;
-
-        // 3. Encrypt credentials (store as "accountSid:authToken")
-        const combined = `${accountSid}:${authToken}`;
-        const encryptedToken = this.cryptoService.encryptToken(combined);
-
-        // 4. Upsert channel_account
-        const existing = await this.prisma.channelAccount.findFirst({
-            where: { channelType: 'sms', accountId: phoneNumber, tenantId },
-        });
-
-        const channelData = {
-            tenantId,
-            channelType: 'sms',
-            accountId: phoneNumber,
-            displayName: displayName || `SMS ${phoneNumber}`,
-            accessToken: encryptedToken,
-            isActive: true,
-            metadata: {
-                source: 'dashboard_connect',
-                accountSid,
-                friendlyName: account.friendlyName,
-                webhookUrl,
-            },
-        };
-
-        if (existing) {
-            await this.prisma.channelAccount.update({ where: { id: existing.id }, data: channelData });
-        } else {
-            await this.prisma.channelAccount.create({ data: channelData });
-        }
-
-        void this.markFirstChannelConnected(tenantId, 'sms');
-
-        // 5. Store encrypted credential
-        const existingCred = await this.prisma.whatsappCredential.findFirst({
-            where: { tenantId, credentialType: 'sms_token' },
-        });
-
-        if (existingCred) {
-            await this.prisma.whatsappCredential.update({
-                where: { id: existingCred.id },
-                data: { encryptedValue: encryptedToken, rotationState: 'active' },
-            });
-        } else {
-            await this.prisma.whatsappCredential.create({
-                data: {
-                    tenantId,
-                    credentialType: 'sms_token',
-                    encryptedValue: encryptedToken,
-                    rotationState: 'active',
-                },
-            });
-        }
-
-        this.logger.log(`SMS connected for tenant ${tenantId}: ${phoneNumber}`);
-        this.emitQualityDependency(tenantId, 'channel_credential');
-
-        return {
-            success: true,
-            data: {
-                phoneNumber,
-                friendlyName: account.friendlyName,
-                webhookUrl,
-                message: 'SMS connected. Configure this webhook URL in your Twilio console for incoming messages.',
-            },
-        };
-    }
-
-    @Get('sms/status')
-    @ApiOperation({ summary: 'Get SMS channel status' })
-    async getSmsStatus(@Req() req: any) {
-        const tenantId = req.user?.tenantId;
-        const account = await this.prisma.channelAccount.findFirst({
-            where: { tenantId, channelType: 'sms', isActive: true },
-        });
-        return {
-            success: true,
-            data: {
-                connected: !!account,
-                phoneNumber: account?.accountId || null,
-                displayName: account?.displayName || null,
-                metadata: account?.metadata || null,
-            },
-        };
-    }
-
-    @Delete('sms/disconnect')
-    @Roles('tenant_admin')
-    @RequiresVerifiedEmail('sensitive_admin')
-    @ApiOperation({ summary: 'Disconnect Twilio SMS — clears the webhook URL on the Twilio phone number and deactivates channel' })
-    async disconnectSms(@Req() req: any) {
-        const tenantId = req.user?.tenantId;
-        if (!tenantId) throw new BadRequestException('Tenant ID required');
-
-        let providerOk = false;
-        let providerError: string | null = null;
-
-        try {
-            // Twilio doesn't have an "unsubscribe app" concept — credentials are
-            // pull-style, the user pasted them in. The closest equivalent is
-            // clearing the webhook URLs on the IncomingPhoneNumber so Twilio
-            // stops POSTing to our endpoint when the carrier delivers an SMS.
-            const accounts = await this.prisma.channelAccount.findMany({
-                where: { tenantId, channelType: 'sms', isActive: true },
-            });
-
-            if (accounts.length === 0) {
-                providerError = 'No active SMS phone numbers';
-            } else {
-                let okCount = 0;
-                const errors: string[] = [];
-                for (const acc of accounts) {
-                    try {
-                        const meta = (acc.metadata as any) || {};
-                        const accountSid = meta.accountSid as string | undefined;
-                        const phoneNumberSid = meta.phoneNumberSid as string | undefined;
-                        const creds = await this.channelToken.getChannelToken(tenantId, 'sms', acc.accountId);
-                        const authToken = creds?.accessToken;
-                        if (!accountSid || !phoneNumberSid || !authToken) {
-                            errors.push(`${acc.accountId}: incomplete twilio credentials`);
-                            continue;
-                        }
-                        // Twilio API: POST /2010-04-01/Accounts/{Sid}/IncomingPhoneNumbers/{PnSid}.json
-                        // Setting the URL to empty string clears the webhook.
-                        const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
-                        const formBody = new URLSearchParams({ SmsUrl: '', SmsFallbackUrl: '' });
-                        const res = await fetch(
-                            `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/IncomingPhoneNumbers/${phoneNumberSid}.json`,
-                            {
-                                method: 'POST',
-                                headers: {
-                                    'Authorization': `Basic ${auth}`,
-                                    'Content-Type': 'application/x-www-form-urlencoded',
-                                },
-                                body: formBody.toString(),
-                            },
-                        );
-                        if (res.ok) {
-                            okCount++;
-                        } else {
-                            const body = await res.text().catch(() => '');
-                            errors.push(`${acc.accountId}: ${res.status} ${body.substring(0, 100)}`);
-                        }
-                    } catch (e: any) {
-                        errors.push(`${acc.accountId}: ${e?.message || 'unknown'}`);
-                    }
-                }
-                providerOk = okCount === accounts.length && okCount > 0;
-                if (errors.length > 0) {
-                    providerError = errors.join(' | ');
-                    this.logger.warn(`Twilio webhook clear partial for tenant ${tenantId}: ${providerError}`);
-                } else {
-                    this.logger.log(`Twilio webhooks cleared for tenant ${tenantId} (${okCount} numbers)`);
-                }
-            }
-        } catch (err: any) {
-            providerError = err?.message || 'unknown error calling Twilio';
-            this.logger.warn(`SMS disconnect error for tenant ${tenantId}: ${providerError}`);
-        }
-
-        await this.finalizeChannelDisconnect(tenantId, 'sms', providerOk, providerError, req.user?.sub);
-        return this.buildDisconnectResponse('SMS / Twilio', providerOk, providerError);
-    }
-
-    @Post('sms/test')
-    @Roles('tenant_admin')
-    @ApiOperation({ summary: 'Send a test SMS' })
-    async testSms(
-        @Body() _body: { to: string },
-        @Req() _req: any,
-    ) {
-        this.rejectRetiredSms('test');
-    }
-
-    // ==========================================
     // Generic channel (parameterized — MUST be after specific routes)
     // ==========================================
 
@@ -1707,7 +1484,7 @@ export class ChannelManagementController {
         if (!tenantId) throw new BadRequestException('Tenant ID required');
         if (!(CERTIFIED_SELF_SERVICE_CHANNELS as readonly string[]).includes(channelType)) {
             throw new GoneException({
-                error: channelType === 'sms' ? 'sms_product_retired' : 'channel_not_self_service',
+                error: 'channel_not_self_service',
                 channel: channelType,
                 message: 'Este tipo no es un canal conversacional self-service certificado.',
             });

@@ -81,13 +81,11 @@ describe("canonical navigation registry", () => {
     const hiddenRouteIds = [
       "channelInstagramCallback",
       "channelEmail",
-      "channelSms",
       "conversations",
       "catalog",
       "catalogCourses",
       "settingsCompany",
       "settingsIntegrations",
-      "settingsSmsNotifications",
     ];
 
     for (const routeId of hiddenRouteIds) {

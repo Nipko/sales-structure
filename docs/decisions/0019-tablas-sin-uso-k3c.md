@@ -10,7 +10,7 @@ Los ADR 0005 y 0017 dejaron para el dueño una lista de tablas que nada lee ni e
 
 - **Por tenant (15):** `business_rules`, `tool_configs`, `intake_sources`, `campaign_courses`, `carla_personality_profiles`, `carla_prompt_templates`, `carla_conversation_context`, `knowledge_chunks`, `knowledge_approvals`, `conversation_memory`, `dashboard_preferences`, `kb_health_issues`, `vehicle_inquiries`, `wait_jobs` y `kb_unanswered_queries` (sin escritor desde R5, ADR 0011). Solo aparecen en su `CREATE TABLE` de la plantilla, en el DDL perezoso de `vehicle_inquiries` y en código de **limpieza** (ver abajo). La especificación (`packages/business-spec`) las nombra solo como descripción del almacenamiento de hoy.
 - **Públicas legacy:** `daily_metrics`, `commercial_offers`, `knowledge_resources`, `carla_personality_profiles`, `carla_prompt_templates`, `legal_text_versions`, `consent_records`, `opt_out_records`, `deletion_requests`, `canned_responses`, `wait_jobs`, `automation_rules`, `pipeline_stages`. Ningún código ni migración vigente las crea (venían de los SQL sueltos 002/003 y `v4_*`, retirados en K3); solo las nombra `TENANT_PUBLIC_PURGE_ORDER` para que la purga de un tenant las limpie si existen.
-- **SMS:** `sms_package_orders`, `sms_credit_ledger`, `sms_credit_balances` quedan sin código cuando se retira SMS (ADR 0018) y van con la fase 2.
+- **SMS:** `sms_package_orders`, `sms_credit_ledger`, `sms_credit_balances` quedan sin código cuando se retira SMS (ADR 0020) y van con la fase 2.
 
 Las migraciones son expand-contract (`AGENTS.md`): el código viejo corre minutos contra el schema nuevo, y borrar una tabla con datos exige el visto bueno del dueño y un respaldo.
 

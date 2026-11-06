@@ -6,7 +6,7 @@ import type { PrismaService } from '../../modules/prisma/prisma.service';
  *
  * Ahí adentro viven la marca blanca, el SSO, el channel manager, las
  * integraciones verticales, la salud de esas integraciones, el e-commerce,
- * Slack, reseñas, el tier gestionado, MCP y las notificaciones por SMS. Y casi
+ * Slack, reseñas, el tier gestionado y MCP. Y casi
  * todos escribían así:
  *
  * ```ts

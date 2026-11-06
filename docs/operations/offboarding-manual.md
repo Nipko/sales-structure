@@ -8,7 +8,7 @@ Este documento describe cómo cancelar, suspender, reactivar o eliminar (hard-de
 
 Todo el ciclo está codificado en `OffboardingService` (`executeOffboarding`, `purgeTenant`, `reactivate`, `voluntaryCancel`, `extendTrial`) + `OffboardingCronService` (4 crons + 2 listeners de billing). **No hay que tocar la base de datos a mano**: se opera por la API `/api/v1/offboarding/*` y por el panel super_admin.
 
-> **SMS**: el canal SMS conversacional fue descartado. SMS hoy es solo notificación one-way por créditos (modelo reseller, Twilio de plataforma). Ver el gap de `sms_credit_*` en §7.
+> **SMS**: producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)). Sus tres tablas globales `sms_credit_*` siguen en la base hasta el DROP de fase 2 y el purge las sigue borrando (§7).
 
 ---
 
@@ -240,8 +240,8 @@ No hay export a ZIP ni cold storage por fases (día 37/97): eso no existe en el 
 ### Se elimina (en purge / drop schema)
 - Conversaciones, mensajes, contactos, leads/oportunidades, media (`/data/media/{tenantId}/`), credenciales encriptadas, configuración de agentes, y todo el schema del tenant.
 
-### Créditos SMS — gap cerrado
-`sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` **sí** los borra `purgeTenant`: están en `TENANT_PUBLIC_PURGE_ORDER` y el gate de clasificación no dejaría purgar si no lo estuvieran. El saldo pendiente se resuelve antes de eliminar por criterio comercial, no por una limitación técnica.
+### Tablas SMS heredadas
+`sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` **sí** los borra `purgeTenant`: están en `TENANT_PUBLIC_PURGE_ORDER` y el gate de clasificación no dejaría purgar si no lo estuvieran. SMS es un producto retirado (ADR 0020) y en este entorno no se vendieron créditos, así que no hay saldo que resolver; las tablas esperan el DROP de fase 2.
 
 ### Rescate manual
 `infra/scripts/delete-tenant.sql` es el fallback si el endpoint no está disponible. Cubre menos tablas que el purge del servicio y se apoya en los `ON DELETE CASCADE` hacia `tenants` para el resto; las que no tienen esa FK necesitan su `DELETE` explícito o quedan huérfanas (es lo que pasaba con `billing_credit_ledger`, cuya única FK es a la suscripción y es `SET NULL`). Preferir siempre el endpoint.
@@ -348,7 +348,6 @@ Con la API todo esto es automático; el checklist sirve para verificación manua
 - [ ] Verificar Paso 4: `tenants.is_active=false`, usuarios `is_active=false`.
 - [ ] Confirmar audit log `tenant_offboarded`.
 - [ ] Confirmar que los webhooks ya no llegan (revisar logs 24h).
-- [ ] (Si aplica) resolver saldo `sms_credit_*` antes de un eventual purge.
 
 ---
 
@@ -370,4 +369,4 @@ Las citas quedan en el schema hasta que se dropea. Los eventos en Google/Microso
 Sí, mientras `is_active=false` y el schema no haya sido dropeado (`/offboarding/:id/reactivate`). Los canales marcados `disconnected_at_provider=true` requieren reconexión OAuth. Tras el drop/purge, no.
 
 **¿Se conserva algo tras un purge?**
-Sí: `fiscal_invoices` + sus XML/PDF DIAN (retención ~5 años), estampados con la identidad del tenant. También los backups hasta su rotación. (Y, por el gap conocido, los `sms_credit_*`.)
+Sí: `fiscal_invoices` + sus XML/PDF DIAN (retención ~5 años), estampados con la identidad del tenant. También los backups hasta su rotación.

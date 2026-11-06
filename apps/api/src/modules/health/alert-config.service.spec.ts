@@ -73,11 +73,11 @@ describe('AlertConfigService queue failure thresholds', () => {
         it('takes the numbers the panel sends as text', async () => {
             const { service } = build();
             const saved = await service.set({
-                dispatchLatency: { p95Ms: '250' }, channels: { sms: 'true' },
+                dispatchLatency: { p95Ms: '250' }, channels: { telegram: 'false' },
                 queueDepth: { 'outbound-messages': { warn: '300', crit: '1200' } },
             });
             expect(saved.dispatchLatency.p95Ms).toBe(250);
-            expect(saved.channels.sms).toBe(true);
+            expect(saved.channels.telegram).toBe(false);
             expect(saved.queueDepth['outbound-messages']).toEqual({ warn: 300, crit: 1200 });
         });
 

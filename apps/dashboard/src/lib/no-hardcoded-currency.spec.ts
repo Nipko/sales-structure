@@ -22,15 +22,13 @@ const SRC = path.join(__dirname, "..");
 /**
  * Dónde `COP` sí es la respuesta correcta y no una suposición.
  *
- * Facturación electrónica DIAN es Colombia por definición; el catálogo de
- * paquetes de SMS y el tipo de cambio de la plataforma se cobran en el riel
- * local (Wompi, COP). Excluirlos por ruta y no por heurística: una lista
+ * Facturación electrónica DIAN es Colombia por definición; el tipo de cambio
+ * de la plataforma se cobra en el riel local (Wompi, COP). Excluirlos por ruta y no por heurística: una lista
  * explícita se puede discutir, un `includes("fiscal")` se olvida.
  */
 const ALLOWED = [
     "app/admin/fiscal/page.tsx",
     "app/admin/settings/fiscal/page.tsx",
-    "app/admin/sms-packages/page.tsx",
     "app/admin/financials/_components/SettingsTab.tsx",
     "lib/format-money.ts",
     "lib/no-hardcoded-currency.spec.ts",

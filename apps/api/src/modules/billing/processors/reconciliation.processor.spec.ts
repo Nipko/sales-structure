@@ -25,7 +25,6 @@ describe('BillingReconciliationProcessor engine crash recovery', () => {
             { getCharging: jest.fn().mockReturnValue(charging) } as any,
             {} as any,
             {} as any,
-            {} as any,
             engine as any,
         );
 

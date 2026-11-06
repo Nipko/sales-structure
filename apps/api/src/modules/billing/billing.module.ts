@@ -38,9 +38,6 @@ import { BillingReconciliationProcessor } from './processors/reconciliation.proc
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { MediaProcessingModule } from '../media-processing/media-processing.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
-import { SmsCreditsModule } from '../sms-credits/sms-credits.module';
-import { SmsCheckoutService } from './sms-checkout.service';
-import { SmsCheckoutController } from './sms-checkout.controller';
 import { BillingPlanCatalogService } from './billing-plan-catalog.service';
 
 /**
@@ -63,13 +60,12 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         PlatformNotificationModule,
         MediaProcessingModule,
         FiscalModule,
-        SmsCreditsModule,
         // Queues for the internal recurring engine. Both are dormant until a
         // subscription is switched to engine='internal'.
         BullModule.registerQueue({ name: RENEWAL_QUEUE }),
         BullModule.registerQueue({ name: CHARGE_POLL_QUEUE }),
     ],
-    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, SmsCheckoutController, PaymentSourceController, StripeBillingController],
+    controllers: [BillingController, BillingAdminController, BillingPublicController, CouponsController, BillingWebhookController, PaymentSourceController, StripeBillingController],
     providers: [
         BillingService,
         BillingEmailService,
@@ -93,7 +89,6 @@ import { BillingPlanCatalogService } from './billing-plan-catalog.service';
         RenewalChargeProcessor,
         ChargePollProcessor,
         InvoiceGeneratorService,
-        SmsCheckoutService,
         BillingPlanCatalogService,
     ],
     exports: [

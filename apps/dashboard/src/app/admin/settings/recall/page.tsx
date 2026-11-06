@@ -16,7 +16,6 @@ const CHANNEL_OPTIONS = [
     { value: "instagram", label: "Instagram DM" },
     { value: "messenger", label: "Messenger" },
     { value: "telegram", label: "Telegram" },
-    { value: "sms", label: "SMS" },
 ];
 
 export default function RecallSettingsPage() {

@@ -41,7 +41,7 @@ describe('what each channel may be said to do', () => {
 
     it('says what a retained channel actually is, in a sentence', () => {
         expect(row('email').retainedScope).toContain('routes that do not exist');
-        expect(row('sms').retainedScope).toContain('One-way');
+        expect(row('sms').retainedScope).toContain('Retired product');
     });
 
     it('covers every certified self-service channel and nothing else as self-service', () => {

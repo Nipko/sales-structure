@@ -180,7 +180,7 @@ integration('one handoff effect per destination', () => {
         const receiptId = await receiptFor();
         // A receipt with only some of the announcement destinations prepared:
         // `announced` may not appear while one of them is still outstanding.
-        await prepareHandoffEffects(query, schema, receiptId, ['crm', 'push', 'webhooks', 'sms']);
+        await prepareHandoffEffects(query, schema, receiptId, ['crm', 'push', 'webhooks']);
         const settle = async (destination: any, kind: 'accepted' | 'rejected' = 'accepted') => {
             const lease = randomUUID();
             await admitHandoffEffect(query, schema, { receiptId, destination, leaseToken: lease });
@@ -196,7 +196,6 @@ integration('one handoff effect per destination', () => {
         expect(row.effects.announced).toBeUndefined();
 
         await settle('slack');
-        await settle('sms');
         [row] = await query<any[]>('SELECT effects FROM agent_handoff_receipts WHERE id=$1::uuid', [receiptId]);
         expect(row.effects.announced).toBe(true);
     });

@@ -176,7 +176,7 @@ const DEFAULT_TEMPLATES: Omit<EmailTemplate, 'id' | 'language' | 'createdAt' | '
 <p style="margin:0 0 16px;font-size:11px;font-weight:700;color:#9ca3af;text-transform:uppercase;letter-spacing:1px;">Lo que puedes hacer ahora</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
 <tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#128172;</div></td>
-<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Conectar tus canales</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">WhatsApp, Instagram, Messenger, Telegram y SMS en un solo lugar.</p></td></tr>
+<td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Conectar tus canales</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">WhatsApp, Instagram, Messenger y Telegram en un solo lugar.</p></td></tr>
 <tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#129302;</div></td>
 <td style="padding:10px 0 10px 14px;"><p style="margin:0;font-size:14px;font-weight:600;color:#1f2937;">Agente de IA 24/7</p><p style="margin:2px 0 0;font-size:13px;color:#6b7280;">Tu vendedor virtual que responde, agenda citas y califica leads automaticamente.</p></td></tr>
 <tr><td style="padding:10px 0;vertical-align:top;width:40px;"><div style="width:36px;height:36px;background:#f0f7ff;border-radius:10px;text-align:center;line-height:36px;font-size:18px;">&#128200;</div></td>

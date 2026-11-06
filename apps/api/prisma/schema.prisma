@@ -909,11 +909,13 @@ model BillingCouponRedemption {
 }
 
 // ============================================
-// SMS CREDITS — Monetized one-way notification packages (reseller)
+// SMS CREDITS — RETIRED PRODUCT (ADR 0020)
 // ============================================
-// Tenants buy prepaid SMS credit packages to notify their own customers via the
-// PLATFORM Twilio sender (reseller model). 1 credit = 1 Twilio message segment.
-// The conversational SMS channel (BYO, bidirectional) is intentionally out of scope.
+// SMS was retired: no service reads or writes these three tables any more. The
+// models stay only so this schema keeps matching the database (a `migrate dev`
+// would otherwise generate an unapproved DROP). The purge still deletes the rows
+// by table name (`TENANT_PUBLIC_PURGE_ORDER`). Tables and models leave together
+// in the phase-2 DROP. The comments below describe the original design.
 
 // ---- SMS Credit Balance (global) ----
 // Current prepaid balance per tenant. Mutated only through SmsCreditsService

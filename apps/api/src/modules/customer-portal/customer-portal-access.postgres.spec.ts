@@ -17,9 +17,6 @@ describeDb('durable customer portal access against PostgreSQL', () => {
     let prisma: any;
     const smtpAttempt = jest.fn().mockResolvedValue('smtp.portal.1');
     const email = { prepareBoundedSend: jest.fn().mockReturnValue(smtpAttempt) };
-    const smsAttempt = jest.fn().mockResolvedValue('SM_PORTAL_1');
-    const sms = { prepareBoundedSend: jest.fn().mockResolvedValue(smsAttempt) };
-    const regional = { phoneRegionFor: jest.fn().mockResolvedValue('CO') };
     const cronLock = { runExclusive: jest.fn(async (_key: string, _ttl: number, work: any) => work()) };
     let service: CustomerPortalAccessService;
 
@@ -47,8 +44,7 @@ describeDb('durable customer portal access against PostgreSQL', () => {
             contact_id UUID PRIMARY KEY,erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
         await admin.query(`INSERT INTO "${schema}".contacts(id,phone,email)
             VALUES($1::uuid,$2,$3)`, [contactId, '+573001112233', 'portal@example.test']);
-        service = new CustomerPortalAccessService(prisma, email as any, sms as any,
-            regional as any, cronLock as any);
+        service = new CustomerPortalAccessService(prisma, email as any, cronLock as any);
     });
 
     afterAll(async () => {
@@ -64,8 +60,6 @@ describeDb('durable customer portal access against PostgreSQL', () => {
         jest.clearAllMocks();
         smtpAttempt.mockResolvedValue('smtp.portal.1');
         email.prepareBoundedSend.mockReturnValue(smtpAttempt);
-        smsAttempt.mockResolvedValue('SM_PORTAL_1');
-        sms.prepareBoundedSend.mockResolvedValue(smsAttempt);
         await admin.query('DELETE FROM customer_portal_access_challenges WHERE tenant_id=$1::uuid', [tenantId]);
         await admin.query(`UPDATE "${schema}".contacts SET phone=$2,email=$3 WHERE id=$1::uuid`,
             [contactId, '+573001112233', 'portal@example.test']);
@@ -115,15 +109,23 @@ describeDb('durable customer portal access against PostgreSQL', () => {
     });
 
     it('freezes an unanswered provider attempt instead of sending it again', async () => {
-        const id = await service.issue(tenantId, schema, 'sms', '+573001112233', 'es');
-        smsAttempt.mockRejectedValueOnce(new Error('connection_lost_after_post'));
+        const id = await service.issue(tenantId, schema, 'email', 'portal@example.test', 'es');
+        smtpAttempt.mockRejectedValueOnce(new Error('connection_lost_after_post'));
         await expect(service.deliver(id!)).rejects.toThrow('connection_lost_after_post');
         expect((await admin.query(`SELECT state,error_code FROM customer_portal_access_challenges
             WHERE id=$1::uuid`, [id])).rows[0]).toMatchObject({
             state: 'reconciliation_required', error_code: 'portal_send_outcome_unknown',
         });
         await service.processDue();
-        expect(smsAttempt).toHaveBeenCalledTimes(1);
+        expect(smtpAttempt).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes a code requested by phone for good: SMS is a retired product (ADR 0020)', async () => {
+        const id = await service.issue(tenantId, schema, 'sms', '+573001112233', 'es');
+        await expect(service.deliver(id!)).resolves.toBe('portal:suppressed');
+        expect(smtpAttempt).not.toHaveBeenCalled();
+        expect((await admin.query(`SELECT state,error_code FROM customer_portal_access_challenges
+            WHERE id=$1::uuid`, [id])).rows[0]).toMatchObject({ state: 'suppressed', error_code: 'portal_sms_retired' });
     });
 
     it('keeps verification durable, single-use and limited to five attempts', async () => {

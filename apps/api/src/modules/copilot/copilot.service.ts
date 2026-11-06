@@ -175,7 +175,6 @@ export class CopilotService {
         { key: 'widgetTriggers', label: 'Disparadores del widget web', kind: 'num' },
         { key: 'dataRetentionDays', label: 'Retención de datos (días)', kind: 'num' },
         { key: 'widget', label: 'Widget de chat web', kind: 'bool' },
-        { key: 'smsNotifications', label: 'Notificaciones por SMS', kind: 'bool' },
         { key: 'externalCrm', label: 'Integración con CRM externo (HubSpot/Pipedrive)', kind: 'bool' },
         { key: 'outboundWebhooks', label: 'Webhooks salientes', kind: 'bool' },
         { key: 'customPrompt', label: 'Personalización avanzada del agente', kind: 'bool' },

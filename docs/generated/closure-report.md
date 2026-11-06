@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `c75041311e71cc4325f7cc49dab67800de84b0b3`.
+Revisión: `16ddeb475d7644dc8f7661021a4dbe19a580f725`.
 
 **El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 1 abiertas y 1 diferidas por decisión
@@ -56,7 +56,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | H1 | **bloqueada** por gate 2 | corrida (`docs/generated/certification-manifest.md`) | — | Ejecutor durable construido: 3 tablas, arriendo con `clock_timestamp()`, resultado escrito una sola vez, reintento como intento nuevo, presupuesto y deadline verificados antes de entregar trabajo, invalidación por definición de escenario y por autoridad del agente, y el reporte alimentado desde esas filas. El manifiesto de costo por modelo está calculado. Ejecutarlo necesita una credencial y un techo de gasto autorizado. | `e1ac3943` `4ec45699` |
 | H2 | **bloqueada** por gate 2 | **declaración** | — | Regresiones desde QA y ledger, linaje, identidad de misión y denominadores implementados; un resultado desconocido conserva ese estado y no se inventa tasa. Sus denominadores se llenan con la corrida de H1. | — |
 | H3 | **bloqueada** por gate 4 y 1 y 3 | corrida (`docs/archive/2026-09-programa-octubre/adversarial-validation.md`) | — | Harness local construido: corpus generado y estratificado desde el catálogo con verificadores de resultado, sujetos sintéticos ejecutados, 3 tablas de intentos y revisión ciega, y una negativa a enunciar comparación cuando falta el otro sujeto. Correr una alternativa necesita su cuenta. | `aaf41d62` |
-| M0 | **aceptada** | contador | — | Censo derivado del árbol: 33 call sites, 30 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 73 productores y 18 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
+| M0 | **aceptada** | contador | — | Censo derivado del árbol: 33 call sites, 30 cobrables, 0 fuera de la autoridad económica. El inventario de efectos declara 71 productores y 17 con al menos una propiedad en `none`. La condición es que el artefacto versionado se regenere desde el mismo HEAD, no que alguien lo haya leído. | — |
 | M1 | **bloqueada** por gate 1 y 4 | contador | — | Remitente, pagador y credencial salen del resolver único; la unión de autoridades cubre agente servido, 10 políticas proactivas (appointment_reminder, attendance_check, appointment_notification, appointment_cancellation, drip_step, nurturing_followup, broadcast_message, automation_rule_action, recall_reminder, pending_answer_ready) y operador humano con 4 roles. BSUID, la procedencia del token BISU y el control del hilo frente al agente de Meta ya están en el código y probados: un remitente sin teléfono se contesta en vez de descartarse, un token del portafolio del proveedor se rechaza en vez de firmar el envío de un tenant, y el control del hilo es durable y se recupera solo. Lo que falta es una cuenta real: ninguna de esas transiciones vio todavía un traspaso de verdad, y por eso la coexistencia va detrás de un interruptor apagado. El contador de esta fila mide otra cosa —productores de mensajería sin autoridad o sin idempotencia— y sigue siendo lo que la mantiene abierta. | — |
 | M2 | **bloqueada** por gate 4 | contador | — | Tarifas versionadas `meta-ratecards-2026@ddb62cc8458b94a3` con 4 tarjetas, 5 categorías que Meta cobra por separado y 1000 entregas de servicio gratuitas por número y mes calendario. La categoría aprobada y la ventana de servicio se leen de la base del tenant antes de admitir. Lo que falta es una cuenta real: tarifa aplicada por Meta al entregar y conciliación contra factura. | — |
 | M3 | **aceptada** | contador | — | Autoridad económica transaccional con 5 alcances (number_month, account, business, contact, task), reserva antes del efecto y liquidación contra el recibo. Cero productores cobrables fuera del gate en este HEAD: lo verifica el censo, no esta frase. | — |
@@ -114,8 +114,8 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | De ellos, cobrables | 30 |
 | Cobrables fuera del gate económico | 0 |
 | Cobrables fuera del carril durable | 0 |
-| Productores declarados en el inventario de efectos | 73 |
-| De ellos, con alguna propiedad en `none` | 18 |
+| Productores declarados en el inventario de efectos | 71 |
+| De ellos, con alguna propiedad en `none` | 17 |
 | Políticas proactivas registradas | 10 |
 | Tipos de item que el carril durable transporta | 7 |
 | Alcances de gasto | 5 |

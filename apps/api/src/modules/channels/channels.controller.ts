@@ -16,7 +16,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Request, Response } from 'express';
-import * as crypto from 'crypto';
 import { ChannelGatewayService } from './channel-gateway.service';
 import { WhatsAppAdapter } from './whatsapp/whatsapp.adapter';
 import { InstagramAdapter } from './instagram/instagram.adapter';
@@ -412,130 +411,6 @@ export class ChannelsController {
     // Telegram
     // ==========================================
 
-    // ── SMS / Twilio Webhook ──────────────────────────────────
-
-    @Post('webhook/sms/:phoneNumber')
-    @ApiOperation({ summary: 'Receive inbound SMS from Twilio' })
-    async receiveSms(
-        @Param('phoneNumber') phoneNumber: string,
-        @Body() body: any,
-        @Headers('x-twilio-signature') twilioSignature: string,
-        @Req() req: Request,
-        @Res() res: Response,
-    ) {
-        // Twilio expects TwiML response; empty <Response/> = acknowledge
-        res.type('text/xml').status(200).send('<Response/>');
-
-        const webhookUrl = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
-        await this.processSmsWebhook(body, phoneNumber, twilioSignature, webhookUrl);
-    }
-
-    /**
-     * Validates a Twilio webhook signature (HMAC-SHA1).
-     *
-     * Algorithm:
-     * 1. Start with the full webhook URL
-     * 2. Sort POST params alphabetically by key
-     * 3. Append each key+value (no separator) to the URL string
-     * 4. HMAC-SHA1 the result with the Twilio Auth Token
-     * 5. Base64 encode → compare to X-Twilio-Signature header
-     */
-    private validateTwilioSignature(
-        webhookUrl: string,
-        params: Record<string, string>,
-        signature: string,
-        authToken: string,
-    ): boolean {
-        try {
-            const data = Object.keys(params)
-                .sort()
-                .reduce((acc, key) => acc + key + params[key], webhookUrl);
-
-            const expectedSig = crypto
-                .createHmac('sha1', authToken)
-                .update(data, 'utf-8')
-                .digest('base64');
-
-            const expectedBuf = Buffer.from(expectedSig);
-            const actualBuf = Buffer.from(signature);
-
-            if (expectedBuf.length !== actualBuf.length) return false;
-
-            return crypto.timingSafeEqual(expectedBuf, actualBuf);
-        } catch {
-            return false;
-        }
-    }
-
-    private async processSmsWebhook(
-        body: any,
-        phoneNumber: string,
-        twilioSignature?: string,
-        webhookUrl?: string,
-    ): Promise<void> {
-        try {
-            const channelAccount = await this.prisma.channelAccount.findFirst({
-                where: { channelType: 'sms', accountId: phoneNumber, isActive: true },
-            });
-
-            if (!channelAccount) {
-                this.logger.warn(`No SMS channel account found for phone: ${phoneNumber}`);
-                return;
-            }
-
-            // ── Twilio signature validation (BEFORE any side effect) ──
-            // Resolve the auth token from the per-account encrypted credential
-            // (stored as "accountSid:authToken" in channel_accounts.access_token),
-            // falling back to legacy metadata / a platform-level env var. Without
-            // this the token was never found and the signature check was skipped —
-            // i.e. inbound SMS webhooks were accepted UNVERIFIED.
-            let authToken = (channelAccount.metadata as any)?.twilioAuthToken as string | undefined;
-            if (!authToken) {
-                try {
-                    const creds = await this.channelToken.getChannelToken(channelAccount.tenantId, 'sms', phoneNumber);
-                    authToken = (creds?.accessToken || '').split(':')[1] || undefined;
-                } catch { /* fall through to env / skip */ }
-            }
-            if (!authToken) authToken = this.configService.get<string>('TWILIO_AUTH_TOKEN');
-
-            if (!authToken) {
-                this.logger.warn(
-                    `No Twilio Auth Token resolvable for SMS account ${phoneNumber} — skipping signature validation`,
-                );
-            } else if (!twilioSignature || !webhookUrl) {
-                this.logger.warn(
-                    `Missing X-Twilio-Signature header for SMS webhook on ${phoneNumber} — skipping validation`,
-                );
-            } else if (!this.validateTwilioSignature(webhookUrl, body || {}, twilioSignature, authToken)) {
-                this.logger.warn(
-                    `Invalid Twilio signature for SMS webhook on ${phoneNumber} — rejecting request`,
-                );
-                return;
-            }
-
-            // Idempotency AFTER auth — claimed atomically (SET NX). Setting it
-            // before signature validation let an attacker (or a spoofed SID) burn
-            // the key and make the real, signed message be dropped as a duplicate.
-            const messageSid = body?.MessageSid;
-            if (messageSid) {
-                const claimed = await this.redis.acquireLock(`idem:sms:${messageSid}`, 86400);
-                if (!claimed) return;
-            }
-
-            const adapter = this.gateway.getAdapter('sms');
-            if (!adapter) return;
-
-            const normalized = await adapter.handleWebhook(body, phoneNumber);
-            if (!normalized) return;
-
-            normalized.tenantId = channelAccount.tenantId;
-            await this.inboundQueue.enqueue(normalized);
-            this.logger.log(`Incoming SMS from ${body?.From} to ${phoneNumber}`);
-        } catch (error) {
-            this.logger.error(`Error processing SMS webhook: ${error}`);
-        }
-    }
-
     // ── Telegram Webhook ────────────────────────────────────
 
     @Post('webhook/telegram/:botUsername')
@@ -703,7 +578,7 @@ export class ChannelsController {
         @Res() res: Response,
     ) {
         // RETIRED. Every registered adapter (whatsapp, instagram, messenger,
-        // telegram, sms, email) has its own route with signature validation,
+        // telegram, email) has its own route with signature validation,
         // tenant resolution and idempotency. This fallback had NONE of those:
         // an unauthenticated POST could inject a message straight into the AI
         // pipeline for any tenant an adapter happened to resolve. Kept as an

@@ -66,7 +66,7 @@ offboard:past_due:{tenantId}                              — Redis mirror of du
 tenant_plan:{tenantId}                                    — Cached plan info
 handoff:{tenantId}:{conversationId}                       — Handoff state (24h TTL)
 vertical:{tenantId}                                       — Vertical config cache (10min TTL)
-idem:wa:{id}, idem:ig:{id}, idem:fb:{id}, idem:tg:{id}, idem:sms:{id}  — Webhook idempotency (24h TTL)
+idem:wa:{id}, idem:ig:{id}, idem:fb:{id}, idem:tg:{id}  — Webhook idempotency (24h TTL)
 idem:email:{messageId}                                     — Email idempotency (24h TTL)
 idem:billing:{provider}:{providerEventId}                  — Billing webhook acceleration/dedup (48h; DB uniqueness is authoritative)
 backup:last_success                                        — Backup heartbeat (Ops Center alerta si > backupStaleHours, default 26h)
@@ -108,7 +108,7 @@ email_threads          — Email conversation threading (in-reply-to, references
 campaign_variants      — A/B test variants for broadcast campaigns
 ```
 
-## Global Prisma Tables (Billing, Finance, Fiscal, SMS credits, Ops)
+## Global Prisma Tables (Billing, Finance, Fiscal, Ops)
 
 _Todas viven en `public` (cross-tenant). Prisma model → `@@map` table name._
 
@@ -123,9 +123,9 @@ billing_events             — Append-only log + idempotencia: UNIQUE(provider, 
 billing_coupons            — Cupones (percent_off/amount_off/free_months), maxRedemptions, appliesToPlanIds
 billing_coupon_redemptions — Un canje por tenant×cupón: UNIQUE(couponId, tenantId)
 fiscal_invoices            — Facturación DIAN (Factus): CUFE, numbering, XML/PDF, acquirer_snapshot inmutable, type invoice|credit_note
-sms_credit_balances        — Balance prepago de créditos SMS por tenant (UNIQUE tenant_id)
-sms_credit_ledger          — Movimientos append-only (+purchase/-consumption/±adjustment/+refund), balance_after
-sms_package_orders         — Historial legado de paquetes SMS; nuevas compras/checkout están retirados
+sms_credit_balances        — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
+sms_credit_ledger          — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
+sms_package_orders         — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
 financial_snapshots        — Monthly platform-wide SaaS metrics (MRR movements, plan distribution)
 tenant_financial_snapshots — Per-tenant monthly snapshots (UNIQUE tenantId+snapshotMonth)
 storage_snapshots          — Snapshot diario de disco/DB/media por-tenant + fila 'platform' (Ops Center)
@@ -259,7 +259,6 @@ ai:stats:{tenantId}:{YYYY-MM-DD}:{category}:provider:{name} — Per-provider bre
 | `/admin/plans` | Editor del catálogo de planes (features, precios por país y ciclo) + estado de proveedores |
 | `/admin/coupons` | CRUD de cupones + redenciones |
 | `/admin/fiscal` | Config fiscal DIAN (modo CO_LOCAL/US_REMOTE), Factus, facturas globales |
-| `/admin/sms-packages` | Tiers de créditos SMS + balances + ajustes |
 | `/admin/ops` (+`/alerts`) | Ops Center (platform-monitor) + config de alertas |
 | `/admin/incidents` | Incidentes persistentes (ack/resolve) |
 | `/admin/storage` | Storage por-tenant, quota, tendencia de disco |
@@ -310,19 +309,9 @@ Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factu
 
 ---
 
-## SMS monetizado por paquetes (créditos reseller) — PRODUCTO RETIRADO
+## SMS — producto retirado (ADR 0020)
 
-> **Retirado (ago 2026).** El interruptor maestro `sms.platform_enabled` está apagado por defecto (`sms-kill-switch.service.ts`), `GET /sms-credits/packages` devuelve `data: []` con `meta.retired` y `code: sms_product_retired`, y el checkout y las notificaciones responden `sms_product_retired`. La compra con Mercado Pago ya no existe. Lo que sigue describe el diseño original por si hay que auditar saldos o libros históricos.
-
-Modelo reseller one-way: los tenants compran créditos prepagos (1 crédito = 1 segmento Twilio) para **notificar a sus clientes** vía el Twilio de la plataforma. El canal SMS conversacional (bidireccional) quedó **descartado**. Ver `docs/archive/2026-07-sms/sms-monetization-packages-2026-07.md`.
-
-- **Tablas**: `sms_credit_balances` (cache del total), `sms_credit_ledger` (movimientos append-only, `balance_after`), `sms_package_orders` (compra pago único con Mercado Pago, hoy retirada; `external_reference` = order id, acreditación idempotente por webhook)
-- **Endpoints** (`/sms-credits/*`):
-  - Tenant: `GET :tenantId/balance`, `GET :tenantId/ledger`
-  - Catálogo: `GET packages` (hoy vacío: producto retirado)
-  - Super admin: `GET/PUT admin/config` (tiers editables + sender), `GET admin/balances` (cross-tenant), `POST admin/:tenantId/adjust` (ajuste manual firmado, motivo obligatorio)
-- **Compra**: `sms-checkout.*` en el módulo billing (neutralizado: responde `sms_checkout_retired` / `sms_product_retired`)
-- **Hardening**: kill-switch maestro del modelo reseller (apagado por defecto) + verificación de firma Twilio en el webhook
+SMS se retiró por completo en noviembre de 2026 ([ADR 0020](../decisions/0020-retiro-sms.md)): ya no existen los módulos `sms-credits` (salvo un stub sin transporte que importa `conversations/`), `sms-notifications`, el checkout `billing/sms-checkout.*`, el adaptador Twilio `channels/sms/`, el interruptor `sms.platform_enabled`, las rutas `/sms-credits/*`, `/sms-notifications/*` y `/channels/sms/*` ni las pantallas `/admin/sms-packages`, `/admin/channels/sms` y `/admin/settings/integrations/sms-notifications`. Las tablas `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño original está en `docs/archive/2026-07-sms/`.
 
 ---
 
@@ -330,7 +319,7 @@ Modelo reseller one-way: los tenants compran créditos prepagos (1 crédito = 1 
 
 Centro de Operaciones para el super_admin. Liveness `GET /health` + `GET /health/detailed` (usado por el healthcheck de Docker y Uptime Kuma).
 
-- **Servicios**: `platform-monitor.service` (cron de checks + alerting con cooldown vía email/Telegram/SMS), `incident.service`, `platform-storage.service` (disco + storage por-tenant + quota + history), `alert-config.service`, `sms-alert.service`, `telegram-alert.service`, `sentry-stats.service`
+- **Servicios**: `platform-monitor.service` (cron de checks + alerting con cooldown vía email/Telegram), `incident.service`, `platform-storage.service` (disco + storage por-tenant + quota + history), `alert-config.service`, `telegram-alert.service`, `sentry-stats.service`
 - **Checks**: salud/budget de proveedores LLM, fallos de webhook de billing (`billing:webhook:fail:*`), y **heartbeat de backup** (`backup:last_success` en Redis; alerta si > `backupStaleHours`, default 26h)
 - **Endpoints**: `/health/llm-providers`, `/health/storage[ /overview | /tenants | /history ]`, `/health/incidents[ /summary | /:id/ack | /:id/resolve ]`, `GET|PUT /health/alert-config`, `POST /health/checks/run`, `POST /health/media-cleanup`
 - **Tablas**: `platform_incidents` (persistentes, ack/resolve), `storage_snapshots` (snapshot diario disco/DB/media por-tenant + fila `platform`)

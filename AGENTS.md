@@ -6,7 +6,7 @@ Single source of context for coding agents (Codex, Claude Code and others). `CLA
 
 ## What is this project?
 
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and service across WhatsApp, Instagram, Messenger, Telegram and a Web Chat widget. Email has an internal inbound adapter but no certified tenant self-service configuration. SMS is a **retired product** (platform kill switch `sms.platform_enabled` defaults to off; credits, checkout and notifications answer `sms_product_retired`) and was never a conversational channel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and service across WhatsApp, Instagram, Messenger, Telegram and a Web Chat widget. Email has an internal inbound adapter but no certified tenant self-service configuration. SMS is a **retired product** ([ADR 0020](docs/decisions/0020-retiro-sms.md): its modules, routes, screens and platform switch were removed; only an always-refusing stub in `sms-credits/` remains for `conversations/`) and was never a conversational channel.
 
 Monorepo with 5 apps, deployed on a Hostinger VPS via Docker + Cloudflare Tunnel; mobile binaries ship separately through EAS / Google Play. Structural counters drift: recompute them (see "Counters") instead of copying numbers into docs.
 
@@ -92,7 +92,7 @@ Paths relative to `apps/api/src/modules/` unless they start with `apps/`, `dashb
 | Add LLM provider | `ai/providers/*.provider.ts`, `ai/router/llm-router.service.ts` |
 | Agent persona config | `persona/persona.service.ts`, `persona/persona.controller.ts` |
 | Channel adapters | `channels/{channel}/*.adapter.ts`, `channels/channel-gateway.service.ts` |
-| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram; the SMS routes answer `sms_product_retired`) |
+| Channel management | `channels/channel-management.controller.ts` (connect IG/Messenger/Telegram) |
 | Webhook validation | `channels/meta-signature.util.ts` (shared HMAC validator) |
 | Handoff logic | `handoff/handoff.service.ts` |
 | Agent console | `agent-console/agent-console.gateway.ts` (WebSocket), `.service.ts` |
@@ -136,7 +136,6 @@ Paths relative to `apps/api/src/modules/` unless they start with `apps/`, `dashb
 | Agent editor | `dashboard/src/app/admin/agent/[agentId]/page.tsx` |
 | Agent list | `dashboard/src/app/admin/agent/page.tsx` |
 | Setup banner | `dashboard/src/components/SetupBanner.tsx` |
-| SMS adapter (legacy; product retired) | `channels/sms/sms.adapter.ts` |
 | IG token refresh | `channels/instagram-token-refresh.service.ts` (daily @6AM, 30-day pre-expiry) |
 | Offboarding | `offboarding/offboarding.service.ts` (7-step pipeline: channels, sessions, queues, deactivate, cache, audit, event) |
 | Offboarding cron | `offboarding/offboarding-cron.service.ts` (grace enforcer @3AM, archive cleaner @4AM) |

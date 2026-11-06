@@ -10,7 +10,6 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PlatformStorageService } from './platform-storage.service';
 import { IncidentService, IncidentSeverity } from './incident.service';
 import { TelegramAlertService } from './telegram-alert.service';
-import { SmsAlertService } from './sms-alert.service';
 import { AlertConfigService, type AlertConfig } from './alert-config.service';
 import { SentryStatsService } from './sentry-stats.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -73,7 +72,6 @@ export class PlatformMonitorService implements OnModuleInit {
         private storage: PlatformStorageService,
         private incidents: IncidentService,
         private telegram: TelegramAlertService,
-        private smsAlert: SmsAlertService,
         private alertConfig: AlertConfigService,
         private sentry: SentryStatsService,
         private throttle: TenantThrottleService,
@@ -1960,13 +1958,7 @@ export class PlatformMonitorService implements OnModuleInit {
         return `${emoji} <b>${esc(subject)}</b>\n\n${esc(bodyText)}\n\n🖥 ${esc(os.hostname())}`;
     }
 
-    /** Render an alert as a short plain-text SMS (severity tag + subject + host). */
-    private toSmsText(severity: IncidentSeverity, subject: string): string {
-        const tag = severity === 'critical' ? '[CRITICO]' : severity === 'warning' ? '[AVISO]' : '[INFO]';
-        return `Parallly ${tag} ${subject} - ${os.hostname()}`.slice(0, 480);
-    }
-
-    // ── Alert sender: persist incident always, email/Telegram/SMS throttled ──
+    // ── Alert sender: persist incident always, email/Telegram throttled ──
 
     private async alert(key: string, subject: string, html: string, value: number) {
         const severity = this.severityFromKey(key);
@@ -1985,7 +1977,7 @@ export class PlatformMonitorService implements OnModuleInit {
         // que cambiaba el ganador el proceso nuevo arrancaba con la Map vacía y
         // remandaba la misma alerta: el cooldown de 1 hora se degradaba al
         // intervalo del cron, multiplicado por cada super_admin en la lista y
-        // replicado a Telegram y —en las críticas— a SMS de Twilio, que se paga.
+        // replicado a Telegram.
         //
         // SET NX con TTL: el primero en llegar manda la alerta, el otro no.
         const cooldownKey = `alert:cooldown:${key}`;
@@ -2006,11 +1998,6 @@ export class PlatformMonitorService implements OnModuleInit {
         // Telegram ops channel (throttled by the same cooldown above).
         if (cfg.channels.telegram) {
             await this.telegram.send(this.toTelegramText(severity, subject, html));
-        }
-
-        // SMS ops channel — critical only (intrusive/costly), throttled by the same cooldown.
-        if (cfg.channels.sms && severity === 'critical') {
-            await this.smsAlert.send(this.toSmsText(severity, subject));
         }
 
         if (!cfg.channels.email || this.adminEmails.length === 0) return;

@@ -63,14 +63,14 @@ export const MARKETING_CLAIMS = Object.freeze({
     localeKey: 'socialProof.stat2Label', locales: ['es', 'en', 'pt', 'fr'],
     scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
     evidence: [
-      { id: 'closure-report', repositoryPath: 'docs/generated/closure-report.md', description: 'Derived closure report: 0 of 5 channels and 0 of 76 profiles have finished certification.' },
-      { id: 'closure-report-data', repositoryPath: 'docs/generated/closure-report.json', description: 'Machine-readable counters behind the same report.' },
+      { id: 'channel-certification-matrix', repositoryPath: 'apps/api/src/modules/channels/channel-certification-matrix.ts', description: 'Channel certification matrix: a channel is certified only with no pending, untested or unproven capability; 0 of 5 today. verify:artifacts fails if this count drifts from the landing.' },
+      { id: 'channel-certification-runtime', repositoryPath: 'apps/api/src/modules/channels/channel-certification-runtime.ts', description: "The runtime's own answers about each channel that feed the matrix." },
     ],
   },
   interfaceLanguageCount: {
     claimId: 'product.interface_languages.count', capabilityId: 'interface_i18n', status: 'verified', value: 4,
     localeKey: 'socialProof.stat3Label', locales: ['es', 'en', 'pt', 'fr'],
-    localePaths: ['trust.latamBadge', 'cta.guarantees'],
+    localePaths: ['cta.guarantees'],
     scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
     evidence: [{ id: 'landing-locales', repositoryPath: 'apps/landing/messages', description: 'Four complete landing locale catalogs plus the es-AR regional overlay.' }],
   },

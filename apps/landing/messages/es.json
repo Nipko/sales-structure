@@ -105,61 +105,12 @@
     "backHome": "Volver al inicio"
   },
   "channels": {
-    "title": "Funciona en todos tus canales",
-    "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram y Web Chat. Cada canal que conectes usa el agente que le asignes, con una experiencia coherente o reglas adaptadas a ese canal.",
-    "note": "Cada cliente tiene un único perfil sin importar por qué canal te escriba. Identidad cross-canal automática.",
-    "demoDisclaimer": "Contenido ilustrativo: los horarios, precios y disponibilidad provienen de la configuración y los sistemas conectados de cada negocio.",
-    "respondingLabel": "IA respondiendo",
     "status": {
       "whatsapp": "en línea",
       "instagram": "Activo ahora",
       "messenger": "Activo",
       "telegram": "en línea",
       "web_widget": "en línea"
-    },
-    "scenarios": {
-      "dental": {
-        "business": "Clínica Dental",
-        "m1": "Quiero agendar limpieza dental",
-        "m2": "¡Hola! Puedo consultar los horarios cargados por la clínica. ¿Qué día prefieres?",
-        "m3": "Jueves",
-        "m4": "Perfecto. Revisaré disponibilidad antes de confirmar la cita."
-      },
-      "photo": {
-        "business": "Foto Studio",
-        "m1": "Vi tu trabajo, ¿cuánto vale una sesión de boda?",
-        "m2": "¡Gracias! Puedo consultar los paquetes configurados. ¿Cuándo es la fecha?",
-        "m3": "15 de junio",
-        "m4": "Revisaré disponibilidad y te compartiré las opciones vigentes."
-      },
-      "gym": {
-        "business": "FitPro Gym",
-        "m1": "Hola, info sobre membresías",
-        "m2": "¡Hola! Puedo mostrarte los planes vigentes del gimnasio. ¿Quieres agendar una visita?",
-        "m3": "Sí, mañana puedo",
-        "m4": "Claro. ¿Qué horario prefieres para que consulte disponibilidad?"
-      },
-      "service": {
-        "business": "ServicioYA",
-        "m1": "Se me tapó el desagüe, urgente",
-        "m2": "Registraré la urgencia. ¿Cuál es la dirección?",
-        "m3": "Calle 50 #15-20",
-        "m4": "El equipo confirmará disponibilidad, tarifa y hora de llegada."
-      },
-      "support": {
-        "business": "Clínica Central",
-        "m1": "Recordatorio: tu cita es mañana a las 9am. ¿Confirmas?",
-        "m2": "Sí, confirmo",
-        "m3": "Cita confirmada ✅",
-        "m4": "Gracias"
-      },
-      "retail": {
-        "business": "Tienda Aurora",
-        "m1": "¿Tienen esta chaqueta en talla M?",
-        "m2": "Puedo consultar el inventario cargado por la tienda. ¿La quieres para retiro o envío?",
-        "m3": "Envío",
-        "m4": "Confirmaré existencias antes de armar el pedido y te comparto el link de pago de la tienda."
-      }
     }
   },
   "hero": {
@@ -205,42 +156,10 @@
     "summaryLead": "El valor de tenerlo conectado.",
     "summary": "Atención, seguimiento y coordinación dentro de una misma plataforma."
   },
-  "trust": {
-    "title": "Integraciones y arquitectura del producto",
-    "metaTitle": "Canales de Meta",
-    "metaDesc": "Conexión mediante las APIs de WhatsApp Business, Instagram y Messenger",
-    "mpTitle": "Integración de pagos",
-    "mpDesc": "La suscripción cubre la plataforma y la capacidad de IA de tu plan. Wompi en Colombia y Stripe fuera de Colombia procesa el pago; los datos completos de tarjeta y el código de seguridad no se guardan en Parallly. La disponibilidad se confirma al seleccionar el plan.",
-    "latamTitle": "Hecho en Latinoamérica",
-    "latamDesc": "Interfaz en español, inglés, portugués y francés, con precios locales donde aplican.",
-    "encTitle": "Aislamiento por empresa",
-    "encDesc": "Cada empresa opera en su propio esquema de datos y con acceso autenticado.",
-    "metaBadge": "Meta Cloud APIs",
-    "mpBadge": "Procesamiento de pagos",
-    "latamBadge": "4 idiomas",
-    "encBadge": "Datos aislados por empresa"
-  },
   "verticals": {
-    "tabIndustry": "Por industria",
-    "tabChannel": "Por canal",
     "demoRespondsIn": "ejemplo de respuesta automatizada",
     "demoRespondedIn": "Ejemplo ilustrativo",
     "demoDisclaimer": "Los datos, precios y disponibilidad los configura cada negocio.",
-    "solutionsOmnichannel": "Soluciones Omnicanal",
-    "recommendedAgent": "Agente IA Recomendado",
-    "preConfigured": "Pre-configurado",
-    "title": "Configuraciones por industria",
-    "subtitle": "Cada industria declara si es cohorte de certificación, producto vertical, preset horizontal o configuración genérica. Hoy ninguna está certificada: las capacidades especializadas permanecen ocultas hasta que una validación de extremo a extremo las respalde.",
-    "pickVertical": "Elige tu industria",
-    "clusterHealth": "Salud y Bienestar",
-    "clusterCommerce": "Comercio y Servicios",
-    "clusterProfessional": "Profesional y Finanzas",
-    "clusterLifestyle": "Lifestyle y Creativos",
-    "genericTagline": "Configura conversaciones, IA, CRM y agenda según la forma en que opera tu negocio.",
-    "genericFeature1": "Conversaciones y contactos unificados en una sola bandeja",
-    "genericFeature2": "IA con fuentes, reglas de negocio y asignación por canal",
-    "genericFeature3": "Pipeline de CRM y seguimiento del equipo",
-    "genericFeature4": "Agenda y automatizaciones disponibles según tu plan",
     "genericDemo1": "Hola, quisiera información.",
     "genericDemo2": "Con gusto. ¿Qué producto o servicio te interesa?",
     "genericDemo3": "Quiero revisar opciones y disponibilidad.",
@@ -248,7 +167,6 @@
     "genericDemo5": "Sí, por favor.",
     "genericDemo6": "Listo. La registré en el CRM y dejé el horario en la agenda del equipo.",
     "genericAgentName": "Agente IA configurable",
-    "configurableSetup": "Adaptable a tu operación",
     "salud": {
       "pain1": "Pacientes que llaman fuera de horario y no encuentran quién los atienda.",
       "pain2": "Inasistencias que dejan la agenda con huecos y sin aviso previo.",
@@ -557,8 +475,6 @@
     }
   },
   "solutions": {
-    "heroTitle": "Una solución para cada industria",
-    "heroSubtitle": "Elige tu industria y completa la configuración guiada. Cada una muestra su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
     "clusterHealth": "Salud y Bienestar",
     "clusterCommerce": "Comercio y Servicios",
     "clusterProfessional": "Profesional y Finanzas",
@@ -761,20 +677,6 @@
     "title": "Así se ve en acción",
     "subtitle": "Escenarios ilustrativos para explorar respuestas, agenda y seguimiento, con supervisión humana disponible."
   },
-  "howItWorks": {
-    "sectionTitle": "Configura el producto en 3 pasos",
-    "subtitle": "Sin código y sin técnicos. Si sabes usar WhatsApp, sabes usar Parallly.",
-    "step1": "Conecta tus canales",
-    "step1Desc": "WhatsApp, Instagram, Messenger, Telegram o Web Chat. Cada canal usa su flujo de conexión correspondiente.",
-    "step1Tag": "Conexión guiada",
-    "step2": "Elige tu industria",
-    "step2Desc": "Eliges tu industria y ves su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
-    "step2Tag": "Por industria",
-    "step3": "Prueba y activa",
-    "step3Desc": "Prueba respuestas, agenda, reglas y handoff; luego activa únicamente los canales y horarios configurados.",
-    "step3Tag": "Tras activación",
-    "stepLabel": "PASO"
-  },
   "features": {
     "title": "Conversaciones, CRM, agenda y automatización en una plataforma",
     "subtitle": "Diseñado para centralizar la operación comercial de PYMES de LatAm.",
@@ -808,25 +710,6 @@
     "stat1Label": "canales de autoservicio disponibles",
     "stat2Label": "canales con certificación de extremo a extremo completada",
     "stat3Label": "idiomas de interfaz"
-  },
-  "testimonials": {
-    "title": "Evidencia de clientes",
-    "subtitle": "No publicamos testimonios ni resultados hasta contar con consentimiento y evidencia verificable.",
-    "t1Quote": "",
-    "t1Name": "",
-    "t1Role": "",
-    "t1Company": "",
-    "t1Stat": "",
-    "t2Quote": "",
-    "t2Name": "",
-    "t2Role": "",
-    "t2Company": "",
-    "t2Stat": "",
-    "t3Quote": "",
-    "t3Name": "",
-    "t3Role": "",
-    "t3Company": "",
-    "t3Stat": ""
   },
   "pricing": {
     "title": "Elige el alcance que necesita tu empresa.",
@@ -1150,82 +1033,6 @@
         "turismo": "SS",
         "default": "JP"
       }
-    }
-  },
-  "demos": {
-    "pipeline": {
-      "stageNew": "Nuevo",
-      "stageQualified": "Calificado",
-      "stageWon": "Ganado",
-      "cardName": "María González",
-      "cardLabel": "Pediatría · WA",
-      "cardScore": "Score 87"
-    },
-    "calendar": {
-      "dateHeader": "Jueves 15 de mayo",
-      "confirmed": "Cita confirmada",
-      "confirmedDetail": "11:00 · María González"
-    },
-    "analytics": {
-      "thisWeek": "Esta semana",
-      "conversations": "conversaciones",
-      "day0": "L",
-      "day1": "M",
-      "day2": "M",
-      "day3": "J",
-      "day4": "V",
-      "day5": "S",
-      "day6": "D"
-    },
-    "agentConfig": {
-      "sliderToneLabel": "Tono",
-      "sliderToneValue": "Empático",
-      "sliderModelLabel": "Modelo IA",
-      "sliderChannelLabel": "Canal",
-      "agentName": "Sofía · Asistente médica",
-      "templateLabel": "Plantilla: Salud · Dental",
-      "statusActive": "Asignada a una conexión",
-      "sliderModelValue": "Según tu plan"
-    },
-    "kb": {
-      "title": "Base de conocimiento",
-      "customerAsks": "Cliente pregunta:",
-      "question": "¿Aceptan tarjeta sodexo?",
-      "searching": "Buscando en KB...",
-      "foundIn": "Encontrado en políticas.pdf",
-      "answer": "Sí, aceptamos tarjetas Sodexo, Big Pass y Edenred. Pago en sitio, no acumulan puntos."
-    },
-    "inbox": {
-      "title": "Bandeja unificada",
-      "unread": "sin leer",
-      "item1": {
-        "name": "Carlos R.",
-        "msg": "Hola, tienen apto en arriendo en Chapinero?",
-        "time": "ahora"
-      },
-      "item2": {
-        "name": "@valeria.foto",
-        "msg": "Vi su trabajo, info de bodas?"
-      },
-      "item3": {
-        "name": "Daniel M.",
-        "msg": "Información de membresías mensuales"
-      },
-      "item4": {
-        "name": "Telegram · Anita",
-        "msg": "Necesito plomero urgente"
-      }
-    },
-    "orderPayment": {
-      "header": "Pedido en preparación",
-      "channel": "WhatsApp",
-      "item1": "2 × plato del día",
-      "item2": "1 × postre",
-      "added": "agregado",
-      "linkTitle": "Link de pago enviado",
-      "linkDetail": "Se genera con la pasarela del negocio. El cobro va a su cuenta, no a la nuestra.",
-      "pendingTitle": "Pedido a la espera de confirmación",
-      "pendingDetail": "El pago lo confirma la pasarela del negocio. Hasta que lo informe, el pedido no se da por pagado."
     }
   },
   "payments": {

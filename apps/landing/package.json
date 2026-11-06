@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3003",
-    "build": "npm run check:claims && next build && node scripts/postprocess-localized-html.cjs",
+    "build": "npm run check:claims && next build && node scripts/postprocess-localized-html.cjs && node scripts/verify-export-navigation.cjs",
     "start": "next start",
     "check:claims": "node scripts/generate-whatsapp-rate-projection.cjs --check && node scripts/generate-localized-sitemap.cjs --check && node scripts/validate-i18n-parity.cjs && node scripts/test-billing-market.cjs && node scripts/test-whatsapp-cost-estimate.cjs && node scripts/validate-marketing-claims.cjs && node scripts/test-marketing-claim-regressions.cjs && node scripts/validate-competitive-evidence.cjs",
     "gen:rates": "node scripts/generate-whatsapp-rate-projection.cjs",

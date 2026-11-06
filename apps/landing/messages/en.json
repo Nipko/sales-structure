@@ -105,61 +105,12 @@
     "backHome": "Back to home"
   },
   "channels": {
-    "title": "Works across all your channels",
-    "subtitle": "WhatsApp, Instagram DM, Messenger, Telegram and Web Chat. Every channel you connect uses the agent you assign, with a consistent experience or channel-specific rules.",
-    "note": "Every customer has a single profile no matter which channel they message you on. Automatic cross-channel identity.",
-    "demoDisclaimer": "Illustrative examples: schedules, prices and availability come from each business's configuration and connected systems.",
-    "respondingLabel": "AI replying",
     "status": {
       "whatsapp": "online",
       "instagram": "Active now",
       "messenger": "Active",
       "telegram": "online",
       "web_widget": "online"
-    },
-    "scenarios": {
-      "dental": {
-        "business": "Dental Clinic",
-        "m1": "I'd like to book a dental cleaning",
-        "m2": "Hi! I can check the clinic's configured schedule. Which day do you prefer?",
-        "m3": "Thursday",
-        "m4": "Perfect. I'll check availability before confirming the appointment."
-      },
-      "photo": {
-        "business": "Photo Studio",
-        "m1": "Saw your work, how much is a wedding session?",
-        "m2": "Thanks! I can check the configured packages. When is the date?",
-        "m3": "June 15th",
-        "m4": "I'll check availability and share the current options."
-      },
-      "gym": {
-        "business": "FitPro Gym",
-        "m1": "Hi, info on memberships",
-        "m2": "Hi! I can show you the gym's current plans. Would you like to schedule a visit?",
-        "m3": "Yes, I can tomorrow",
-        "m4": "Sure. Which time should I check for availability?"
-      },
-      "service": {
-        "business": "ServicioYA",
-        "m1": "My drain's clogged, urgent",
-        "m2": "I'll register the urgency. What is the address?",
-        "m3": "50 St #15-20",
-        "m4": "The team will confirm availability, pricing and arrival time."
-      },
-      "support": {
-        "business": "Central Clinic",
-        "m1": "Reminder: your appointment is tomorrow at 9am. Do you confirm?",
-        "m2": "Yes, confirmed",
-        "m3": "Appointment confirmed ✅",
-        "m4": "Thank you"
-      },
-      "retail": {
-        "business": "Aurora Store",
-        "m1": "Do you have this jacket in a medium?",
-        "m2": "I can check the inventory the store loaded. Would you like it for pickup or delivery?",
-        "m3": "Delivery",
-        "m4": "I will confirm stock before building the order and send you the store's payment link."
-      }
     }
   },
   "hero": {
@@ -205,42 +156,10 @@
     "summaryLead": "The value of bringing it together.",
     "summary": "Customer service, follow-up and coordination in one platform."
   },
-  "trust": {
-    "title": "Product integrations and architecture",
-    "metaTitle": "Meta channels",
-    "metaDesc": "Connection through the WhatsApp Business, Instagram and Messenger APIs",
-    "mpTitle": "Payment integration",
-    "mpDesc": "Your subscription covers the platform and your plan’s AI capacity. Wompi in Colombia and Stripe outside Colombia processes the payment; Parallly does not store full card details or security codes. Availability is confirmed when you select a plan.",
-    "latamTitle": "Made in Latin America",
-    "latamDesc": "Interface in Spanish, English, Portuguese and French, with local pricing where available.",
-    "encTitle": "Business data isolation",
-    "encDesc": "Each business operates in its own data schema with authenticated access.",
-    "metaBadge": "Meta Cloud APIs",
-    "mpBadge": "Payment processing",
-    "latamBadge": "4 languages",
-    "encBadge": "Business-isolated data"
-  },
   "verticals": {
-    "tabIndustry": "By industry",
-    "tabChannel": "By channel",
     "demoRespondsIn": "automated response example",
     "demoRespondedIn": "Illustrative example",
     "demoDisclaimer": "Each business configures its own data, prices, and availability.",
-    "solutionsOmnichannel": "Omnichannel Solutions",
-    "recommendedAgent": "Recommended AI Agent",
-    "preConfigured": "Pre-configured",
-    "title": "Industry configurations",
-    "subtitle": "Each industry declares whether it is a certification cohort, a vertical product, a horizontal preset or a generic configuration. None is certified today: specialised capabilities stay hidden until end-to-end validation backs them.",
-    "pickVertical": "Pick your industry",
-    "clusterHealth": "Health & Wellness",
-    "clusterCommerce": "Commerce & Services",
-    "clusterProfessional": "Professional & Finance",
-    "clusterLifestyle": "Lifestyle & Creatives",
-    "genericTagline": "Configure conversations, AI, CRM and scheduling around the way your business operates.",
-    "genericFeature1": "Conversations and contacts unified in one inbox",
-    "genericFeature2": "AI with sources, business rules and channel assignment",
-    "genericFeature3": "CRM pipeline and team follow-up",
-    "genericFeature4": "Scheduling and automations available for your plan",
     "genericDemo1": "Hi, I'd like some information.",
     "genericDemo2": "Of course. Which product or service are you interested in?",
     "genericDemo3": "I'd like to review options and availability.",
@@ -248,7 +167,6 @@
     "genericDemo5": "Yes, please.",
     "genericDemo6": "Done. I logged it in the CRM and added the time to the team's schedule.",
     "genericAgentName": "Configurable AI agent",
-    "configurableSetup": "Adapts to your workflow",
     "salud": {
       "pain1": "Patients who call after hours and find no one to help them.",
       "pain2": "No-shows that leave gaps in the schedule with no warning.",
@@ -557,8 +475,6 @@
     }
   },
   "solutions": {
-    "heroTitle": "A solution for every industry",
-    "heroSubtitle": "Pick your industry and complete the guided setup. Each one shows its product mode and its certification state; specialised capabilities require validation.",
     "clusterHealth": "Health & Wellness",
     "clusterCommerce": "Commerce & Services",
     "clusterProfessional": "Professional & Finance",
@@ -761,20 +677,6 @@
     "title": "See it in action",
     "subtitle": "Illustrative scenarios for exploring replies, scheduling and follow-up, with human supervision available."
   },
-  "howItWorks": {
-    "sectionTitle": "Configure the product in 3 steps",
-    "subtitle": "No code, no techies. If you can use WhatsApp, you can use Parallly.",
-    "step1": "Connect your channels",
-    "step1Desc": "WhatsApp, Instagram, Messenger, Telegram or Web Chat. Each channel uses its corresponding connection flow.",
-    "step1Tag": "Guided connection",
-    "step2": "Pick your industry",
-    "step2Desc": "You pick your industry and see its product mode and certification state; specialised capabilities require validation.",
-    "step2Tag": "By industry",
-    "step3": "Test and enable",
-    "step3Desc": "Test replies, scheduling, rules and handoff, then enable only the configured channels and schedules.",
-    "step3Tag": "After activation",
-    "stepLabel": "STEP"
-  },
   "features": {
     "title": "Conversations, CRM, scheduling and automation in one platform",
     "subtitle": "Designed to centralize commercial operations for LatAm SMBs.",
@@ -808,25 +710,6 @@
     "stat1Label": "self-service channels available",
     "stat2Label": "channels with end-to-end certification completed",
     "stat3Label": "interface languages"
-  },
-  "testimonials": {
-    "title": "Customer evidence",
-    "subtitle": "We do not publish testimonials or outcomes until consent and verifiable evidence are available.",
-    "t1Quote": "",
-    "t1Name": "",
-    "t1Role": "",
-    "t1Company": "",
-    "t1Stat": "",
-    "t2Quote": "",
-    "t2Name": "",
-    "t2Role": "",
-    "t2Company": "",
-    "t2Stat": "",
-    "t3Quote": "",
-    "t3Name": "",
-    "t3Role": "",
-    "t3Company": "",
-    "t3Stat": ""
   },
   "pricing": {
     "title": "Choose the scope your business needs.",
@@ -1150,82 +1033,6 @@
         "turismo": "SS",
         "default": "JS"
       }
-    }
-  },
-  "demos": {
-    "pipeline": {
-      "stageNew": "New",
-      "stageQualified": "Qualified",
-      "stageWon": "Won",
-      "cardName": "Mary Johnson",
-      "cardLabel": "Pediatrics · WA",
-      "cardScore": "Score 87"
-    },
-    "calendar": {
-      "dateHeader": "Thursday, May 15",
-      "confirmed": "Appointment confirmed",
-      "confirmedDetail": "11:00 · Mary Johnson"
-    },
-    "analytics": {
-      "thisWeek": "This week",
-      "conversations": "conversations",
-      "day0": "M",
-      "day1": "T",
-      "day2": "W",
-      "day3": "T",
-      "day4": "F",
-      "day5": "S",
-      "day6": "S"
-    },
-    "agentConfig": {
-      "sliderToneLabel": "Tone",
-      "sliderToneValue": "Empathetic",
-      "sliderModelLabel": "AI Model",
-      "sliderChannelLabel": "Channel",
-      "agentName": "Sophia · Medical assistant",
-      "templateLabel": "Template: Health · Dental",
-      "statusActive": "Assigned to one connection",
-      "sliderModelValue": "Per your plan"
-    },
-    "kb": {
-      "title": "Knowledge base",
-      "customerAsks": "Customer asks:",
-      "question": "Do you accept Sodexo cards?",
-      "searching": "Searching the KB...",
-      "foundIn": "Found in policies.pdf",
-      "answer": "Yes, we accept Sodexo, Big Pass and Edenred cards. Payment on site, no points accrued."
-    },
-    "inbox": {
-      "title": "Unified inbox",
-      "unread": "unread",
-      "item1": {
-        "name": "Carlos R.",
-        "msg": "Hi, do you have an apartment for rent in Chapinero?",
-        "time": "now"
-      },
-      "item2": {
-        "name": "@valeria.foto",
-        "msg": "I saw your work, info on weddings?"
-      },
-      "item3": {
-        "name": "Daniel M.",
-        "msg": "Information on monthly memberships"
-      },
-      "item4": {
-        "name": "Telegram · Anita",
-        "msg": "I need a plumber urgently"
-      }
-    },
-    "orderPayment": {
-      "header": "Order being prepared",
-      "channel": "WhatsApp",
-      "item1": "2 × dish of the day",
-      "item2": "1 × dessert",
-      "added": "added",
-      "linkTitle": "Payment link sent",
-      "linkDetail": "Generated with the business's own gateway. The money goes to their account, not ours.",
-      "pendingTitle": "Order awaiting confirmation",
-      "pendingDetail": "The payment is confirmed by the business's gateway. Until it reports, the order is not treated as paid."
     }
   },
   "payments": {

@@ -229,44 +229,11 @@ function evidenceScopeWired() {
 }
 
 /**
- * Items a business can reach in discovery, against items the tour can explain.
- *
- * An item that appears in the dashboard and not in the tour is a screen the
- * owner is sent to with no explanation of what it is for, what it needs, what
- * it can confirm or what it costs.
+ * T4 measured the setup wizard's per-item tour (`ToolsTour.tsx`) against
+ * `DISCOVERY_ORDER`. That tour was not mounted after 2026-09-04 (4f2390e4)
+ * and was retired in K3c, so there is no live surface left to measure: the
+ * row is kept, frozen, as the record of what it closed, and reads nothing.
  */
-function tourCoverageGaps() {
-    const RESOLVER = 'apps/dashboard/src/lib/vertical-dashboard-resolver.ts';
-    if (!exists(RESOLVER)) return { missing: ['resolver missing'], discovery: 0 };
-    const resolver = read(RESOLVER);
-    const block = mustFind(
-        /const DISCOVERY_ORDER[^=]*=\s*\[([\s\S]*?)\];/.exec(resolver),
-        'DISCOVERY_ORDER en vertical-dashboard-resolver.ts');
-    // Double OR single quotes: the list is written with double, and a regular
-    // expression that only knew single ones reported an empty universe as an
-    // accepted row.
-    const discovery = mustFind(
-        [...block[1].matchAll(/["']([A-Za-z][\w]*)["']/g)].map(m => m[1]),
-        'los elementos de DISCOVERY_ORDER');
-
-    // The tour's own per-item table, wherever it lives.
-    const candidates = [
-        'apps/dashboard/src/app/admin/setup-wizard/_components/ToolsTour.tsx',
-    ].filter(exists);
-    mustFind(candidates, 'el componente del tour (ToolsTour)');
-    const tour = candidates.map(read).join('\n');
-    // The per-item table itself, not every `key:` in the file -- a component
-    // is full of object literals, and sweeping all of them would mark every
-    // item covered: the same false green this function already produced once.
-    const table = mustFind(/A_BY_ITEM[^=]*=\s*\{([\s\S]*?)\n\s*\};/.exec(tour),
-        'la tabla A_BY_ITEM dentro de ToolsTour');
-    const covered = new Set([...table[1].matchAll(/^\s*["']?([A-Za-z][\w]*)["']?\s*:/gm)]
-        .map(m => m[1]));
-    return {
-        missing: discovery.filter(item => !covered.has(item)),
-        discovery: discovery.length,
-    };
-}
 
 /**
  * The rows, built with the closure report's own constructor so one table and
@@ -330,7 +297,6 @@ function toolsRows(row, audit, nativeBacklog) {
     const orphanedControls = controlsWithoutConsumer(read(contractRel), productiveSources());
 
     const scope = evidenceScopeWired();
-    const tours = tourCoverageGaps();
     const readinessGaps = readinessDivergenceGaps();
     const assistGaps = assistOperationAuthorityGaps();
     const nativeProfiles = mustFind(nativeBacklog?.generatedFrom?.profiles,
@@ -385,15 +351,14 @@ function toolsRows(row, audit, nativeBacklog) {
                 + 'lector no puede reconocer evidencia producida bajo la configuración actual, y '
                 + 'un agente probado se ve igual que uno que nadie probó.' }),
 
-        row('T4', { provenance: 'derived',
-            open: tours.missing.length,
-            openLabel: `${tours.missing.length} de ${tours.discovery} elementos de descubrimiento `
-                + `sin recorrido${tours.missing.length ? `: ${tours.missing.join(', ')}` : ''}`,
+        row('T4', { provenance: 'declared',
             gates: [],
-            evidence: 'Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un '
-                + 'elemento que aparece en el panel y no en el recorrido es una pantalla a la que '
-                + 'se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede '
-                + 'confirmar ni qué cuesta.' }),
+            evidence: 'Histórica, congelada en K3c. Medía `DISCOVERY_ORDER` contra la tabla por '
+                + 'elemento del recorrido del asistente de configuración (`ToolsTour`), que no se '
+                + 'monta desde el 4-sep-2026 (4f2390e4) y se retiró: ya no hay una superficie viva '
+                + 'que medir. El orden sigue vivo como `primaryTourItem` del recorrido del producto. '
+                + 'Condición de cierre: cumplida al retirarse; se reabre solo si vuelve a montarse un '
+                + 'recorrido por elemento, y entonces como fila derivada.' }),
 
         row('T5', { provenance: 'derived',
             open: Math.max(0, missingVerifiers - stepUpNegatives),
@@ -454,6 +419,6 @@ function toolsRows(row, audit, nativeBacklog) {
 }
 
 module.exports = {
-    toolsRows, controlsWithoutConsumer, evidenceScopeWired, tourCoverageGaps, closureWiring,
+    toolsRows, controlsWithoutConsumer, evidenceScopeWired, closureWiring,
     readinessDivergenceGaps, assistOperationAuthorityGaps,
 };

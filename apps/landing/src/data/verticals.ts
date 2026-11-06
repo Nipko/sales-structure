@@ -315,13 +315,6 @@ export const VERTICALS: VerticalDef[] = ([
   deepMarketingAllowed: resolvePublicVerticalProductPolicy(vertical.slug).deepMarketingAllowed,
 }));
 
-export const CLUSTER_LABELS: Record<VerticalCluster, string> = {
-  "salud-bienestar": "clusterHealth",
-  "comercio-servicios": "clusterCommerce",
-  "profesional-finanzas": "clusterProfessional",
-  "lifestyle-creativos": "clusterLifestyle",
-};
-
 export function getVerticalBySlug(slug: string): VerticalDef | undefined {
   return VERTICALS.find((v) => v.slug === slug);
 }

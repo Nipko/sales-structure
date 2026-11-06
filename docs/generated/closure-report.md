@@ -5,7 +5,7 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `d6bc330482117dc8da133c4de6655dcfce6746e8`.
+Revisión: `06ce1e2590f7407d618b1d5d625846c525998bab`.
 
 **El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
 gate externo concreto, 0 abiertas y 1 diferidas por decisión
@@ -73,7 +73,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | T1 | **aceptada** | contador | — | Derivado del contrato de perfil de negocio contra los módulos que pueden actuar sobre cada bandera, excluyendo el propio contrato, el editor y las pruebas. Una bandera que sólo su esquema y su formulario mencionan es un control que el dueño puede mover sin consecuencia, y la pantalla dice que hizo algo. | — |
 | T2 | **aceptada** | contador | — | Derivado de cada entrada no nula de `READINESS_PREDICATE_AUTHORITY`. Cada readiness cita el predicado que su herramienta evalúa y el registro se reduce únicamente cuando la corrección aterriza junto con su prueba. | — |
 | T3 | **aceptada** | contador | — | Leído de la llamada, no de un comentario: the assessment passes a scope to intentEvidence. Sin scope el lector no puede reconocer evidencia producida bajo la configuración actual, y un agente probado se ve igual que uno que nadie probó. | — |
-| T4 | **aceptada** | contador | — | Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta. | — |
+| T4 | **aceptada** | **declaración** | — | Histórica, congelada en K3c. Medía `DISCOVERY_ORDER` contra la tabla por elemento del recorrido del asistente de configuración (`ToolsTour`), que no se monta desde el 4-sep-2026 (4f2390e4) y se retiró: ya no hay una superficie viva que medir. El orden sigue vivo como `primaryTourItem` del recorrido del producto. Condición de cierre: cumplida al retirarse; se reabre solo si vuelve a montarse un recorrido por elemento, y entonces como fila derivada. | — |
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 80 perfiles, 444 tareas, 158 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
 | T8 | **aceptada** | contador | — | Derivado de `native-backlog.ts`: 58 perfiles build/hybrid comercializables y 276 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo. | — |
@@ -88,9 +88,9 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 
 ## De dónde sale cada fila
 
-37 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
+36 filas salen de un contador leído del código: cerrar el hueco las cambia solo.
 3 descansan sobre un artefacto de una corrida real, nombrado en la tabla.
-**14 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
+**15 son declaraciones humanas pendientes de revisión**: A2, A3, A4, C1, D1, D3, E3, F3, F4, G2, G3, H2, M4, M6, T4. Cambiar el código de esas áreas no cambia su estado, y por eso se dicen aparte en vez de presentarse como calculadas.
 
 ## Los contadores de los que sale la tabla
 

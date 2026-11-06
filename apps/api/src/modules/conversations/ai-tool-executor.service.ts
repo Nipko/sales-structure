@@ -111,6 +111,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+import { applyUnconfirmedMarks, unconfirmedCatalogMarks, unconfirmedNotes } from './catalog-content-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import { PACKAGE_DEPARTURES_IN_SEARCH_MAX, PACKAGE_DEPARTURES_PER_PACKAGE, PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
@@ -121,6 +122,13 @@ import {
     ClosestListing, closestMatchesNote, describeListingVerdict, givenListingCriteria, LOCATION_LISTING_CRITERIA,
     ListingSearchCriteria, selectClosestListings,
 } from '../listings/listing-closest-matches';
+
+/**
+ * Opción B (dueño, 2026-11-06): campos del registro proyectado → columna cuyo valor sin llenar es un default (no un dato
+ * del negocio). Sin confirmar llegan `null` y nombrados en `unconfirmedFields` (catalog-content-status.ts).
+ */
+const PROPERTY_DEFAULT_FIELDS: Readonly<Record<string, string>> = { cleaningFee: 'cleaning_fee' };
+const PACKAGE_DEFAULT_FIELDS: Readonly<Record<string, string>> = { minPartySize: 'min_party_size', maxCapacity: 'max_capacity' };
 
 /**
  * The business's opening window of the day as check_availability sees it: the
@@ -4271,8 +4279,8 @@ export class AIToolExecutorService {
                 conds.push(`max_guests >= $${params.length}`);
             }
             const rows: any[] = await this.prisma.$queryRawUnsafe(
-                `SELECT id, name, description, address, city, max_guests, bedrooms, bathrooms,
-                        night_price, cleaning_fee, currency, min_nights, images
+                // Opción B (dueño, 2026-11-06): la fila entera, para leer metadata.confirmed_fields y la procedencia
+                `SELECT *
                  FROM "${schema}".properties
                  WHERE ${conds.join(' AND ')}
                  ORDER BY sort_order, name`,
@@ -4280,7 +4288,7 @@ export class AIToolExecutorService {
             );
 
             // If dates provided, filter out unavailable properties
-            let properties = rows.map(p => ({
+            let properties = rows.map(p => applyUnconfirmedMarks({
                 id: p.id,
                 name: p.name,
                 description: p.description,
@@ -4290,13 +4298,14 @@ export class AIToolExecutorService {
                 bedrooms: p.bedrooms,
                 bathrooms: p.bathrooms,
                 nightPrice: Number(p.night_price || 0),
-                cleaningFee: Number(p.cleaning_fee || 0),
+                // Opción B: sin tarifa cargada no hay «0»; el 0 del default de columna lo anula unconfirmedCatalogMarks.
+                cleaningFee: p.cleaning_fee === null || p.cleaning_fee === undefined || p.cleaning_fee === '' ? null : Number(p.cleaning_fee),
                 // One status for the stay's amounts (night, cleaning, totals): the night price.
                 priceStatus: catalogPriceStatus(p.night_price),
                 currency: p.currency || 'COP',
                 minNights: p.min_nights,
                 images: Array.isArray(p.images) ? p.images : [],
-            }));
+            }, unconfirmedCatalogMarks('properties', p, PROPERTY_DEFAULT_FIELDS)));
 
             if (checkIn && checkOut && properties.length > 0) {
                 // Validate the range ONCE, before the loop. It is a property of
@@ -4335,7 +4344,7 @@ export class AIToolExecutorService {
                 properties = available;
             }
 
-            return { properties };
+            return { properties, ...unconfirmedNotes(properties) };
         } catch (e: any) {
             this.logger.warn(`[Tool] list_properties failed: ${e.message}`);
             // Never answer a catalogue failure with an empty catalogue: that
@@ -4445,7 +4454,7 @@ export class AIToolExecutorService {
             const p = await this.propertiesService.getById(schema, propertyId);
             if (!p) return { error: 'Property not found' };
 
-            return {
+            const details = applyUnconfirmedMarks({
                 id: p.id,
                 name: p.name,
                 description: p.description,
@@ -4455,7 +4464,8 @@ export class AIToolExecutorService {
                 bedrooms: p.bedrooms,
                 bathrooms: p.bathrooms,
                 nightPrice: Number(p.night_price || 0),
-                cleaningFee: Number(p.cleaning_fee || 0),
+                // Opción B: sin tarifa cargada no hay «0»; el 0 del default de columna lo anula unconfirmedCatalogMarks.
+                cleaningFee: p.cleaning_fee === null || p.cleaning_fee === undefined || p.cleaning_fee === '' ? null : Number(p.cleaning_fee),
                 // One status for the stay's amounts (night, cleaning, totals): the night price.
                 priceStatus: catalogPriceStatus(p.night_price),
                 currency: p.currency || 'COP',
@@ -4465,7 +4475,8 @@ export class AIToolExecutorService {
                 amenities: p.amenities || [],
                 houseRules: p.house_rules,
                 images: Array.isArray(p.images) ? p.images : [],
-            };
+            }, unconfirmedCatalogMarks('properties', p, PROPERTY_DEFAULT_FIELDS));
+            return { ...details, ...unconfirmedNotes([details]) };
         } catch (e: any) {
             this.logger.warn(`[Tool] get_property_details failed: ${e.message}`);
             return this.safeToolFailure('get_property_details', e, 'read');
@@ -4896,8 +4907,8 @@ export class AIToolExecutorService {
                 partySize: args.partySize,
             });
             const departures = args.date ? null : await this.nextDeparturesOf(schemaName, packages);
-            return {
-                packages: packages.map((p: any) => ({
+            const result = {
+                packages: packages.map((p: any) => applyUnconfirmedMarks({
                     id: p.id,
                     name: p.name,
                     description: p.description,
@@ -4913,12 +4924,13 @@ export class AIToolExecutorService {
                     // Seats belong to a departure: only a dated search has them (PACKAGE_SEATS_NOTE says where they are otherwise).
                     ...(p.available_seats !== undefined && p.available_seats !== null ? { seatsLeft: p.available_seats } : {}),
                     ...(departures?.has(p.id) ? { upcomingDepartures: departures.get(p.id) } : {}),
-                })),
+                }, unconfirmedCatalogMarks('tour_packages', p, {}))),
                 // Production 24-oct: a package description («a fictional QA experience») was read over its 4-hour duration.
                 ...(packages.length ? { fieldAuthority: PACKAGE_FIELD_AUTHORITY } : {}),
                 ...(packages.length && !args.date ? { seatsNote: PACKAGE_SEATS_NOTE } : {}),
                 ...(packages.length ? { languagesNote: PACKAGE_LANGUAGES_NOTE } : {}),
             };
+            return { ...result, ...unconfirmedNotes(result.packages) };
         } catch (e: any) {
             // A date that cannot be sold is not a failed search: say which problem it is, so the
             // model asks for another date instead of claiming it cannot search.
@@ -4981,7 +4993,7 @@ export class AIToolExecutorService {
                 resolvedId,
                 new Date().toISOString().split('T')[0],
             );
-            return {
+            const details = applyUnconfirmedMarks({
                 id: pkg.id,
                 name: pkg.name,
                 description: pkg.description,
@@ -5009,7 +5021,8 @@ export class AIToolExecutorService {
                 })),
                 fieldAuthority: PACKAGE_FIELD_AUTHORITY,
                 languagesNote: PACKAGE_LANGUAGES_NOTE,
-            };
+            }, unconfirmedCatalogMarks('tour_packages', pkg, PACKAGE_DEFAULT_FIELDS));
+            return { ...details, ...unconfirmedNotes([details]) };
         } catch (e: any) {
             return this.safeToolFailure('get_package_details', e, 'read');
         }

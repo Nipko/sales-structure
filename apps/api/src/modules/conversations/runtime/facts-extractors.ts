@@ -119,6 +119,7 @@ export function extractVerifiedFacts(executed: readonly ExecutedTool[], at: Date
                         : toolType || 'item';
                 const subject = { type, id: identity.id, ...(entityName(record) ? { name: entityName(record) } : {}) };
                 const explicitStatus = record.priceStatus ?? record.price_status;
+                const templateItem = record.contentStatus === 'seeded' || record.contentStatus === 'example';
                 const addMoney = (key: string, raw: unknown, prefix = '') => {
                     const money = moneyFieldName(key);
                     if (!money || !(typeof raw === 'number' || (typeof raw === 'string' && raw.trim()))) return;
@@ -136,7 +137,8 @@ export function extractVerifiedFacts(executed: readonly ExecutedTool[], at: Date
                     if (child && typeof child === 'object' && !Array.isArray(child) && !entityId(child as Record<string, unknown>)) {
                         for (const [inner, raw] of Object.entries(child as Record<string, unknown>)) addMoney(inner, raw, `${key}.`);
                     }
-                    if (publicRead && ATTRIBUTE_FIELDS.has(key.replace(/_/g, '').toLowerCase())) {
+                    // Opción B (dueño, 2026-11-06): un ítem sembrado o de ejemplo no da atributos verificados (su precio ya es `example`).
+                    if (publicRead && !templateItem && ATTRIBUTE_FIELDS.has(key.replace(/_/g, '').toLowerCase())) {
                         const attribute = attributeValue(child);
                         if (attribute !== null) facts.push(make('attribute', name, { subject, field: key, value: attribute }));
                     }

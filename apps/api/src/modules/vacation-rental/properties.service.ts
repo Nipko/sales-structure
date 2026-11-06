@@ -7,6 +7,7 @@ import {
     Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CONFIRMED_FIELDS_KEY, confirmedFieldsStamp, metadataWithConfirmedFieldsSql } from '../../common/utils/column-defaults.util';
 import { BusinessFactsReader } from '../readiness/business-facts.reader';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -34,6 +35,8 @@ import { enqueueOperationalNotice } from '../operational-notices/operational-not
 
 const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Campos del formulario de alojamientos cuyo valor sin llenar es un default de columna (opción B, dueño, 2026-11-06). */
+const PROPERTY_DEFAULT_FIELDS: Readonly<Record<string, string>> = { cleaningFee: 'cleaning_fee' };
 
 /**
  * Quién creó la reserva. `property_bookings` no guarda un `source` — las
@@ -239,6 +242,8 @@ export class PropertiesService {
             `SELECT COUNT(*)::int as cnt FROM properties WHERE is_active = true`,
         );
         await this.throttle.enforcePlanLimit(tenantId, 'maxProperties', existing?.[0]?.cnt || 0, 'propiedades');
+        // Opción B (dueño, 2026-11-06): un 0 sin llenar es el default de columna; el que trae el formulario queda confirmado.
+        const confirmedFields = confirmedFieldsStamp('properties', data, PROPERTY_DEFAULT_FIELDS);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -254,7 +259,8 @@ export class PropertiesService {
                 data.minNights ?? 1, data.checkInTime ?? '15:00', data.checkOutTime ?? '11:00',
                 JSON.stringify(data.amenities || []), data.houseRules || null,
                 data.checkInInstructions || null, JSON.stringify(data.images || []),
-                JSON.stringify(data.metadata || {}),
+                JSON.stringify(Object.keys(confirmedFields).length
+                    ? { ...(data.metadata || {}), [CONFIRMED_FIELDS_KEY]: confirmedFields } : (data.metadata || {})),
             ],
         );
         return rows?.[0];
@@ -295,6 +301,13 @@ export class PropertiesService {
         }
         if (data.amenities !== undefined) { sets.push(`amenities = $${idx}::jsonb`); params.push(JSON.stringify(data.amenities)); idx++; }
         if (data.images !== undefined) { sets.push(`images = $${idx}::jsonb`); params.push(JSON.stringify(data.images)); idx++; }
+        // Opción B (dueño, 2026-11-06): guardar la tarifa de limpieza la confirma aunque sea el mismo 0 del default de columna.
+        const confirmedFields = confirmedFieldsStamp('properties', data, PROPERTY_DEFAULT_FIELDS);
+        if (Object.keys(confirmedFields).length) {
+            sets.push(`"metadata" = ${metadataWithConfirmedFieldsSql(null, `$${idx}`)}`);
+            params.push(JSON.stringify(confirmedFields));
+            idx++;
+        }
 
         if (sets.length === 0) return this.getById(schemaName, propertyId);
 

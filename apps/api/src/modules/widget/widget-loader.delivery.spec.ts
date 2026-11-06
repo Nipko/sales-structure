@@ -9,6 +9,8 @@ function loader() {
     const handlers: Record<string, (value: any) => void> = {};
     const socket = { on: (event: string, handler: any) => { handlers[event] = handler; }, emit: jest.fn(), io: { on: jest.fn() } };
     const context: any = { window: { __paralllyWidget: { widgetId: 'synthetic-widget' }, io: () => socket }, io: () => socket,
+        // The host page's origin: the loader keys its stored session by it since #128 (35056a1f).
+        location: { origin: 'https://host.example.test' },
         URL, console, document: { readyState: 'loading', addEventListener: jest.fn(), createElement: element, createDocumentFragment: () => element('fragment') } };
     // Expose the generated closure only inside the VM test; execute its actual browser handlers and renderer.
     const script = getLoaderScript('https://api.example.test/api/v1').replace('/* ─── INIT ─── */',
@@ -96,6 +98,7 @@ function mount(widget: Record<string, unknown>, options: { hostSelector?: string
     const body = node('body'); const host = node('div'); const warn = jest.fn();
     const hostSelector = options.hostSelector === undefined ? '#h' : options.hostSelector; // null = the host is not on the page
     const context: any = { window: { __paralllyWidget: { widgetId: 'synthetic-widget', ...widget }, io: () => socket }, io: () => socket, URL,
+        location: { origin: 'https://host.example.test' },
         console: { log: console.log, error: jest.fn(), warn },
         // Resolved at call time on purpose: a test that installs fake timers after mounting still owns the retry.
         setTimeout: (fn: any, ms: number) => setTimeout(fn, ms), clearTimeout: (id: any) => clearTimeout(id),

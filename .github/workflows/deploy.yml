@@ -519,6 +519,9 @@ jobs:
         run: npx prisma generate --schema=apps/api/prisma/schema.prisma
 
       - name: TypeScript check (API)
+        # 2026-11-06: the default heap aborted tsc (exit 134) on #380's deploy; validate already runs with 8 GB.
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: cd apps/api && npx tsc --noEmit
 
       - name: TypeScript check (WhatsApp)

@@ -2,6 +2,7 @@ import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import { existsSync, readFileSync } from 'fs';
 import { createRequire } from 'module';
+import { tmpdir } from 'os';
 import { dirname, resolve } from 'path';
 
 import { FREE_SERVICE_MESSAGES_PER_NUMBER_MONTH } from '../../modules/billing/whatsapp-spend/free-allowance';
@@ -338,18 +339,24 @@ describe('las filas del artefacto se juzgan contra sus propias condiciones', () 
 
 describe('el chequeo de las cifras del canario', () => {
     const checker = nodeRequire(resolve(ROOT, 'apps', 'api', 'scripts', 'check-canary-figures.cjs'));
-    /** What the planner says today, hard-coded so this spec spawns nothing. */
-    const TODAY = { cases: 244, calls: 724, subject: 480, judge: 244, cents: 124 };
+    /**
+     * What the planner said on 2026-09-10 — the figures the dated documents below
+     * carry — hard-coded so the pattern tests spawn nothing. Not today's figures:
+     * R7 took the knowledge cases out of the eval pack (ADR 0013) and the planner
+     * moved to 216 cases. Today's figures are asked of the planner itself, below.
+     */
+    const SEPTEMBER = { cases: 244, calls: 724, subject: 480, judge: 244, cents: 124 };
     /** The same run after somebody changes the planner. */
     const MOVED = { cases: 250, calls: 742, subject: 492, judge: 250, cents: 127 };
 
     /**
-     * The three that were invisible. Each states today's figures in prose — with
-     * slashes, with "y" instead of a comma, with a line break in the middle —
+     * The three that were invisible. Each states the canary's figures in prose —
+     * with slashes, with "y" instead of a comma, with a line break in the middle —
      * and none of them matched any of the six shapes the checker knew, so none
-     * was checked in either direction.
+     * was checked in either direction. All three are dated and HISTORICAL now;
+     * they stay here as the corpus of prose shapes the checker must recognise.
      */
-    const QUOTING_CURRENT = [
+    const QUOTING_IN_PROSE = [
         'docs/audits/2026-09-10/whatsapp-runtime-batch-report.md',
         'docs/audits/2026-09-10/whatsapp-runtime-post-closure-independent-review.md',
         'docs/handoffs/2026-09-10/claude-whatsapp-runtime-true-closure.md',
@@ -357,24 +364,26 @@ describe('el chequeo de las cifras del canario', () => {
 
     const textOf = (relative: string): string => read(ROOT, relative);
 
-    it.each(QUOTING_CURRENT)('%s: sus cifras se encuentran y coinciden hoy', relative => {
-        const { matched, stale } = checker.inspect(textOf(relative), TODAY);
+    it.each(QUOTING_IN_PROSE)('%s: sus cifras se encuentran y coinciden con las del 2026-09-10', relative => {
+        const { matched, stale } = checker.inspect(textOf(relative), SEPTEMBER);
         expect(matched).toBeGreaterThan(0);
         expect(stale).toEqual([]);
     });
 
-    it.each(QUOTING_CURRENT)('%s: queda en rojo cuando el planificador cambia', relative => {
+    it.each(QUOTING_IN_PROSE)('%s: queda en rojo cuando el planificador cambia', relative => {
         const { stale } = checker.inspect(textOf(relative), MOVED);
         expect(stale.length).toBeGreaterThan(0);
     });
 
     it('una cita histórica exenta no se reporta ni se reescribe', () => {
+        // The sentence `QUOTED_SUPERSEDED` was built for. The document is
+        // HISTORICAL as a whole now, so the list no longer names it; the
+        // mechanism is still exercised against the real paragraph.
         const relative = 'docs/audits/2026-09-10/certification-canary.md';
-        const quoted: string[] = checker.QUOTED_SUPERSEDED[relative];
-        expect(quoted.length).toBeGreaterThan(0);
+        const quoted = ['Este documento decía **408 llamadas y US$0,76**'];
         const text = textOf(relative);
         for (const sentence of quoted) expect(text).toContain(sentence);
-        const exempt = checker.inspect(text, TODAY, quoted);
+        const exempt = checker.inspect(text, SEPTEMBER, quoted);
         expect(exempt.quotedHits).toBeGreaterThan(0);
         expect(exempt.stale).toEqual([]);
         // `--fix` runs through the same callback: the sentence that records the
@@ -383,7 +392,7 @@ describe('el chequeo de las cifras del canario', () => {
         for (const sentence of quoted) expect(exempt.fixed).toContain(sentence);
         // And without the exemption the very same sentence IS a divergence, so
         // the exemption is doing work rather than decorating a passing check.
-        expect(checker.inspect(text, TODAY).stale.length).toBeGreaterThan(0);
+        expect(checker.inspect(text, SEPTEMBER).stale.length).toBeGreaterThan(0);
     });
 
     it('el round-trip de cada patrón no pierde texto en ningún documento del repositorio', () => {
@@ -399,7 +408,7 @@ describe('el chequeo de las cifras del canario', () => {
         const files: string[] = checker.markdownFiles(resolve(ROOT, 'docs'));
         expect(files.length).toBeGreaterThan(0);
         for (const relative of files) {
-            expect(() => checker.inspect(textOf(relative), TODAY)).not.toThrow();
+            expect(() => checker.inspect(textOf(relative), SEPTEMBER)).not.toThrow();
             expect(() => checker.inspect(textOf(relative), MOVED)).not.toThrow();
         }
     });
@@ -415,9 +424,11 @@ describe('el chequeo de las cifras del canario', () => {
 
     it('las cifras retiradas siguen retiradas', () => {
         // A ledger entry the planner produces again would make the net demand
-        // that a CORRECT document explain itself.
-        const rendering = `${TODAY.cases} casos, ${TODAY.calls} llamadas, `
-            + `techo ${checker.usdEs(TODAY.cents)} / ${checker.usdEn(TODAY.cents)}`;
+        // that a CORRECT document explain itself. Asked of the planner, not of
+        // a hard-coded copy of it.
+        const today = checker.plannedFigures();
+        const rendering = `${today.cases} casos, ${today.calls} llamadas, `
+            + `techo ${checker.usdEs(today.cents)} / ${checker.usdEn(today.cents)}`;
         for (const entry of checker.RETIRED) expect(entry.shape.test(rendering)).toBe(false);
     });
 
@@ -466,18 +477,30 @@ describe('el chequeo de las cifras del canario', () => {
          * `US$0,76` printed "agrees with the planner (0 figure(s))" and `--check`
          * exited 0. Reproduced with a probe before this was written.
          *
-         * The probe is written into the tree and removed, because the checker
-         * resolves its own root: a fixture directory it never scans would prove
-         * nothing about the sweep CI runs.
+         * The probe is planted in a COPY of `docs/` under the system temp
+         * directory, and the checker is pointed at it with
+         * `CANARY_FIGURES_DOCS_ROOT`. It used to be written into the working
+         * tree, and the `--fix` case below ran against the real documents: the
+         * day they went stale, running this spec rewrote
+         * `certification-canary.md` and `release-closure-report.md` in the
+         * developer's checkout. The copy is the whole corpus, so the sweep is
+         * still the one CI runs.
          */
-        const PROBE_DIR = resolve(ROOT, 'docs', 'audits', '_canary_probe');
+        const SANDBOX = fs.mkdtempSync(resolve(tmpdir(), 'canary-figures-'));
+        fs.cpSync(resolve(ROOT, 'docs'), resolve(SANDBOX, 'docs'), { recursive: true });
+        const PROBE_DIR = resolve(SANDBOX, 'docs', 'audits', '_canary_probe');
         const PROBE = resolve(PROBE_DIR, 'probe.md');
         const CHECKER = resolve(ROOT, 'apps', 'api', 'scripts', 'check-canary-figures.cjs');
+        const ENV = { ...process.env, CANARY_FIGURES_DOCS_ROOT: SANDBOX };
+        /** Today's figures, from the planner: the probes must agree with it, not with a copy of it. */
+        const TODAY = checker.plannedFigures();
+
+        afterAll(() => { fs.rmSync(SANDBOX, { recursive: true, force: true }); });
 
         const check = (): { status: number; out: string } => {
             try {
                 const out = execFileSync(process.execPath, [CHECKER, '--check'],
-                    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+                    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: ENV });
                 return { status: 0, out };
             } catch (error: any) {
                 return { status: error.status ?? 1, out: String(error.stdout || '') + String(error.stderr || '') };
@@ -492,6 +515,9 @@ describe('el chequeo de las cifras del canario', () => {
             const { status, out } = check();
             expect({ status, named: out.includes('_canary_probe') }).toEqual({ status: 1, named: true });
             expect(out).toContain('retired');
+            // Named although it exists only in the copy: the checker swept the
+            // sandbox, and the repository never saw the probe.
+            expect(existsSync(resolve(ROOT, 'docs', 'audits', '_canary_probe'))).toBe(false);
         });
 
         /**
@@ -511,7 +537,7 @@ describe('el chequeo de las cifras del canario', () => {
         const fix = (): { status: number; out: string } => {
             try {
                 const out = execFileSync(process.execPath, [CHECKER, '--fix'],
-                    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+                    { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: ENV });
                 return { status: 0, out };
             } catch (error: any) {
                 return { status: error.status ?? 1, out: String(error.stdout || '') + String(error.stderr || '') };
@@ -540,7 +566,8 @@ describe('el chequeo de las cifras del canario', () => {
             // called it agreed.
             fs.mkdirSync(PROBE_DIR, { recursive: true });
             fs.writeFileSync(PROBE,
-                'Corrida canaria\n\n244 casos, 724 llamadas, techo US$1,24.\n\n'
+                `Corrida canaria\n\n${TODAY.cases} casos, ${TODAY.calls} llamadas, `
+                + `techo ${checker.usdEs(TODAY.cents)}.\n\n`
                 + 'Antes costaba US$0,76.\n');
             expect(check().status).toBe(1);
         });
@@ -559,7 +586,7 @@ describe('el chequeo de las cifras del canario', () => {
             // checker actually reads.
             fs.mkdirSync(PROBE_DIR, { recursive: true });
             fs.writeFileSync(PROBE,
-                'Corrida canaria\n\n244 casos, 724 llamadas.\n');
+                `Corrida canaria\n\n${TODAY.cases} casos, ${TODAY.calls} llamadas.\n`);
             expect(check().status).toBe(0);
         });
 

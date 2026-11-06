@@ -50,7 +50,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         await ensureOperationalNoticeOutbox(prisma, schema);
     }, 30000);
     beforeEach(async () => {
-        await q(`TRUNCATE ${[...tables, 'vehicles', 'vehicle_inquiries', 'test_drives', 'operational_notice_outbox'].map(name => `"${name}"`).join(',')} CASCADE`);
+        await q(`TRUNCATE ${[...tables, 'vehicles', 'test_drives', 'operational_notice_outbox'].map(name => `"${name}"`).join(',')} CASCADE`);
         await client.$executeRawUnsafe('UPDATE public.users SET is_active=true WHERE tenant_id=$1::uuid', tenantId);
         await q("INSERT INTO contacts(id,external_id,channel_type,name) VALUES($1::uuid,'synthetic','web_widget','Synthetic')", [contactId]);
         await q("INSERT INTO persona_config(config_yaml,config_json,is_active) VALUES('{}','{\"hours\":{\"timezone\":\"America/Bogota\"}}',true)");

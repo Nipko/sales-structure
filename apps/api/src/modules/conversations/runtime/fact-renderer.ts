@@ -548,6 +548,8 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
         .map(fact => JSON.stringify({ amount: fact.value, ...(fact.currency ? { currency: fact.currency } : {}) }))].join('\n');
     // A fee read as 0 (`cleaningFee: 0`) backs «no hay tarifa de limpieza (0 COP)» in a sentence about that fee: production QA
     // 27-oct, «¿el precio de la noche incluye la limpieza?» got «Prefiero no darle una cifra que no tengo confirmada» in es/pt.
+    // Opción B (dueño, 2026-11-06): only a 0 the business confirmed is read; the 0 the column puts by itself reaches the
+    // model as `cleaningFee: null` + `unconfirmedFields` (catalog-content-status.ts), so it is no fact and backs nothing.
     const zeroFeeRead = live.some(fact => fact.kind === 'money' && fact.value === 0 && FEE_FIELD.test(fact.field));
     const zeroFeeSentence = (sentence: string) => {
         if (!zeroFeeRead || !FEE_SENTENCE.test(norm(sentence))) return false;

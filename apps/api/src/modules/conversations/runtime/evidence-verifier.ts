@@ -165,6 +165,9 @@ export function authoritativeNumbers(input: {
         // E2p (store warranty, 4 of 5 probes): «72 días» is only in the text of the FAQ the turn read. A FAQ read is written by
         // the business, so its answer's figures count; one marked as example or seeded does not.
         const status = record.contentStatus ?? record.content_status;
+        // Opción B (dueño, 2026-11-06): un ítem sembrado o de ejemplo (plantilla del alta, no el negocio) no respalda ninguna
+        // de sus cifras; un campo con el default de columna sin confirmar ya llega null (catalog-content-status.ts).
+        if ((status === 'seeded' || status === 'example') && typeof record.question !== 'string') return;
         if (typeof record.question === 'string' && typeof record.answer === 'string'
             && !(typeof status === 'string' && UNCONFIRMED_PRICE.has(status))) {
             for (const n of sentenceNumbers(record.answer)) out.add(n);
@@ -199,6 +202,8 @@ const AVAILABILITY = /\b(cupos?|plazas?|lugares|disponib\w*|unidades|stock|exist
 /**
  * D1q (E2o, viajes C08): una frase de tamaño de grupo («mínimo 1 y máximo 10 personas», «para 2 huéspedes») dice cifras
  * chicas que la ficha trae (minPartySize, maxCapacity, maxGuests): también se comprueban, igual que los cupos.
+ * Opción B (dueño, 2026-11-06): el 1 y el 10 que la base pone sin que el negocio los llene no respaldan la frase: la
+ * lectura los entrega null (unconfirmedFields) y no llegan a `authoritativeNumbers`.
  */
 const GROUP_SIZE = /\b(personas?|pax|viajeros?|hu[eé]spedes|pasajeros?|participantes|grupos?|capacidad|m[ií]nimo|m[aá]ximo|people|persons?|guests?|travell?ers?|participants|group|capacity|minimum|maximum|pessoas|viajantes|h[oó]spedes)\b/i;
 

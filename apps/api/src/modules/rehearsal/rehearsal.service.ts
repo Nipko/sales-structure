@@ -34,6 +34,11 @@ export const REHEARSAL_COMPLETED_EVENT = 'rehearsal.completed';
 export const MAX_RUNS_PER_DAY = 6;
 /** Reloj de una ejecución (aceptación R7 #1: 40 casos en < 10 min). */
 export const RUN_DEADLINE_MS = 10 * 60_000;
+/**
+ * Casos en curso a la vez. E2o (2026-11-05): de uno en uno, 40 casos a 16 s cada uno pasan de 10 min en hora pico y
+ * las 21 ejecuciones se cortaron; con 3 a la vez el mismo banco cabe con holgura y el requisito R7 no cambia.
+ */
+export const CASE_CONCURRENCY = 3;
 /** Una ejecución `running` sin terminar pasado este tiempo murió con su proceso (despliegue, reinicio). */
 export const STALE_RUN_MS = 20 * 60_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -184,8 +189,9 @@ export class RehearsalService {
     }
 
     /**
-     * Corre los casos en orden, uno por uno (el tope de 40 y el reloj de 10 min acotan costo y tiempo). Un caso que
-     * falla por cuota detiene la ejecución; cualquier otro error queda en el caso como `error` y se sigue.
+     * Corre los casos en el orden del banco, hasta CASE_CONCURRENCY a la vez (el tope de 40 y el reloj de 10 min acotan
+     * costo y tiempo; el reloj se mira antes de empezar cada caso). Un caso que falla por cuota detiene la ejecución: no
+     * empieza ninguno más, solo terminan los que ya estaban en curso. Cualquier otro error queda en el caso y se sigue.
      */
     async execute(tenantId: string, schema: string, runId: string, agentId: string, bank: RehearsalBank): Promise<void> {
         const started = this.now();
@@ -193,22 +199,27 @@ export class RehearsalService {
         let status: RehearsalRunStatus = 'completed';
         let error: string | null = null;
         try {
-            snapshot = await this.agentTest.captureSnapshot(tenantId, agentId);
-            for (const c of bank.cases) {
-                if (this.now() - started > RUN_DEADLINE_MS) { status = 'stopped'; error = 'rehearsal_deadline'; break; }
-                const run = await this.runCase(tenantId, agentId, c, snapshot);
-                let grade = gradeCase(c, run.obs);
-                let judgeTokens = 0;
-                let judgeCostUsd = 0;
-                let judged = false;
-                if (grade.needsJudge && this.judge?.available) {
-                    const call = await this.judge.judge(tenantId, c, run.obs.replies, this.agentTest.snapshotSourceAuthority(snapshot));
-                    judged = true;
-                    if (call) { grade = gradeCase(c, run.obs, call.verdict); judgeTokens = call.tokens; judgeCostUsd = call.costUsd; }
+            const frozen = snapshot = await this.agentTest.captureSnapshot(tenantId, agentId);
+            let next = 0;
+            const worker = async (): Promise<void> => {
+                while (status === 'completed' && next < bank.cases.length) {
+                    if (this.now() - started > RUN_DEADLINE_MS) { status = 'stopped'; error = 'rehearsal_deadline'; return; }
+                    const c = bank.cases[next++];
+                    const run = await this.runCase(tenantId, agentId, c, frozen);
+                    let grade = gradeCase(c, run.obs);
+                    let judgeTokens = 0;
+                    let judgeCostUsd = 0;
+                    let judged = false;
+                    if (grade.needsJudge && this.judge?.available) {
+                        const call = await this.judge.judge(tenantId, c, run.obs.replies, this.agentTest.snapshotSourceAuthority(frozen));
+                        judged = true;
+                        if (call) { grade = gradeCase(c, run.obs, call.verdict); judgeTokens = call.tokens; judgeCostUsd = call.costUsd; }
+                    }
+                    await this.storeResult(schema, runId, c, run, grade, judged, judgeTokens, judgeCostUsd);
+                    if (run.obs.error === 'ai_message_quota_exceeded') { status = 'stopped'; error = 'ai_message_quota_exceeded'; return; }
                 }
-                await this.storeResult(schema, runId, c, run, grade, judged, judgeTokens, judgeCostUsd);
-                if (run.obs.error === 'ai_message_quota_exceeded') { status = 'stopped'; error = 'ai_message_quota_exceeded'; break; }
-            }
+            };
+            await Promise.all(Array.from({ length: Math.min(CASE_CONCURRENCY, bank.cases.length) }, worker));
         } catch (e) {
             status = 'failed';
             error = String((e as Error)?.message ?? e).slice(0, 500);

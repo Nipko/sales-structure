@@ -20,6 +20,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0014](0014-calibracion-del-instrumento-del-ensayo-e11.md) | Calibración del instrumento del ensayo: el requisito que responde la pregunta, marcadores con guardas, juez con los hechos y recalificación sin agente (E1.1) | aprobada | 2026-10-31 |
 | [0015](0015-juez-del-ensayo-errores-graves-e11b.md) | Juez del ensayo: solo errores graves, hechos completos y `deepseek-chat` (E1.1b) | aprobada a prueba | 2026-10-31 |
 | [0016](0016-fase-d-contrato-sellado-y-verificacion.md) | Fase D: el turno sellado ve el contrato de conocimiento y la respuesta se verifica con evidencia antes de enviarse | aprobada | 2026-10-31 |
+| [0018](0018-decisiones-pendientes-del-dueno-nov-2026.md) | Decisiones pendientes del dueño: valores automáticos (opción B), catálogo sembrado, puerta de salida, ensayo concurrente y limpieza K3 | aprobada | 2026-11-05 |
 | [0017](0017-limpieza-k3-segunda-pasada.md) | Limpieza K3, segunda pasada: código muerto, textos huérfanos y documentos sin lector | aprobada | 2026-11-04 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.

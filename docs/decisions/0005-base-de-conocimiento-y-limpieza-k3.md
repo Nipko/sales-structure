@@ -47,7 +47,7 @@ Reglas: entra solo lo aprobado; lo que se puede contar se genera; una fuente por
 
 ## Consecuencias
 
-- Verificación: `node docs/audits/2026-09-09/verify-artifacts.cjs` y `node apps/api/scripts/check-canary-figures.cjs --check` pasan; `tsc --noEmit` de api y dashboard limpio; specs de la política de objetos activos, de workflows y de Prisma en verde. Los artefactos de cierre se regeneraron en el último commit.
+- Verificación: `npm run verify:artifacts` y `node apps/api/scripts/check-canary-figures.cjs --check` pasan; `tsc --noEmit` de api y dashboard limpio; specs de la política de objetos activos, de workflows y de Prisma en verde. Los artefactos de cierre se regeneraron en el último commit.
 - Los agentes leen un solo archivo de contexto. Lo que antes decía `CLAUDE.md` de «Counters» y el índice de documentos vive ahora en `AGENTS.md` y `docs/README.md`.
 - Quien busque un documento borrado lo encuentra con `git log --diff-filter=D --name-only -- docs/` y lo recupera con `git show <commit>^:<ruta>`.
 
@@ -59,7 +59,7 @@ Reglas: entra solo lo aprobado; lo que se puede contar se genera; una fuente por
   - SMS (`sms_package_orders`, `sms_credit_ledger`, `sms_credit_balances`) junto con los módulos `sms-credits/`, `sms-notifications/`, `sms-checkout.controller.ts`, el adaptador y el flag: decisión contable del dueño.
   - Tablas duplicadas dentro de `tenant-schema.sql` (`courses`, `customer_memory_erasure`, `eval_runs`, `operational_notice_outbox`): revisar si son pasos intencionales.
 - **Reubicar generados e insumos** (`docs/audits/2026-09-09..12`, `handoffs/2026-09-10`, tarifas de `research/2026-09-10`, `appointments-manual.md`, `vertical-competitive-*`) a `docs/generated/`, `apps/api/data/` y `apps/landing/data/`: cambia rutas en generadores, `verify-artifacts`, `check-canary-figures`, `Dockerfile.landing`, la landing y specs. PR propio.
-  - *Hecho (K3c, 2026-11-05)* para `audits/`, `handoffs/2026-09-10` y `research/2026-09-10`: generados en `docs/generated/`, generadores y verificador en `apps/api/scripts/artifacts/`, tarifas de Meta en `apps/api/data/whatsapp-rates/`, el resto en `docs/archive/2026-09-programa-octubre/`. Queda un reenvío en `docs/audits/2026-09-09/verify-artifacts.cjs` mientras `deploy.yml` llame esa ruta. `appointments-manual.md` y `vertical-competitive-*` siguen en `docs/`.
+  - *Hecho (K3c, 2026-11-05)* para `audits/`, `handoffs/2026-09-10` y `research/2026-09-10`: generados en `docs/generated/`, generadores y verificador en `apps/api/scripts/artifacts/`, tarifas de Meta en `apps/api/data/whatsapp-rates/`, el resto en `docs/archive/2026-09-programa-octubre/`. El reenvío `docs/audits/2026-09-09/verify-artifacts.cjs` se borró el 2026-11-06, cuando `deploy.yml` ya llamaba `npm run verify:artifacts`. `appointments-manual.md` y `vertical-competitive-*` siguen en `docs/`.
 - **Manual de usuario vs. KB de Assist:** decisión del dueño (la KB es la que llega al producto).
 - **Convertir `decisions/previas/` en ADR numerados** (retiro de Mercado Pago, Email, ledger, registro de verticales, decisiones de onboarding) y redactar el ADR de retiro de SMS.
 - **Diccionario de datos generado** desde `schema.prisma` + `tenant-schema.sql` con `--check` en `verify-artifacts` (reemplaza al borrado).

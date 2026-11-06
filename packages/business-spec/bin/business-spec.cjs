@@ -4,7 +4,7 @@
  *
  *   business-spec check                      valida YAML, JSON Schema, IDs, referencias, predicados, paridad
  *                                            ID ↔ evaluador, subtipos canónicos, ui_target y docs generados
- *   business-spec --check                    igual (así lo llama docs/audits/2026-09-09/verify-artifacts.cjs)
+ *   business-spec --check                    igual (así lo llama apps/api/scripts/artifacts/verify-artifacts.cjs)
  *   business-spec docs --write               regenera docs/domain/business-requirements.md
  *   business-spec compile --out dist/spec.json
  *   business-spec report --snapshot f.json [--now ISO] [--format md|json]

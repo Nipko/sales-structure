@@ -189,6 +189,21 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(r.reply).toBe('El precio es 250.000. No tengo ese dato confirmado.');
     });
 
+    it('E2p: una FAQ de un tipo de producto respalda el dato del producto concreto de ese tipo, no el de otro nombrado', () => {
+        // E2p probe (store): «¿Audífono QA Aurora tiene garantía?» read the FAQ «plazo de garantía QA del audífono de prueba»
+        // (72 días) and the verifier still flagged «El Audífono QA Aurora tiene garantía de 72 días»: the FAQ names the type.
+        const system = evidenceVerifierRequest({ customerMessage: '¿Audífono QA Aurora tiene garantía?', reply: 'x', contract: contract(), evidence: [] }).systemPrompt;
+        expect(system).toMatch(/FAQ[^\n]*tipo de producto[^\n]*Audífono QA Aurora/);
+        expect(system).toMatch(/«Faro Azul» no respalda «Faro Rojo»/);
+
+        const faq = { question: '¿Cuál es el plazo de garantía QA del audífono de prueba?', answer: 'El audífono tiene garantía de 72 días calendario desde la entrega.' };
+        const claim = [{ sentence: 'El Audífono QA Aurora tiene garantía de 72 días calendario desde la entrega.', kind: 'claim' as const, requirementId: null }];
+        const read = (f: object) => authoritativeNumbers({ reads: [{ result: { faqs: [f] } }] });
+        expect(dropBackedViolations(claim, read(faq), { reply: claim[0].sentence }).dropped).toHaveLength(1);
+        expect(dropBackedViolations(claim, read({ ...faq, contentStatus: 'seeded' }), { reply: claim[0].sentence }).kept).toHaveLength(1);
+        expect(dropBackedViolations([{ ...claim[0], sentence: 'La garantía es de 90 días.' }], read(faq), { reply: 'La garantía es de 90 días.' }).kept).toHaveLength(1);
+    });
+
     it('D1m: una lectura «available: false» con motivo respalda «no hay salida ese día»; un 0 o false suelto no', () => {
         const reply = 'El paquete Spark QA Tour no tiene disponibilidad para el sábado 7 de noviembre de 2026, ya que no hay salida programada para esa fecha. ¿Le muestro otras fechas?';
         const v = [{ sentence: 'no hay salida programada para esa fecha', kind: 'denial' as const, requirementId: 'OBJ.TOUR_BOOKING.AVAILABILITY_SOURCE' }];

@@ -52,6 +52,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- AFIRMAN como hecho algo de un tema que no consta (un horario, precio, plazo, política, disponibilidad, medio de pago, cargo, servicio o condición) y que no está respaldado por facts ni por evidence; o',
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
+    'Una pregunta frecuente (FAQ) o un artículo de la evidencia que habla de un tipo de producto o servicio sin nombrar uno concreto («el audífono», «el audífono QA de prueba», «los tours») respalda decir ese dato del producto concreto de ese tipo por el que pregunta el cliente («Audífono QA Aurora»). No lo respalda si nombra otro producto distinto («Faro Azul» no respalda «Faro Rojo»).',
     'Un 0 o false en la evidencia NO respalda una negación: suele ser el valor por defecto del campo, no un «no» del negocio. «Sin cargo por limpieza» con cleaningFee 0 es una violación.',
     'Excepción: una lectura de este turno que responde «available»: false con un motivo de falta («reason»: no_departure_on_date, not_enough_seats, party_size_too_small o party_size_too_large) SÍ respalda decir que no hay salida, cupo o disponibilidad en esa fecha. «party_size_required» NO es un «no»: solo falta saber cuántos viajan.',
     'NO marques: decir que algo no consta, no está registrado o está por confirmar; ofrecer averiguarlo o pasar con una persona; preguntas al cliente; descripciones generales de lo que el agente puede ayudar; datos respaldados por facts o evidence; cortesías.',
@@ -161,6 +162,13 @@ export function authoritativeNumbers(input: {
         if (typeof value !== 'object') return;
         const record = value as Record<string, unknown>;
         const unconfirmedPrice = typeof record.priceStatus === 'string' && UNCONFIRMED_PRICE.has(record.priceStatus);
+        // E2p (store warranty, 4 of 5 probes): «72 días» is only in the text of the FAQ the turn read. A FAQ read is written by
+        // the business, so its answer's figures count; one marked as example or seeded does not.
+        const status = record.contentStatus ?? record.content_status;
+        if (typeof record.question === 'string' && typeof record.answer === 'string'
+            && !(typeof status === 'string' && UNCONFIRMED_PRICE.has(status))) {
+            for (const n of sentenceNumbers(record.answer)) out.add(n);
+        }
         for (const [key, v] of Object.entries(record)) {
             if (unconfirmedPrice && /price/i.test(key)) continue;
             walk(v, depth + 1);

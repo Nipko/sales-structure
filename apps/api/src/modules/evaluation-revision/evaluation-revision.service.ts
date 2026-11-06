@@ -24,37 +24,50 @@ export class EvaluationRevisionService {
     constructor(private readonly prisma: PrismaService, private readonly router: LLMRouterService) {}
 
     /**
-     * Freshness checks for one tenant, coalesced. Every model call of an
+     * Freshness checks for one tenant (ADR 0021). Every model call of an
      * evaluation checks the revision before and after (`dataSourceAuthority`),
-     * and each check hashes every dependency table; with several cases of one
-     * tenant in flight those hashes piled up on PostgreSQL until the tools
-     * themselves timed out (E2r). A caller never joins a capture that started
-     * before it arrived, since that one could predate a write the caller must
-     * see; it joins the NEXT capture, which starts after the running one ends.
-     * So at most one capture runs and one waits per tenant, and every caller
-     * still gets a state read after its own call.
+     * and one check hashes every dependency table of the tenant: about 0.8 s of
+     * PostgreSQL CPU and ~250 round trips. With several cases of one tenant in
+     * flight those checks saturated the database and the catalogue tools timed
+     * out (E2r, E2s).
+     *
+     * A check may use a capture that STARTED at most `FRESHNESS_WINDOW_MS`
+     * before the check was asked for, running or finished; otherwise it waits
+     * for the next capture, which starts after the running one ends. A tenant
+     * edit during an evaluation is therefore caught within that window, by the
+     * next check after it, instead of by the very next one. A failed capture is
+     * never reused.
      */
-    private readonly freshness = new Map<string, { running?: Promise<EvaluationRevisionManifest>; next?: Promise<EvaluationRevisionManifest> }>();
+    static readonly FRESHNESS_WINDOW_MS = 2_000;
+    private readonly freshness = new Map<string, {
+        running?: { startedAt: number; result: Promise<EvaluationRevisionManifest> };
+        last?: { startedAt: number; result: Promise<EvaluationRevisionManifest> };
+        next?: Promise<EvaluationRevisionManifest>;
+    }>();
+
+    protected now(): number { return Date.now(); }
 
     private captureFresh(tenantId: string): Promise<EvaluationRevisionManifest> {
-        const slot = this.freshness.get(tenantId) ?? {};
-        this.freshness.set(tenantId, slot);
+        const askedAt = this.now();
+        const recent = (startedAt: number) => askedAt - startedAt <= EvaluationRevisionService.FRESHNESS_WINDOW_MS;
+        let slot = this.freshness.get(tenantId);
+        if (!slot) { slot = {}; this.freshness.set(tenantId, slot); }
+        const own = slot;
         const start = (): Promise<EvaluationRevisionManifest> => {
-            const run = this.capture(tenantId);
-            slot.running = run;
-            const done = () => {
-                if (slot.running === run) slot.running = undefined;
-                if (!slot.running && !slot.next) this.freshness.delete(tenantId);
-            };
-            run.then(done, done);
-            return run;
+            const entry = { startedAt: this.now(), result: this.capture(tenantId) };
+            own.running = entry;
+            entry.result.then(() => { own.last = entry; }, () => undefined)
+                .finally(() => { if (own.running === entry) own.running = undefined; });
+            return entry.result;
         };
-        if (!slot.running) return start();
-        if (!slot.next) {
-            slot.next = slot.running.then(() => undefined, () => undefined)
-                .then(() => { slot.next = undefined; return start(); });
+        if (own.running && recent(own.running.startedAt)) return own.running.result;
+        if (!own.running && own.last && recent(own.last.startedAt)) return own.last.result;
+        if (!own.running) return start();
+        if (!own.next) {
+            own.next = own.running.result.then(() => undefined, () => undefined)
+                .then(() => { own.next = undefined; return start(); });
         }
-        return slot.next;
+        return own.next;
     }
 
     captureStructuredKnowledge(tenantId: string) {

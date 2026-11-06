@@ -582,6 +582,8 @@ jobs:
           NEXT_PUBLIC_API_URL: http://127.0.0.1:3999/api/v1
         run: |
           npm run build --workspace=@parallext/shared
+          # The compiled API requires @parallext/business-spec/dist (readiness).
+          npm run build --workspace=@parallext/business-spec
           npm run build --workspace=@parallext/api
           npm run build --workspace=@parallext/whatsapp
           npm run build --workspace=@parallext/dashboard

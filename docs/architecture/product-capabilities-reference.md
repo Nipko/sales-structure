@@ -332,7 +332,7 @@ una decisión de seguridad o de alcance de la app compañera.
 
 Al cambiar navegación, roles, planes, industrias o tipos de negocio se deben revisar conjuntamente:
 
-1. Este documento y `docs/domain/user-manual.md`.
+1. Este documento.
 2. `docs/domain/mobile-user-manual.md` si cambia la superficie móvil.
 3. `docs/architecture/api-reference.md` y `docs/architecture/modules-reference.md` si cambia API o inventario.
 4. La base runtime del asistente según `docs/architecture/platform-assistant-knowledge.md`.

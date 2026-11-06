@@ -92,8 +92,8 @@ const usdEs = cents => `US$${(cents / 100).toFixed(2).replace('.', ',')}`;
  * only answers "may a script rewrite this sentence, or does a person have to?".
  */
 const ASSERTING = [
-    'docs/audits/2026-09-10/certification-canary.md',
-    'docs/audits/2026-09-10/release-closure-report.md',
+    'docs/archive/2026-09-programa-octubre/certification-canary.md',
+    'docs/archive/2026-09-programa-octubre/release-closure-report.md',
 ];
 
 /**
@@ -104,11 +104,11 @@ const ASSERTING = [
  * into a blanket exemption.
  */
 const HISTORICAL = {
-    'docs/audits/2026-09-10/codex-certification-runner-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-certification-runner-review.md':
         'the independent review that refuted the 408/US$0,76 ceiling',
-    'docs/audits/2026-09-10/codex-release-readiness-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-release-readiness-review.md':
         'the readiness review that refused 408/US$0,76 as a validated ceiling',
-    'docs/handoffs/2026-09-10/claude-october-release-parallel-execution.md':
+    'docs/archive/2026-09-programa-octubre/claude-october-release-parallel-execution.md':
         'the handoff that names US$0,76 as the figure NOT to treat as an authorisation',
 };
 
@@ -128,7 +128,7 @@ const HISTORICAL = {
  * a blanket list does not have.
  */
 const QUOTED_SUPERSEDED = {
-    'docs/audits/2026-09-10/certification-canary.md': [
+    'docs/archive/2026-09-programa-octubre/certification-canary.md': [
         'Este documento decía **408 llamadas y US$0,76**',
     ],
 };

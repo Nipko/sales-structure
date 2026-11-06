@@ -38,7 +38,7 @@ const inventory = require(SCRIPT);
  * because importing the generator would run it and write the artefact.
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const october = require(resolve(ROOT, 'docs', 'audits', '2026-09-09', 'meta-october-rows.cjs'));
+const october = require(resolve(ROOT, 'apps', 'api', 'scripts', 'artifacts', 'meta-october-rows.cjs'));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const apiModule = (name: string) => require(resolve(API_SRC, name));
 // eslint-disable-next-line @typescript-eslint/no-require-imports

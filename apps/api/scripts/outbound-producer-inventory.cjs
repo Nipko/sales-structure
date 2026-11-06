@@ -60,7 +60,7 @@ const path = require('path');
 const API_SRC = path.resolve(__dirname, '..', 'src');
 const WA_SRC = path.resolve(__dirname, '..', '..', 'whatsapp', 'src');
 const REPO = path.resolve(__dirname, '..', '..', '..');
-const DEFAULT_OUT = path.join(REPO, 'docs', 'audits', '2026-09-10', 'outbound-producer-inventory.md');
+const DEFAULT_OUT = path.join(REPO, 'docs', 'generated', 'outbound-producer-inventory.md');
 
 // ---------------------------------------------------------------------------
 // READING THE TREE WITHOUT EDITING IT

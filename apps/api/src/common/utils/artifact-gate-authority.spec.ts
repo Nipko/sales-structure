@@ -18,7 +18,7 @@ import { resolve } from 'path';
  * audited source turns the verifier red.
  */
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
-const VERIFIER = resolve(ROOT, 'docs', 'audits', '2026-09-09', 'verify-artifacts.cjs');
+const VERIFIER = resolve(ROOT, 'apps', 'api', 'scripts', 'artifacts', 'verify-artifacts.cjs');
 
 const run = (args: string[] = []): { status: number; out: string } => {
     try {
@@ -35,17 +35,17 @@ describe('the artefact gate covers the tools programme', () => {
     const { GENERATORS } = require(VERIFIER);
 
     it('carries the tool-profile audit in its list', () => {
-        expect(GENERATORS).toContain('2026-09-11/generate-tool-profile-audit.cjs');
+        expect(GENERATORS).toContain('apps/api/scripts/artifacts/generate-tool-profile-audit.cjs');
         // And the three it always had, so adding one did not replace them.
-        expect(GENERATORS).toContain('2026-09-09/generate-closure-report.cjs');
-        expect(GENERATORS).toContain('2026-09-09/generate-closure-state.cjs');
-        expect(GENERATORS).toContain('2026-09-09/generate-certification-manifest.cjs');
+        expect(GENERATORS).toContain('apps/api/scripts/artifacts/generate-closure-report.cjs');
+        expect(GENERATORS).toContain('apps/api/scripts/artifacts/generate-closure-state.cjs');
+        expect(GENERATORS).toContain('apps/api/scripts/artifacts/generate-certification-manifest.cjs');
     });
 
     it('carries the generated catalogue of industries and business types', () => {
         // The one list of business types is generated; if it leaves this list
         // nothing compares it with the registries any more.
-        expect(GENERATORS).toContain('../../apps/api/scripts/business-types-catalog.cjs');
+        expect(GENERATORS).toContain('apps/api/scripts/business-types-catalog.cjs');
     });
 
     it('goes RED when an audited source changes and the artefact does not', () => {

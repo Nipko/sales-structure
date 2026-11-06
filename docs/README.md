@@ -89,14 +89,12 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 
 ## Generados — [`generated/`](generated/README.md)
 
-Artefactos generados, su generador y su comprobación en CI. Hoy viven junto a sus generadores (ver esa página).
+Artefactos generados, su generador y su comprobación en CI. Los documentos generados viven en `generated/`; sus generadores, en `apps/api/scripts/artifacts/` (`npm run verify:artifacts`). Los insumos de datos (tarjetas de tarifas de Meta) viven en `apps/api/data/whatsapp-rates/`.
 
 ## Fuera de la base aprobada
 
 | Carpeta | Qué es | Por qué sigue en el repositorio |
 |---|---|---|
 | [archive/](archive/README.md) | Históricos citados por un documento vivo o por código | Evidencia; no reflejan el estado actual |
-| [audits/](audits/) (`2026-09-09` … `2026-09-12`) | Evidencia y cierres de la certificación de septiembre | La CI los lee (`verify-artifacts`, `check-canary-figures`, landing). Se reubicarán junto con los generados |
-| [handoffs/2026-09-10/](handoffs/2026-09-10/) | Instrucciones entre agentes de septiembre. **No son directivas vigentes** | `check-canary-figures.cjs` y `closure-artefact-generators.spec.ts` citan dos; los demás los citan esos mismos documentos |
-| [research/2026-09-10/](research/2026-09-10/) | Tarifas oficiales de Meta (insumo de producto) e investigación de landing | `generate-whatsapp-rates.cjs` lee las tarjetas de tarifas; pendiente moverlas a `apps/api/data/` |
+| `audits/2026-09-09/verify-artifacts.cjs` | Solo reenvía al verificador de `apps/api/scripts/artifacts/` | `deploy.yml` todavía llama esa ruta; se borra en el mismo cambio que apunte `deploy.yml` a `npm run verify:artifacts` |
 | [vertical-competitive-matrix-2026-08.md](vertical-competitive-matrix-2026-08.md) · [vertical-competitive-evidence.json](vertical-competitive-evidence.json) | Evidencia competitiva de la landing | `Dockerfile.landing` y `validate-competitive-evidence.cjs` |

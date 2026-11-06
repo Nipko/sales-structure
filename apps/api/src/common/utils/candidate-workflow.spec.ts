@@ -277,7 +277,7 @@ describe('what the candidate has to survive before its images exist', () => {
     it('runs every generator in --check mode, so CI cannot rewrite what it is judging', () => {
         for (const check of [
             'node apps/api/scripts/generate-whatsapp-rates.cjs --check',
-            'node docs/audits/2026-09-09/verify-artifacts.cjs',
+            'node apps/api/scripts/artifacts/verify-artifacts.cjs',
             'node apps/api/scripts/outbound-producer-inventory.cjs --check',
         ]) {
             expect({ check, run: verifyRun.includes(check) }).toEqual({ check, run: true });

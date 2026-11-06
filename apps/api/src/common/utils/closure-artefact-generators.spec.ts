@@ -40,7 +40,8 @@ import { WHATSAPP_FREE_SERVICE_ALLOWANCE } from '../../modules/billing/whatsapp-
  */
 
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
-const AUDIT = resolve(ROOT, 'docs', 'audits', '2026-09-09');
+const AUDIT = resolve(ROOT, 'apps', 'api', 'scripts', 'artifacts');
+const GENERATED = resolve(ROOT, 'docs', 'generated');
 
 const read = (...parts: string[]): string =>
     readFileSync(resolve(...parts), 'utf8').replace(/\r\n/g, '\n');
@@ -48,9 +49,9 @@ const read = (...parts: string[]): string =>
 const OCTOBER_ROWS = read(AUDIT, 'meta-october-rows.cjs');
 const CLOSURE_GENERATOR = read(AUDIT, 'generate-closure-report.cjs');
 const VERIFY_ARTIFACTS = read(AUDIT, 'verify-artifacts.cjs');
-const CLOSURE_MARKDOWN = read(AUDIT, 'closure-report.md');
-const CLOSURE_JSON = JSON.parse(read(AUDIT, 'closure-report.json'));
-const CLOSURE_STATE = JSON.parse(read(AUDIT, 'closure-state.json'));
+const CLOSURE_MARKDOWN = read(GENERATED, 'closure-report.md');
+const CLOSURE_JSON = JSON.parse(read(GENERATED, 'closure-report.json'));
+const CLOSURE_STATE = JSON.parse(read(GENERATED, 'closure-state.json'));
 
 /**
  * The `.cjs` generators are loaded with Node's own `require`, not Jest's.
@@ -350,9 +351,9 @@ describe('el chequeo de las cifras del canario', () => {
      * was checked in either direction.
      */
     const QUOTING_CURRENT = [
-        'docs/audits/2026-09-10/whatsapp-runtime-batch-report.md',
-        'docs/audits/2026-09-10/whatsapp-runtime-post-closure-independent-review.md',
-        'docs/handoffs/2026-09-10/claude-whatsapp-runtime-true-closure.md',
+        'docs/archive/2026-09-programa-octubre/whatsapp-runtime-batch-report.md',
+        'docs/archive/2026-09-programa-octubre/whatsapp-runtime-post-closure-independent-review.md',
+        'docs/archive/2026-09-programa-octubre/claude-whatsapp-runtime-true-closure.md',
     ];
 
     const textOf = (relative: string): string => read(ROOT, relative);
@@ -369,7 +370,7 @@ describe('el chequeo de las cifras del canario', () => {
     });
 
     it('una cita histórica exenta no se reporta ni se reescribe', () => {
-        const relative = 'docs/audits/2026-09-10/certification-canary.md';
+        const relative = 'docs/archive/2026-09-programa-octubre/certification-canary.md';
         const quoted: string[] = checker.QUOTED_SUPERSEDED[relative];
         expect(quoted.length).toBeGreaterThan(0);
         const text = textOf(relative);

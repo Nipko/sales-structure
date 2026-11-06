@@ -16,7 +16,7 @@
 > Lo que sí cambia con octubre es el **gasto total del cliente**, que sube sin
 > que suba nuestro ingreso, y eso es una decisión comercial — no un renglon de
 > COGS. Está planteada, con escenario recomendado y alternativas costeadas, en
-> `docs/audits/2026-09-12/m4-pricing-proposal.md` §4.1.
+> `docs/archive/2026-09-programa-octubre/m4-pricing-proposal.md` §4.1.
 >
 > Las reglas y tarifas oficiales: `docs/whatsapp-meta-pricing-2026-10.md`.
 >

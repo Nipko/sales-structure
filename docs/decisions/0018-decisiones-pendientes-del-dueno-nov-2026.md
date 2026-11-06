@@ -1,7 +1,7 @@
-# 0017 — Decisiones pendientes del dueño (noviembre 2026)
+# 0018 — Decisiones pendientes del dueño (noviembre 2026)
 
-- Estado: aprobada (el dueño delegó cada decisión en la opción más recomendada el 2026-11-06: «hagamos todas las decisiones con lo que mejor encaje y sea mas recomendado»)
-- Fecha: 2026-11-06 · Decide: dueño · Autor: Claude
+- Estado: aprobada (el dueño delegó cada decisión en la opción más recomendada el 2026-11-05: «hagamos todas las decisiones con lo que mejor encaje y sea mas recomendado»)
+- Fecha: 2026-11-05 · Decide: dueño · Autor: Claude
 - Entorno: pruebas, sin clientes reales.
 
 ## Contexto
@@ -57,7 +57,7 @@ R7 pide 40 casos en menos de 10 minutos. En E2o las 21 ejecuciones se cortaron e
 
 ### 7. Revisión de lo decidido en modo autónomo
 
-Se prepara un resumen de una página de los ADR 0004 a 0017. Marca lo que el dueño debería mirar primero: lo irreversible, lo que afecta a clientes y lo que sigue a prueba.
+Se prepara un resumen de una página de los ADR 0004 a 0018. Marca lo que el dueño debería mirar primero: lo irreversible, lo que afecta a clientes y lo que sigue a prueba.
 
 ## Consecuencias
 

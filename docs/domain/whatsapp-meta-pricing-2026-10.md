@@ -23,10 +23,10 @@ Fuentes de esta reconstrucción:
 
 | Qué | Dónde |
 |---|---|
-| Reglas y tarifas oficiales, con URL, SHA-256 y archivos preservados | `docs/research/2026-09-10/meta-official-pricing-evidence.md` |
+| Reglas y tarifas oficiales, con URL, SHA-256 y archivos preservados | `apps/api/data/whatsapp-rates/meta-official-pricing-evidence.md` |
 | La tabla que el código aplica de verdad | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` |
-| Quién paga, márgenes, planes y la decisión aplicada | `docs/audits/2026-09-12/m4-pricing-proposal.md` |
-| Estado derivado del programa de octubre (M0–M6/R0–R6) | `docs/audits/2026-09-09/closure-report.md` |
+| Quién paga, márgenes, planes y la decisión aplicada | `docs/archive/2026-09-programa-octubre/m4-pricing-proposal.md` |
+| Estado derivado del programa de octubre (M0–M6/R0–R6) | `docs/generated/closure-report.md` |
 
 ---
 
@@ -169,12 +169,12 @@ dueño**. No se reconstruyen porque no hay artefacto del que derivarlos, y
 escribirlos de memoria sería inventar autoridad. Lo que existe hoy en su lugar:
 
 - **La decisión comercial M4 ya está aplicada** en
-  `docs/audits/2026-09-12/m4-pricing-proposal.md` §8: precios, techo por número,
+  `docs/archive/2026-09-programa-octubre/m4-pricing-proposal.md` §8: precios, techo por número,
   techo por contacto, los dos textos de comunicación y la fecha del aviso del
   método de pago. Su autoridad ejecutable es
   `WHATSAPP_OCTOBER_COMMERCIAL_POLICY`; el ledger siembra esos límites y el
   informe de cierre lee el mismo objeto.
-- **El estado de ejecución** vive en `docs/audits/2026-09-09/closure-report.md`,
+- **El estado de ejecución** vive en `docs/generated/closure-report.md`,
   generado desde el código: cada fila declara su condición y su estado sale de
   ella.
 - **Los gates externos restantes** están nombrados ahí mismo, uno por uno.

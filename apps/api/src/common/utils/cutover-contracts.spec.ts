@@ -274,7 +274,7 @@ describe('what replaced staging', () => {
         // wired into a workflow, so it only ran when someone typed it.
         const CHECKS = [
             'node apps/api/scripts/generate-whatsapp-rates.cjs --check',
-            'node docs/audits/2026-09-09/verify-artifacts.cjs',
+            'node apps/api/scripts/artifacts/verify-artifacts.cjs',
             // The inventory of everything that can put a message on a customer's
             // phone. It is derived by sweeping call sites, so a producer added
             // in any later commit makes it wrong — and a list of what spends

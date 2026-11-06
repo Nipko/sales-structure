@@ -121,24 +121,24 @@ const ASSERTING = [
  * into a blanket exemption.
  */
 const HISTORICAL = {
-    'docs/audits/2026-09-10/codex-certification-runner-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-certification-runner-review.md':
         'the independent review that refuted the 408/US$0,76 ceiling',
-    'docs/audits/2026-09-10/codex-release-readiness-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-release-readiness-review.md':
         'the readiness review that refused 408/US$0,76 as a validated ceiling',
-    'docs/handoffs/2026-09-10/claude-october-release-parallel-execution.md':
+    'docs/archive/2026-09-programa-octubre/claude-october-release-parallel-execution.md':
         'the handoff that names US$0,76 as the figure NOT to treat as an authorisation',
     // Dated 2026-09-10 and bannered "Documento histórico": each states the canary
     // as the planner priced it that day (244 casos / 724 llamadas / US$1,24),
     // before R7 retired the knowledge cases from the eval pack (ADR 0013).
-    'docs/audits/2026-09-10/certification-canary.md':
+    'docs/archive/2026-09-programa-octubre/certification-canary.md':
         'the canary as planned on 2026-09-10, including the correction of 408/US$0,76',
-    'docs/audits/2026-09-10/release-closure-report.md':
+    'docs/archive/2026-09-programa-octubre/release-closure-report.md':
         'the 2026-09-10 closure report, which priced the canary as the planner did that day',
-    'docs/audits/2026-09-10/whatsapp-runtime-batch-report.md':
+    'docs/archive/2026-09-programa-octubre/whatsapp-runtime-batch-report.md':
         'the 2026-09-10 WhatsApp runtime batch report, with the canary figures of that day',
-    'docs/audits/2026-09-10/whatsapp-runtime-post-closure-independent-review.md':
+    'docs/archive/2026-09-programa-octubre/whatsapp-runtime-post-closure-independent-review.md':
         'the 2026-09-10 independent review, with the canary figures of that day',
-    'docs/handoffs/2026-09-10/claude-whatsapp-runtime-true-closure.md':
+    'docs/archive/2026-09-programa-octubre/claude-whatsapp-runtime-true-closure.md':
         'the 2026-09-10 handoff, with the canary figures of that day',
 };
 

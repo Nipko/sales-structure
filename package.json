@@ -29,7 +29,7 @@
     "db:seed": "turbo db:seed --filter=@parallext/api",
     "docker:dev": "docker compose -f infra/docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "verify:artifacts": "node docs/audits/2026-09-09/verify-artifacts.cjs"
+    "verify:artifacts": "node apps/api/scripts/artifacts/verify-artifacts.cjs"
   },
   "devDependencies": {
     "turbo": "^2.4.0"

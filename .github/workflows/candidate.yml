@@ -468,7 +468,7 @@ jobs:
       - name: Generated artefacts match their sources
         run: |
           node apps/api/scripts/generate-whatsapp-rates.cjs --check
-          node docs/audits/2026-09-09/verify-artifacts.cjs
+          node apps/api/scripts/artifacts/verify-artifacts.cjs
           node apps/api/scripts/outbound-producer-inventory.cjs --check
           # The canary's figures, in the prose that quotes them. This one had
           # never run anywhere: a repository-wide search for its name found only

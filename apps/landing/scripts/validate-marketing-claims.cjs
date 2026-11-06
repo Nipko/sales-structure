@@ -778,7 +778,7 @@ assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat 
 // Typing a friendlier number here fails; making it true means certifying a
 // channel, which regenerates the report and turns this green on its own.
 const closureReport = JSON.parse(fs.readFileSync(
-  path.join(repoRoot, "docs", "audits", "2026-09-09", "closure-report.json"),
+  path.join(repoRoot, "docs", "generated", "closure-report.json"),
   "utf8",
 ));
 assert(

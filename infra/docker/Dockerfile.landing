@@ -27,7 +27,7 @@ COPY apps/api/scripts/run-vertical-contract-matrix.cjs /repo/apps/api/scripts/ru
 COPY packages/shared/src/ /repo/packages/shared/src/
 COPY docs/vertical-competitive-evidence.json docs/vertical-competitive-matrix-2026-08.md /repo/docs/
 COPY docs/appointments-manual.md /repo/docs/appointments-manual.md
-COPY docs/audits/2026-09-09/closure-report.json docs/audits/2026-09-09/closure-report.md /repo/docs/audits/2026-09-09/
+COPY docs/generated/closure-report.json docs/generated/closure-report.md /repo/docs/generated/
 
 # Build static export
 RUN npm run build

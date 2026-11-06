@@ -14,7 +14,7 @@
  * Signing a tenant's send with the second is not a smaller version of the first.
  * It attributes the message to the provider, bills whoever the provider's
  * portfolio bills, and — the part that does not undo — hands one customer's
- * traffic to another business's audit trail. `docs/research/2026-09-10/
+ * traffic to another business's audit trail. `docs/archive/2026-09-programa-octubre/
  * whatsapp-account-billing-architecture.md` F4 states the rule; nothing in the
  * code could tell the two apart, because the only evidence was the column name.
  *

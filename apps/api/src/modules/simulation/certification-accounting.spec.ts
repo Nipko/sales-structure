@@ -17,7 +17,7 @@ import { gateScenario, gateUsage, servedModels, servedTheRequestedModel, USAGE_N
  * and turned it into a measured failure at zero cost, which then satisfied
  * `comparable: true` against an alternative.
  *
- * Reproduced by `docs/audits/2026-09-10/reproduce-certification-runner-contract.cjs`
+ * Reproduced by `docs/archive/2026-09-programa-octubre/reproduce-certification-runner-contract.cjs`
  * on `80f56077`. These are the regressions.
  */
 

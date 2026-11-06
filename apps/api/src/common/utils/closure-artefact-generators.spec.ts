@@ -41,7 +41,8 @@ import { WHATSAPP_FREE_SERVICE_ALLOWANCE } from '../../modules/billing/whatsapp-
  */
 
 const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
-const AUDIT = resolve(ROOT, 'docs', 'audits', '2026-09-09');
+const AUDIT = resolve(ROOT, 'apps', 'api', 'scripts', 'artifacts');
+const GENERATED = resolve(ROOT, 'docs', 'generated');
 
 const read = (...parts: string[]): string =>
     readFileSync(resolve(...parts), 'utf8').replace(/\r\n/g, '\n');
@@ -49,9 +50,9 @@ const read = (...parts: string[]): string =>
 const OCTOBER_ROWS = read(AUDIT, 'meta-october-rows.cjs');
 const CLOSURE_GENERATOR = read(AUDIT, 'generate-closure-report.cjs');
 const VERIFY_ARTIFACTS = read(AUDIT, 'verify-artifacts.cjs');
-const CLOSURE_MARKDOWN = read(AUDIT, 'closure-report.md');
-const CLOSURE_JSON = JSON.parse(read(AUDIT, 'closure-report.json'));
-const CLOSURE_STATE = JSON.parse(read(AUDIT, 'closure-state.json'));
+const CLOSURE_MARKDOWN = read(GENERATED, 'closure-report.md');
+const CLOSURE_JSON = JSON.parse(read(GENERATED, 'closure-report.json'));
+const CLOSURE_STATE = JSON.parse(read(GENERATED, 'closure-state.json'));
 
 /**
  * The `.cjs` generators are loaded with Node's own `require`, not Jest's.
@@ -357,9 +358,9 @@ describe('el chequeo de las cifras del canario', () => {
      * they stay here as the corpus of prose shapes the checker must recognise.
      */
     const QUOTING_IN_PROSE = [
-        'docs/audits/2026-09-10/whatsapp-runtime-batch-report.md',
-        'docs/audits/2026-09-10/whatsapp-runtime-post-closure-independent-review.md',
-        'docs/handoffs/2026-09-10/claude-whatsapp-runtime-true-closure.md',
+        'docs/archive/2026-09-programa-octubre/whatsapp-runtime-batch-report.md',
+        'docs/archive/2026-09-programa-octubre/whatsapp-runtime-post-closure-independent-review.md',
+        'docs/archive/2026-09-programa-octubre/claude-whatsapp-runtime-true-closure.md',
     ];
 
     const textOf = (relative: string): string => read(ROOT, relative);
@@ -379,7 +380,7 @@ describe('el chequeo de las cifras del canario', () => {
         // The sentence `QUOTED_SUPERSEDED` was built for. The document is
         // HISTORICAL as a whole now, so the list no longer names it; the
         // mechanism is still exercised against the real paragraph.
-        const relative = 'docs/audits/2026-09-10/certification-canary.md';
+        const relative = 'docs/archive/2026-09-programa-octubre/certification-canary.md';
         const quoted = ['Este documento decía **408 llamadas y US$0,76**'];
         const text = textOf(relative);
         for (const sentence of quoted) expect(text).toContain(sentence);

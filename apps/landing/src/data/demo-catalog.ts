@@ -18,7 +18,7 @@
  *   the exact lie this registry was written to stop.
  *
  *   `capabilityState` — what the PRODUCT is, independently of the drawing. The
- *   audited closure report (`docs/audits/2026-09-09/closure-report.json`)
+ *   audited closure report (`docs/generated/closure-report.json`)
  *   certifies zero of seventy-six profiles and zero of five channels, so the
  *   ceiling for every capability here is `implementedNotCertified`: the code
  *   exists and is reachable, and no end-to-end certification backs it.

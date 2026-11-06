@@ -63,8 +63,8 @@ export const MARKETING_CLAIMS = Object.freeze({
     localeKey: 'socialProof.stat2Label', locales: ['es', 'en', 'pt', 'fr'],
     scope: { plans: 'all', regions: 'global' }, verifiedAt: '2026-09-12', expiresAt: '2026-12-12', owner: 'product-engineering',
     evidence: [
-      { id: 'closure-report', repositoryPath: 'docs/audits/2026-09-09/closure-report.md', description: 'Derived closure report: 0 of 5 channels and 0 of 76 profiles have finished certification.' },
-      { id: 'closure-report-data', repositoryPath: 'docs/audits/2026-09-09/closure-report.json', description: 'Machine-readable counters behind the same report.' },
+      { id: 'closure-report', repositoryPath: 'docs/generated/closure-report.md', description: 'Derived closure report: 0 of 5 channels and 0 of 76 profiles have finished certification.' },
+      { id: 'closure-report-data', repositoryPath: 'docs/generated/closure-report.json', description: 'Machine-readable counters behind the same report.' },
     ],
   },
   interfaceLanguageCount: {

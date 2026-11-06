@@ -23,7 +23,7 @@ import {
  * digit-shifting, and compares the two independent answers.
  */
 const root = path.resolve(__dirname, '../../../../../..');
-const researchDir = path.join(root, 'docs/research/2026-09-10');
+const researchDir = path.join(root, 'apps/api/data/whatsapp-rates');
 
 type SourceRate = Record<string, string> & { market: string; currency: string };
 interface SourceCard {

@@ -56,7 +56,7 @@ const { BENCHMARK_LEDGER_DDL } = api('modules/simulation/benchmark-harness.ts');
 const { agentIssueResolutionDefects, routedAgentOperations } = shared;
 const { octoberAuthorities, octoberRows } = require('./meta-october-rows.cjs');
 const { toolsRows } = require('./tools-programme-rows.cjs');
-const { landingAuthorities, landingRows } = require('./landing-programme-rows.cjs');
+const { landingAuthorities, landingRows, landingCapabilityDrift } = require('./landing-programme-rows.cjs');
 
 /**
  * A list that is empty says so, in a word.
@@ -151,6 +151,13 @@ const retrievalGaps = [
  */
 const october = octoberAuthorities({ root, api, shared });
 const landing = landingAuthorities({ root });
+// The landing's published channel counts must equal the certification matrix.
+// A failure in EVERY mode, not a row: regenerating must not turn it green.
+const landingDrift = landingCapabilityDrift({ root, channels });
+if (landingDrift.length) {
+    console.error(`la landing contradice la certificación de canales: ${landingDrift.join('; ')}`);
+    process.exit(1);
+}
 
 const coverage = commercialCoverage();
 const unexplainedUnfrozen = commercialReadersWithoutFrozenAuthority()

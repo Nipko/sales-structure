@@ -148,10 +148,6 @@ const chatDemoSource = fs.readFileSync(
   path.join(landingRoot, "src", "components", "demos", "VerticalChatDemo.tsx"),
   "utf8",
 );
-const verticalsShowcaseSource = fs.readFileSync(
-  path.join(landingRoot, "src", "components", "sections", "VerticalsShowcase.tsx"),
-  "utf8",
-);
 const solutionsPageSource = fs.readFileSync(
   path.join(landingRoot, "src", "app", "(marketing)", "soluciones", "page.tsx"),
   "utf8",
@@ -185,13 +181,12 @@ assert(
     && chatDemoSource.includes('t("demoDisclaimer")'),
   "VerticalChatDemo must render the illustrative-data disclaimer",
 );
+// The chat demo is mounted on every industry page (IndustryPageClient); the
+// industry copy beside it is pinned by the withheld-marketing rule above.
 assert(
-  verticalsShowcaseSource.includes("current.deepMarketingAllowed")
-    && verticalsShowcaseSource.includes('t("genericTagline")')
-    && verticalsShowcaseSource.includes("genericFeature")
-    && chatDemoSource.includes("vertical.deepMarketingAllowed")
+  chatDemoSource.includes("vertical.deepMarketingAllowed")
     && chatDemoSource.includes("genericDemo"),
-  "Home vertical showcase must fail closed to horizontal copy and demos until deep marketing is certified",
+  "The industry chat demo must fail closed to horizontal demos until deep marketing is certified",
 );
 
 const markerPatterns = {
@@ -607,10 +602,6 @@ for (const locale of locales) {
     `${locale}: verticals.demoDisclaimer is required`,
   );
   assert(
-    marker.test(messages?.channels?.demoDisclaimer || ""),
-    `${locale}: multichannel scenarios must be explicitly illustrative`,
-  );
-  assert(
     !/\d/.test(messages?.verticals?.demoRespondedIn || ""),
     `${locale}: illustrative demo badge must not claim a measured response time`,
   );
@@ -703,33 +694,21 @@ for (const claim of frozenClaimPatterns) {
   assert(!claim.pattern.test(marketingSource), `landing source: frozen marketing claim (${claim.label})`);
 }
 
-// Testimonial publication fails closed: importing the section into the home is
-// allowed only after both explicit enablement and verifiable evidence/consent.
+// No testimonials are published. The unmounted, fail-closed section and its
+// empty copy were retired in K3c; what is checked now is what renders: no
+// source reads a testimonials namespace and no locale carries one. Publishing a
+// testimonial again needs registered source evidence and recorded consent, and
+// a new rule here that checks them.
 const homeSource = fs.readFileSync(path.join(landingRoot, "src", "app", "(marketing)", "page.tsx"), "utf8");
-const testimonialComponentSource = fs.readFileSync(
-  path.join(landingRoot, "src", "components", "sections", "TestimonialsSection.tsx"),
-  "utf8",
-);
-const testimonialContract = loadTsModule(path.join("src", "data", "testimonial-evidence.ts"));
-const testimonialEvidence = testimonialContract.VERIFIED_TESTIMONIAL_EVIDENCE || [];
-const testimonialEvidenceReady = testimonialContract.TESTIMONIALS_PUBLICATION_ENABLED === true
-  && testimonialEvidence.length > 0
-  && testimonialEvidence.every((item) => (
-    typeof item.id === "string" && item.id.length > 0
-    && typeof item.evidenceUrl === "string" && /^https:\/\//.test(item.evidenceUrl)
-    && /^\d{4}-\d{2}-\d{2}$/.test(item.consentRecordedAt || "")
-  ));
-const homePublishesTestimonials = /TestimonialsSection/.test(homeSource);
-assert(!homePublishesTestimonials, "Wave 0: TestimonialsSection must remain removed from the home until evidence is approved");
 assert(
-  !homePublishesTestimonials || testimonialEvidenceReady,
-  "TestimonialsSection cannot be published without enablement, source evidence and recorded consent",
+  !/useTranslations\(\s*["'`]testimonials["'`]\s*\)|["'`]testimonials\./.test(marketingSource),
+  "No landing source may render testimonials without registered evidence and consent",
 );
-assert(
-  testimonialComponentSource.includes("TESTIMONIALS_PUBLICATION_ENABLED")
-    && testimonialComponentSource.includes("VERIFIED_TESTIMONIAL_EVIDENCE.length === 0"),
-  "TestimonialsSection must fail closed when publication evidence is absent",
-);
+for (const locale of [...locales, "es-AR"]) {
+  const file = path.join(landingRoot, "messages", `${locale}.json`);
+  const messages = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+  assert(!("testimonials" in messages), `${locale}: testimonial copy cannot ship without registered evidence and consent`);
+}
 
 // Code-backed stats: compare the displayed product counts with their concrete
 // registries/modules instead of trusting marketing copy.
@@ -774,30 +753,36 @@ assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat 
 
 // ─── The certified count is not ours to choose ──────────────────────────────
 //
-// It is read from the generated closure report, which derives it from the code.
-// Typing a friendlier number here fails; making it true means certifying a
-// channel, which regenerates the report and turns this green on its own.
-const closureReport = JSON.parse(fs.readFileSync(
-  path.join(repoRoot, "docs", "generated", "closure-report.json"),
-  "utf8",
-));
+// The authority is the API's channel certification matrix, which needs the
+// API runtime to compute. This build no longer reads a CI artefact for it:
+// `apps/api/scripts/artifacts/generate-closure-report.cjs` (run by
+// `npm run verify:artifacts` in every workflow) fails when these two counts
+// drift from the matrix. What the landing can check alone, it checks here.
 assert(
-  capabilityCounts.selfServiceChannels === closureReport.authorities?.channelsSelfService,
-  `Self-service channel count (${capabilityCounts.selfServiceChannels}) drifted from the closure report `
-  + `(${closureReport.authorities?.channelsSelfService})`,
+  Number.isInteger(capabilityCounts.certifiedChannels)
+    && capabilityCounts.certifiedChannels >= 0
+    && capabilityCounts.certifiedChannels <= capabilityCounts.selfServiceChannels,
+  "The certified channel count must be a whole number no larger than the self-service count",
 );
-assert(
-  capabilityCounts.certifiedChannels === closureReport.authorities?.channelsCertified,
-  `Certified channel count (${capabilityCounts.certifiedChannels}) drifted from the closure report `
-  + `(${closureReport.authorities?.channelsCertified})`,
-);
-// A landing may not present a catalogue as proven while the report certifies
-// none of it. This is the rule the retired vertical count kept breaking.
-assert(
-  closureReport.authorities?.certifiedProfiles !== 0
-    || !/certificad[oa]s?\b/i.test(String(loadJson("es")?.verticals?.title || "")),
-  "The industry headline must not describe the catalogue as certified while 0 profiles are certified",
-);
+// A landing may not present the catalogue as proven while none of it is. The
+// state comes from the canonical product policy (checked per vertical above),
+// and the copy checked is the headline the solutions hub actually renders.
+const certifiedHeadlinePatterns = {
+  es: /certificad[oa]s?\b/i,
+  en: /\bcertified\b/i,
+  pt: /certificad[oa]s?\b/i,
+  fr: /certifi[ée]e?s?\b/i,
+};
+const anyVerticalCertified = (verticals || []).some((vertical) => vertical.certificationState === "certified");
+for (const locale of locales) {
+  const hub = loadJson(locale)?.solutionsDiscovery || {};
+  const headline = ["eyebrow", "title", "titleAccent", "description"].map((key) => String(hub[key] || "")).join(" ");
+  assert(headline.trim().length > 0, `${locale}: solutionsDiscovery headline is required`);
+  assert(
+    anyVerticalCertified || !certifiedHeadlinePatterns[locale].test(headline),
+    `${locale}: the solutions headline must not describe the catalogue as certified while no industry is`,
+  );
+}
 
 const positiveRegistry = loadTsModule(path.join("src", "data", "marketing-claims.ts"));
 const positiveClaims = Object.values(positiveRegistry.MARKETING_CLAIMS || {});
@@ -945,14 +930,13 @@ assert(
   "The certification-state band must be rendered on the home, not merely defined",
 );
 
-const trustSource = fs.readFileSync(
-  path.join(landingRoot, "src", "components", "sections", "TrustRow.tsx"),
-  "utf8",
-);
-const footerSource = fs.readFileSync(path.join(landingRoot, "src", "components", "layout", "Footer.tsx"), "utf8");
+// Integrations and capabilities, not partner certifications. This used to read
+// the unmounted TrustRow next to the Footer; it now covers every landing source
+// and every locale's copy, which is where such a badge would have to come from.
+const partnerBadgeCopy = locales.map((locale) => JSON.stringify(loadJson(locale))).join("\n");
 assert(
-  !/meta-tech-provider\.svg|Tech Provider|MercadoPago Partner/i.test(`${trustSource}\n${footerSource}`),
-  "TrustRow/Footer must present integrations and capabilities, not certifications",
+  !/meta-tech-provider\.svg|Tech Provider|MercadoPago Partner/i.test(`${marketingSource}\n${partnerBadgeCopy}`),
+  "The landing must present integrations and capabilities, not partner certifications",
 );
 
 // The detailed pricing matrix reads live values from the billing catalog. Keep
@@ -1008,9 +992,12 @@ for (const slug of ["emprendedor", "starter", "pro", "enterprise", "custom"]) {
 
 // ─── The industry catalogue states its state, not its size ──────────────────
 //
-// The count is frozen above. What has to be PRESENT is the state: every locale's
-// two industry headlines must say that specialised capability waits on
-// validation, because that is the fact the number used to hide.
+// The count is frozen above. What has to be PRESENT is the state: the note
+// every industry page renders where specialised claims are withheld must say
+// that specialised capability waits on validation, because that is the fact
+// the number used to hide. (This rule used to read the headlines of sections
+// that are no longer mounted; it now reads what is rendered. The hub cards
+// carry the mode label and `data-certification-state`, pinned above.)
 const certificationStatePatterns = {
   es: /valida(?:ci[oó]n|rse|da)|certificaci[oó]n|certificad/i,
   en: /validat|certif/i,
@@ -1019,7 +1006,7 @@ const certificationStatePatterns = {
 };
 for (const locale of locales) {
   const messages = loadJson(locale);
-  for (const localePath of ["verticals.subtitle", "solutions.heroSubtitle", "howItWorks.step2Desc"]) {
+  for (const localePath of ["solutions.validationRequired"]) {
     const copy = String(getPath(messages, localePath) || "");
     assert(copy.trim().length > 0, `${locale}: ${localePath} is required`);
     assert(
@@ -1296,29 +1283,14 @@ assert(
     && !/aria-hidden="true">\s*\{t\(/.test(demoFrameSource),
   "The demo label must be in the document flow, not a tooltip",
 );
-const orderPaymentSource = fs.readFileSync(
-  path.join(landingRoot, "src", "components", "demos", "OrderPaymentDemo.tsx"),
-  "utf8",
-);
-const orderPaymentCode = withoutComments(orderPaymentSource);
-assert(
-  orderPaymentSource.includes('"orderPayment.pendingTitle"')
-    && orderPaymentSource.includes('"orderPayment.pendingDetail"'),
-  "The payment demo's last frame must be the order awaiting the gateway's confirmation",
-);
-// No tick and no green success chrome on the final frame: a checkmark is read
-// as settlement, and settlement is an event at somebody else's provider that
-// this panel has no way to know about.
-assert(
-  !/Icon\.check|<polyline|emerald-/.test(orderPaymentCode),
-  "The payment demo must not render a success tick for a payment it cannot confirm",
-);
-for (const locale of locales) {
-  const copy = loadJson(locale)?.demos?.orderPayment || {};
-  assert(
-    String(copy.pendingDetail || "").length >= 40 && String(copy.linkDetail || "").length >= 40,
-    `${locale}: the payment demo must say a link is not a settled payment, and whose gateway it is`,
-  );
+// The animated order/payment panel (OrderPaymentDemo) was never mounted and
+// was retired in K3c with its rules. A labelled demo that a page renders goes
+// through `demoContract(id)` and DemoFrame; this pins that every rendered one
+// is registered, so a new panel cannot reach a page without its label.
+const renderedDemoIds = [...marketingSource.matchAll(/demoContract\(\s*["'`](\w+)["'`]\s*\)/g)].map((match) => match[1]);
+assert(renderedDemoIds.length > 0, "At least one labelled demo must be rendered through demoContract()");
+for (const id of renderedDemoIds) {
+  assert(labelledDemos.some((demo) => demo.id === id), `Rendered demo ${id} is not in the labelled demo registry`);
 }
 for (const locale of locales) {
   const demos = loadJson(locale)?.labelledDemos || {};

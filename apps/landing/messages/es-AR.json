@@ -5,15 +5,7 @@
     "card2": "Cada cliente queda en un chat diferente. No sabés quién es quién ni qué le dijiste.",
     "card3": "No tenés datos. No sabés qué canal vende más ni cuánto te cuesta cada cliente."
   },
-  "channels": {
-    "scenarios": {
-      "dental": {
-        "m2": "¡Hola! Tengo jueves 10am o viernes 9am. ¿Cuál preferís?"
-      }
-    }
-  },
   "solutions": {
-    "heroSubtitle": "Elegí tu industria y completá la configuración guiada. Cada una muestra su modo de producto y su estado de certificación; las capacidades especializadas requieren validación.",
     "ctaTitle": "¿No encontrás tu industria?"
   },
   "industryPage": {
@@ -43,11 +35,6 @@
   "pricing": {
     "subtitle": "Consultá en cada plan la prueba, los requisitos y los límites vigentes.",
     "currencyHint": "Seleccioná tu país para consultar la moneda y el precio vigentes. Si no hay tarifa local, vas a ver el importe en USD."
-  },
-  "howItWorks": {
-    "step1": "Conectá tus canales",
-    "step2": "Elegí tu industria",
-    "step3": "Empezá a vender"
   },
   "features": {
     "title": "Todo lo que necesitás para vender más, en una plataforma",

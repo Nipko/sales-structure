@@ -97,20 +97,6 @@ function isProse(value) {
     >= PROSE_WORD_FLOOR;
 }
 
-/**
- * Namespaces whose strings are deliberately blank.
- *
- * Testimonials fail closed: the copy is emptied and the section is not imported
- * until registered evidence and consent exist, which
- * `validate-marketing-claims.cjs` enforces from the other direction. Treating
- * that as a translation gap would pressure somebody into inventing a quote.
- */
-const INTENTIONALLY_EMPTY = [/^testimonials\./];
-
-function intentionallyEmpty(key) {
-  return INTENTIONALLY_EMPTY.some((pattern) => pattern.test(key));
-}
-
 // ── 1 & 2: same keys, same shape ────────────────────────────────────────────
 const flat = new Map(LOCALES.map((locale) => [locale, flatten(load(locale))]));
 const base = flat.get(BASE);
@@ -146,7 +132,7 @@ for (const locale of LOCALES) {
       continue;
     }
     if (value.trim().length === 0) {
-      if (!intentionallyEmpty(key)) fail(`${locale}: ${key} is empty`);
+      fail(`${locale}: ${key} is empty`);
       continue;
     }
     const baseValue = base.leaves.get(key);

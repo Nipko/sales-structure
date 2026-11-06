@@ -113,11 +113,14 @@ describe('the tools programme rows read something real', () => {
         });
     });
 
-    it('finds a non-empty discovery universe before reporting on it', () => {
-        // "0 of 0 items without a tour" is a green produced by a broken regular
-        // expression. The universe has to be real before the gap means anything.
-        const { discovery } = rowsModule.tourCoverageGaps();
-        expect(discovery).toBeGreaterThan(10);
+    it('keeps T4 as a frozen historical row that reads no retired source', () => {
+        // The setup-wizard tour T4 measured was retired in K3c (unmounted since
+        // 2026-09-04). A derived count over a deleted file would either throw or
+        // report a green from an empty universe; the row says what it was instead.
+        expect(rowsModule.tourCoverageGaps).toBeUndefined();
+        const t4 = find('T4');
+        expect({ provenance: t4.provenance, open: t4.open ?? 0 }).toEqual({ provenance: 'declared', open: 0 });
+        expect(String(t4.evidence)).toContain('ToolsTour');
     });
 
     it('counts orphaned controls per FAMILY, not per flag name', () => {

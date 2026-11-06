@@ -161,12 +161,10 @@ export function isVerticalDashboardPathVisible(
 }
 
 /**
- * Domain-first ordering shared by setup discovery and the product tour.
- *
- * Exported because the tour is the only consumer that can be wrong about it:
- * an item reachable here with no card in `ToolsTour` disappears from discovery
- * without anything failing, which is exactly how `serviceCatalog` sat in this
- * list while the tour silently dropped it.
+ * Domain-first ordering of the vertical items. Its first visible item is the
+ * product tour's `primaryTourItem` (`ProductTour.tsx`). The setup wizard's
+ * per-item tour (`ToolsTour`) that also read it was retired in K3c: it had not
+ * been mounted since 2026-09-04.
  */
 export const DISCOVERY_ORDER: readonly VerticalDashboardItem[] = [
   "properties",

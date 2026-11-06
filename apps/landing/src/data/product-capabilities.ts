@@ -14,8 +14,10 @@
  * certification (zero, today), and how many languages the interface speaks.
  *
  * `check:claims` cross-checks these values against the canonical channel policy
- * and the locale files, and fails when the certified count drifts from the
- * audited closure report.
+ * and the locale files. The channel counts are also checked against the API's
+ * channel certification matrix by `npm run verify:artifacts`
+ * (`apps/api/scripts/artifacts/landing-programme-rows.cjs`), which fails on any
+ * drift; the landing build no longer reads the generated closure report.
  */
 export const PRODUCT_CAPABILITY_COUNTS = {
   /** Channels a tenant can connect from the dashboard, subject to plan. */
@@ -23,7 +25,8 @@ export const PRODUCT_CAPABILITY_COUNTS = {
   /**
    * Channels with end-to-end certification completed.
    *
-   * `docs/generated/closure-report.md` reports 0 of 5. It is published
+   * The channel certification matrix (`channel-certification-matrix.ts`, also
+   * reported in `docs/generated/closure-report.md`) says 0 of 5. It is published
    * rather than hidden because a page that lists five channels and says nothing
    * about certification invites the reader to assume all five are certified —
    * which is precisely the claim the report refuses.

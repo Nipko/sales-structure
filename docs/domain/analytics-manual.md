@@ -312,9 +312,6 @@ scheduled_reports (id, tenant_id, frequency, recipients[], is_active, last_sent_
 
 -- Reportes personalizados guardados (Custom Report Builder, tabla canonica por-tenant; reparacion compatible on-demand)
 saved_reports (id, name, description, config JSONB, created_by, is_favorite, created_at, updated_at)
-
--- Preferencias de dashboard por usuario
-dashboard_preferences (id, user_id UNIQUE, layout_json JSONB)
 ```
 
 > **Fuente canonica y reparacion heredada**: `alert_rules`, `alert_history`, `scheduled_reports` y `saved_reports` si forman parte de `apps/api/prisma/tenant-schema.sql`, por lo que un tenant nuevo las recibe en el bootstrap. Los servicios conservan `CREATE TABLE IF NOT EXISTS` como reparacion compatible para schemas antiguos; no es la fuente de definicion de un tenant nuevo. `alert_rules`/`scheduled_reports` incluyen ademas reconciliacion in-place de `tenant_id` text -> uuid para esquemas heredados.

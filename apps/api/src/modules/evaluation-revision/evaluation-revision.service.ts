@@ -23,6 +23,40 @@ const safeIdentifier = (name: string): string => {
 export class EvaluationRevisionService {
     constructor(private readonly prisma: PrismaService, private readonly router: LLMRouterService) {}
 
+    /**
+     * Freshness checks for one tenant, coalesced. Every model call of an
+     * evaluation checks the revision before and after (`dataSourceAuthority`),
+     * and each check hashes every dependency table; with several cases of one
+     * tenant in flight those hashes piled up on PostgreSQL until the tools
+     * themselves timed out (E2r). A caller never joins a capture that started
+     * before it arrived, since that one could predate a write the caller must
+     * see; it joins the NEXT capture, which starts after the running one ends.
+     * So at most one capture runs and one waits per tenant, and every caller
+     * still gets a state read after its own call.
+     */
+    private readonly freshness = new Map<string, { running?: Promise<EvaluationRevisionManifest>; next?: Promise<EvaluationRevisionManifest> }>();
+
+    private captureFresh(tenantId: string): Promise<EvaluationRevisionManifest> {
+        const slot = this.freshness.get(tenantId) ?? {};
+        this.freshness.set(tenantId, slot);
+        const start = (): Promise<EvaluationRevisionManifest> => {
+            const run = this.capture(tenantId);
+            slot.running = run;
+            const done = () => {
+                if (slot.running === run) slot.running = undefined;
+                if (!slot.running && !slot.next) this.freshness.delete(tenantId);
+            };
+            run.then(done, done);
+            return run;
+        };
+        if (!slot.running) return start();
+        if (!slot.next) {
+            slot.next = slot.running.then(() => undefined, () => undefined)
+                .then(() => { slot.next = undefined; return start(); });
+        }
+        return slot.next;
+    }
+
     captureStructuredKnowledge(tenantId: string) {
         return captureStructuredKnowledge(serviceCatalogCaptureDatabase(this.prisma), tenantId);
     }
@@ -105,7 +139,7 @@ export class EvaluationRevisionService {
 
     async assertCurrent(manifest?: EvaluationRevisionManifest): Promise<void> {
         assertRevisionIntegrity(manifest);
-        const current = await this.capture(manifest.tenantId);
+        const current = await this.captureFresh(manifest.tenantId);
         // Frozen inputs have their own content hashes, checked against the private snapshot at every turn.
         const liveRevision = sealRevision(manifest.tenantId,manifest.dependencies.filter(item=>!item.key.startsWith('frozen.')),manifest.exclusions);
         if (current.revision !== liveRevision.revision) {

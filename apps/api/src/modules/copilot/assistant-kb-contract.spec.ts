@@ -956,7 +956,7 @@ describe('Parallly Assist knowledge-base contract', () => {
   });
 
   it('says SMS is a retired product and never sells credits, campaigns or reminders by SMS', () => {
-    // SMS is a retired product (ADR 0018): its modules, routes and screens were removed.
+    // SMS is a retired product (ADR 0020): its modules, routes and screens were removed.
     const retiredMarkers: Record<(typeof LOCALES)[number], RegExp> = {
       es: /ya no es un producto de Parallly/i,
       en: /no longer a Parallly product/i,

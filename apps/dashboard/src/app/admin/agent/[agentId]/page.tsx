@@ -52,7 +52,7 @@ const CHANNEL_META: Record<string, { label: string; icon: React.ElementType; col
   messenger: { label: "Facebook",  icon: Facebook,      color: "text-blue-500" },
   telegram:  { label: "Telegram",  icon: Send,          color: "text-sky-500" },
   web_widget:{ label: "Chat web",  icon: Globe2,        color: "text-violet-500" },
-  // `sms` is deliberately absent: SMS is a retired product (ADR 0018), never a
+  // `sms` is deliberately absent: SMS is a retired product (ADR 0020), never a
   // conversational channel an agent can be assigned to.
 };
 

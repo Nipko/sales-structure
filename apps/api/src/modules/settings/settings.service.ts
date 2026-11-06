@@ -45,7 +45,7 @@ export class SettingsService {
     /**
      * Categorías que este endpoint administra. `platform_settings` es un store
      * global compartido: además de estas guarda config de otros módulos
-     * (`fiscal.*`, `ops.alert_config`; antes también `sms.*`, retirado en ADR 0018) con su propio endpoint y
+     * (`fiscal.*`, `ops.alert_config`; antes también `sms.*`, retirado en ADR 0020) con su propio endpoint y
      * su propio shape JSON. Un upsert genérico desde acá las pisaría con un
      * string plano, así que se rechazan.
      *

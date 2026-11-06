@@ -2,15 +2,17 @@
 
 Todo dato estructural que se puede contar (tipos de negocio, requisitos por tipo, estado de cierre, manifiestos, auditorías de herramientas) se **genera** desde el código y la CI comprueba que no esté desfasado (`npm run verify:artifacts`, que corre en `deploy.yml`, `candidate.yml` y `vertical-quality.yml`). No se editan a mano.
 
-Esta carpeta es el destino acordado (ADR 0005). Hoy los generados viven donde sus generadores y la CI los esperan; moverlos exige cambiar rutas en los generadores, `verify-artifacts.cjs`, `check-canary-figures.cjs`, `Dockerfile.landing`, la landing y varios specs, y se hará en un PR propio.
+Esta carpeta es el destino acordado (ADR 0005). Los generados del cierre de octubre viven aquí; sus generadores y el verificador compartido viven en `apps/api/scripts/artifacts/`. Los dos catálogos de dominio se quedan en `domain/` porque son documentos de lectura diaria. `deploy.yml` todavía llama `docs/audits/2026-09-09/verify-artifacts.cjs`, que solo reenvía al verificador nuevo.
 
-| Artefacto | Ubicación actual | Generador | Comprobación |
+| Artefacto | Ubicación | Generador | Comprobación |
 |---|---|---|---|
 | Catálogo de industrias y tipos de negocio | [`../domain/business-types-catalog.md`](../domain/business-types-catalog.md) | `apps/api/scripts/business-types-catalog.cjs --write` | `--check` desde `verify-artifacts` |
 | Requisitos del negocio por tipo | [`../domain/business-requirements.md`](../domain/business-requirements.md) | `packages/business-spec` (`business-spec docs --write`) | `--check` desde `verify-artifacts` |
-| Estado de cierre, manifiesto de certificación, reporte de cierre | `../audits/2026-09-09/closure-*`, `certification-manifest.*` | `docs/audits/2026-09-09/generate-*.cjs` | `verify-artifacts` |
-| Auditoría de perfiles de herramientas | `../audits/2026-09-11/tool-profile-audit.*` | `docs/audits/2026-09-11/generate-tool-profile-audit.cjs` | `verify-artifacts` |
-| Inventario de productores salientes | `../audits/2026-09-10/outbound-producer-inventory.md` | `apps/api/scripts/outbound-producer-inventory.cjs` | comparado por `meta-october-rows.cjs` |
-| Tabla de tarifas de WhatsApp | `apps/api/src/modules/billing/whatsapp-rates/` (insumos en `../research/2026-09-10/`) | `apps/api/scripts/generate-whatsapp-rates.cjs` | `--check` en `candidate.yml` y `vertical-quality.yml` |
+| Estado de cierre | [`closure-state.md`](closure-state.md) · [`.json`](closure-state.json) | `apps/api/scripts/artifacts/generate-closure-state.cjs` | `verify-artifacts` |
+| Manifiesto de certificación | [`certification-manifest.md`](certification-manifest.md) · [`.json`](certification-manifest.json) | `apps/api/scripts/artifacts/generate-certification-manifest.cjs` | `verify-artifacts` |
+| Reporte de cierre (lo lee la landing) | [`closure-report.md`](closure-report.md) · [`.json`](closure-report.json) | `apps/api/scripts/artifacts/generate-closure-report.cjs` (filas en `meta-october-rows.cjs`, `tools-programme-rows.cjs`, `landing-programme-rows.cjs`) | `verify-artifacts` |
+| Auditoría de perfiles de herramientas | [`tool-profile-audit.md`](tool-profile-audit.md) · [`.json`](tool-profile-audit.json) | `apps/api/scripts/artifacts/generate-tool-profile-audit.cjs --write` | `verify-artifacts` |
+| Inventario de productores salientes | [`outbound-producer-inventory.md`](outbound-producer-inventory.md) | `apps/api/scripts/outbound-producer-inventory.cjs` | `--check` en `candidate.yml` y `vertical-quality.yml`; comparado por `meta-october-rows.cjs` |
+| Tabla de tarifas de WhatsApp | `apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts` (insumos en `apps/api/data/whatsapp-rates/`) | `apps/api/scripts/generate-whatsapp-rates.cjs` | `--check` en `candidate.yml` y `vertical-quality.yml` |
 
-Las cifras del canario de certificación que citan los documentos se comprueban con `node apps/api/scripts/check-canary-figures.cjs --check` sobre **todo** `docs/**/*.md`.
+Las cifras del canario de certificación que citan los documentos se comprueban con `node apps/api/scripts/check-canary-figures.cjs --check` sobre **todo** `docs/**/*.md`: un documento vigente que cite una cifra tiene que coincidir con el planificador (y `--fix` lo reescribe si está en `ASSERTING`); uno fechado que cite las de su día se declara `HISTORICAL` con el motivo, y no se reescribe con cifras que nunca tuvo. Desde que R7 sacó los casos de conocimiento del paquete de evaluación (ADR 0013) el canario son 216 casos; los documentos del 2026-09-10 conservan los 244 de ese día.

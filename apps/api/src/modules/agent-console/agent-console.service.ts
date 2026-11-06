@@ -504,7 +504,7 @@ export class AgentConsoleService {
         if (durable) return durable;
         // A console reply is a conversational effect. Every supported
         // conversational channel has a strict durable transport; Email is an
-        // inbound-only adapter and SMS is a retired product (ADR 0018). If
+        // inbound-only adapter and SMS is a retired product (ADR 0020). If
         // the lane cannot bind this conversation, sending inline would either
         // create an unsupported product surface or lose the recovery record.
         // Refuse before writing history or contacting a provider.

@@ -10,7 +10,7 @@ export interface TenantSmsSendResult {
 }
 
 /**
- * SMS is a retired product (ADR 0018): there is no SMS transport, credit
+ * SMS is a retired product (ADR 0020): there is no SMS transport, credit
  * balance or platform switch any more. This stub only keeps the contract that
  * `conversations/chat-identity.service.ts` still consumes: SMS is never
  * available and every send is refused with a reason no retry can change, so an

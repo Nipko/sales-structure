@@ -5,7 +5,7 @@
 > **Documento generado desde el código.** No lo edites a mano: tus cambios se pierden y el CI falla si el archivo no coincide con los registros.
 >
 > - Regenerar: `node apps/api/scripts/business-types-catalog.cjs --write`
-> - Comprobar (lo que corre el CI): `node apps/api/scripts/business-types-catalog.cjs --check`, invocado por `docs/audits/2026-09-09/verify-artifacts.cjs`.
+> - Comprobar (lo que corre el CI): `node apps/api/scripts/business-types-catalog.cjs --check`, invocado por `apps/api/scripts/artifacts/verify-artifacts.cjs`.
 > - Si añades una industria, un tipo de negocio, una familia de herramientas o cambias su disponibilidad, regenera y confirma el resultado en el mismo commit.
 
 Este es el único listado vigente de industrias y tipos de negocio. Cualquier cifra o lista distinta en otro documento está desactualizada: manda este archivo.

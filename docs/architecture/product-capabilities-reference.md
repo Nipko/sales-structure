@@ -44,7 +44,7 @@ indicados abajo.
 | WhatsApp, Instagram, Messenger y Telegram | Canales conversacionales con flujos de conexión administrados desde la plataforma, sujetos a rol, plan y configuración vigente |
 | Web Chat Widget | Superficie conversacional operativa con configuración, snippet público, sesiones y mensajería por Socket.IO |
 | Email | Adaptador e ingreso técnico interno para integraciones administradas; `/admin/channels/email` redirige al inventario certificado y **no es una configuración autoservicio** |
-| SMS | Producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)): no hay canal, créditos, compras, avisos ni campañas SMS, ni pantallas para configurarlo. Un mensaje heredado con canal SMS se descarta sin enviarse |
+| SMS | Producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)): no hay canal, créditos, compras, avisos ni campañas SMS, ni pantallas para configurarlo. Un mensaje heredado con canal SMS se descarta sin enviarse |
 
 Conectar una superficie crea la conexión técnica, pero no publica un agente. La
 configuración del agente se guarda como borrador, se prueba, se prepara y aprueba como
@@ -332,7 +332,7 @@ una decisión de seguridad o de alcance de la app compañera.
 
 Al cambiar navegación, roles, planes, industrias o tipos de negocio se deben revisar conjuntamente:
 
-1. Este documento y `docs/domain/user-manual.md`.
+1. Este documento.
 2. `docs/domain/mobile-user-manual.md` si cambia la superficie móvil.
 3. `docs/architecture/api-reference.md` y `docs/architecture/modules-reference.md` si cambia API o inventario.
 4. La base runtime del asistente según `docs/architecture/platform-assistant-knowledge.md`.

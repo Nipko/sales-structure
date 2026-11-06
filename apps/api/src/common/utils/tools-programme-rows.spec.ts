@@ -27,10 +27,10 @@ const ROOT = resolve(__dirname, '..', '..', '..', '..', '..');
  */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const rowsModule = require(resolve(__dirname, '..', '..', '..', '..', '..',
-    'docs', 'audits', '2026-09-11', 'tools-programme-rows.cjs'));
+    'apps', 'api', 'scripts', 'artifacts', 'tools-programme-rows.cjs'));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const audit = require(resolve(__dirname, '..', '..', '..', '..', '..',
-    'docs', 'audits', '2026-09-11', 'tool-profile-audit.json'));
+    'docs', 'generated', 'tool-profile-audit.json'));
 
 const row = (id: string, entry: Record<string, unknown>) => ({ id, ...entry });
 const rows = () => rowsModule.toolsRows(row, audit, summariseNativeBacklogDetailed()) as Array<Record<string, any>>;
@@ -76,8 +76,8 @@ describe('the tools programme rows read something real', () => {
             // failed, because the one verifier every workflow calls did not
             // know about this generator.
             const missing = rowsModule.closureWiring(ALL_T,
-                treeWithout('docs/audits/2026-09-09/verify-artifacts.cjs',
-                    text => text.replace(/2026-09-11\/generate-tool-profile-audit\.cjs/g, 'x')));
+                treeWithout('apps/api/scripts/artifacts/verify-artifacts.cjs',
+                    text => text.replace(/artifacts\/generate-tool-profile-audit\.cjs/g, 'x')));
             expect(missing).toHaveLength(1);
             expect(String(missing[0])).toContain('generate-tool-profile-audit');
         });

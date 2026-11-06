@@ -381,7 +381,7 @@ const frozenClaimPatterns = [
     pattern: /(?:Salud · Auto · Hogar|Health · Auto · Home|Sa[uú]de · Auto · Casa|Sant[eé] · Auto · Maison|Asesor[ií]a · Inversiones|Advisory · Investments|Assessoria · Investimentos|Conseil · Investissements)/i,
   },
   {
-    // SMS is a retired product (ADR 0018). It is not a
+    // SMS is a retired product (ADR 0020). It is not a
     // channel any plan sells, whatever the plan catalogue still lists. Frozen in
     // channel-list context so a sentence that says SMS is gone is still allowed.
     label: "SMS presented as a channel",
@@ -761,7 +761,7 @@ assert(
   "Demo channel skins must cover exactly the self-service channels, under the policy's own keys: "
   + `${Object.keys(channelRegistry || {}).join(", ")} vs ${certifiedChannelPolicy.join(", ")}`,
 );
-// Email is an internal inbound adapter and SMS a retired product (ADR 0018).
+// Email is an internal inbound adapter and SMS a retired product (ADR 0020).
 // Neither is sellable as a conversational channel, and a skin is exactly how
 // one would reappear in a list next to WhatsApp and be certified by adjacency.
 for (const excluded of ["email", "sms"]) {
@@ -778,7 +778,7 @@ assert(capabilityCounts.interfaceLanguages === locales.length, "Capability stat 
 // Typing a friendlier number here fails; making it true means certifying a
 // channel, which regenerates the report and turns this green on its own.
 const closureReport = JSON.parse(fs.readFileSync(
-  path.join(repoRoot, "docs", "audits", "2026-09-09", "closure-report.json"),
+  path.join(repoRoot, "docs", "generated", "closure-report.json"),
   "utf8",
 ));
 assert(

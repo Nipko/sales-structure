@@ -186,6 +186,39 @@ export function legacyRowProvenance(table: string, row: Row, ctx: LegacyContext)
     };
 }
 
+/**
+ * L4 por campo — opción B (dueño, 2026-11-06): el valor que pone la base cuando el campo nunca se llenó (default de
+ * columna en `tenant-schema.sql`) no es dato del negocio hasta que el negocio lo confirma. El agente no lo afirma (dice
+ * que no está confirmado y ofrece a una persona) y la preparación le pide al negocio confirmarlo; el motor de reservas
+ * sigue aplicando el límite al reservar. Guardar el formulario con el campo lo confirma aunque el valor sea el mismo:
+ * el escritor estampa `metadata.confirmed_fields.<columna>` (tours.service, properties.service).
+ */
+export const COLUMN_DEFAULTS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+    tour_packages: { min_party_size: 1, max_capacity: 10 },
+    properties: { cleaning_fee: 0 },
+};
+/** Clave de `metadata` donde el formulario deja las columnas que el negocio confirmó (`{ <columna>: <ISO> }`). */
+export const CONFIRMED_FIELDS_KEY = 'confirmed_fields';
+
+/**
+ * Columnas que el negocio confirmó al guardar el formulario: `metadata.confirmed_fields` de la fila completa, o la
+ * columna `confirmed_fields` que proyecta el lector de la foto (SnapshotReader).
+ */
+export function confirmedFieldsOf(row: Row): Set<string> {
+    const parse = (v: unknown): unknown => (typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return null; } })() : v);
+    const meta = parse(row.metadata);
+    const confirmed = parse(row[CONFIRMED_FIELDS_KEY]) ?? (meta && typeof meta === 'object' ? (meta as Row)[CONFIRMED_FIELDS_KEY] : null);
+    return new Set(confirmed && typeof confirmed === 'object' && !Array.isArray(confirmed) ? Object.keys(confirmed) : []);
+}
+
+/** Columnas de la fila que tienen el valor por defecto de su columna y que el negocio no confirmó (L4 por campo). */
+export function unconfirmedColumnDefaults(table: string, row: Row): string[] {
+    const defaults = COLUMN_DEFAULTS[table];
+    if (!defaults) return [];
+    const confirmed = confirmedFieldsOf(row);
+    return Object.entries(defaults).filter(([col, def]) => num(row[col]) === def && !confirmed.has(col)).map(([col]) => col);
+}
+
 /** Procedencia real si la fila la tiene vigente; si no, las reglas L. */
 export const rowProvenance = (table: string, row: Row, ctx: LegacyContext): RowProvenance =>
     realRowProvenance(table, row) ?? legacyRowProvenance(table, row, ctx);
@@ -214,7 +247,7 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
     const ctx = legacyContextOf(rows);
     snap.source = { kind: 'legacy', notes: [
         'L5 aproximada: la plantilla de persona vive en código; toda configuración de persona con template_id se trata como sembrada.',
-        'L4 extendida a valores por defecto de columna equivalentes (companies.country, properties.check_in/out, products.requires_prescription, real_estate_listings.financing_available = false, listas jsonb vacías).',
+        'L4 extendida a valores por defecto de columna equivalentes (companies.country, properties.check_in/out, products.requires_prescription, real_estate_listings.financing_available = false, listas jsonb vacías; opción B: tour_packages.min_party_size/max_capacity 1/10 y properties.cleaning_fee 0 sin metadata.confirmed_fields).',
         'Horario: sin settings.businessHours ni config.hours de la persona se lee la agenda (availability_slots) con el estado de sus filas (R1.1).',
         'covers de las FAQs inferido del título (FAQ_COVERS_RULES, R1.1).',
     ] };
@@ -391,8 +424,11 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
                 amenities: jsonList(r.amenities),
                 // E1.1b: ubicación de la unidad (el agente la usa para «¿dónde quedan?»; el juez debe poder verificarla)
                 address: str(r.address), city: str(r.city),
+                // opción B: la tarifa de limpieza; 0 sin confirmar es el default de columna (L4), no «sin cargo»
+                cleaning_fee: num(r.cleaning_fee),
             });
-            return base;
+            const defaults = unconfirmedColumnDefaults('properties', r);
+            return { ...base, fieldStatus: { cleaning_fee: defaults.includes('cleaning_fee') ? 'seeded' as const : base.contentStatus } };
         });
         const p = rows.properties.find(x => x.is_active !== false) ?? rows.properties[0];
         const isDefault = String(p.check_in_time ?? '').startsWith('15:00') && String(p.check_out_time ?? '').startsWith('11:00');
@@ -420,9 +456,13 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
             departures: (departuresByPackage.get(String(r.id)) ?? []).map(d => ({ date: String(d.departure_date).slice(0, 10), seats_left: num(d.available_seats) })),
         });
         const deps = departuresByPackage.get(String(r.id)) ?? [];
+        // opción B (L4 por campo): 1 y 10 sin confirmar son los defaults de columna, no el tamaño de grupo del negocio
+        const defaults = unconfirmedColumnDefaults('tour_packages', r);
         return {
             ...base,
             fieldStatus: {
+                min_group: defaults.includes('min_party_size') ? 'seeded' as const : base.contentStatus,
+                max_group: defaults.includes('max_capacity') ? 'seeded' as const : base.contentStatus,
                 includes: listStatus(r.includes, base.contentStatus), excludes: listStatus(r.excludes, base.contentStatus),
                 guide_languages: listStatus(r.languages, base.contentStatus),
                 ...(deps.length ? { departures: deps.every(d => rowStatus(d, ctx).status === 'seeded') ? 'seeded' as const : 'confirmed' as const } : {}),

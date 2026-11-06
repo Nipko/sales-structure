@@ -88,7 +88,6 @@ conversation_assignments — Agent handoff tracking (first_response_at, resolved
 alert_rules            — Threshold alert config
 alert_history          — Alert trigger history
 scheduled_reports      — Report delivery config
-dashboard_preferences  — Widget config per user
 automation_executions  — Rule execution audit trail
 agent_personas         — Multi-agent config
 agent_templates        — Reusable agent templates
@@ -124,9 +123,9 @@ billing_events             — Append-only log + idempotencia: UNIQUE(provider, 
 billing_coupons            — Cupones (percent_off/amount_off/free_months), maxRedemptions, appliesToPlanIds
 billing_coupon_redemptions — Un canje por tenant×cupón: UNIQUE(couponId, tenantId)
 fiscal_invoices            — Facturación DIAN (Factus): CUFE, numbering, XML/PDF, acquirer_snapshot inmutable, type invoice|credit_note
-sms_credit_balances        — Legado del SMS retirado (ADR 0018): sin lector ni escritor; espera el DROP de fase 2
-sms_credit_ledger          — Legado del SMS retirado (ADR 0018): sin lector ni escritor; espera el DROP de fase 2
-sms_package_orders         — Legado del SMS retirado (ADR 0018): sin lector ni escritor; espera el DROP de fase 2
+sms_credit_balances        — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
+sms_credit_ledger          — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
+sms_package_orders         — Legado del SMS retirado (ADR 0020): sin lector ni escritor; espera el DROP de fase 2
 financial_snapshots        — Monthly platform-wide SaaS metrics (MRR movements, plan distribution)
 tenant_financial_snapshots — Per-tenant monthly snapshots (UNIQUE tenantId+snapshotMonth)
 storage_snapshots          — Snapshot diario de disco/DB/media por-tenant + fila 'platform' (Ops Center)
@@ -310,9 +309,9 @@ Capa fiscal desacoplada del PSP (`IFiscalInvoiceProvider`; hoy adaptador **Factu
 
 ---
 
-## SMS — producto retirado (ADR 0018)
+## SMS — producto retirado (ADR 0020)
 
-SMS se retiró por completo en noviembre de 2026 ([ADR 0018](../decisions/0018-retiro-sms.md)): ya no existen los módulos `sms-credits` (salvo un stub sin transporte que importa `conversations/`), `sms-notifications`, el checkout `billing/sms-checkout.*`, el adaptador Twilio `channels/sms/`, el interruptor `sms.platform_enabled`, las rutas `/sms-credits/*`, `/sms-notifications/*` y `/channels/sms/*` ni las pantallas `/admin/sms-packages`, `/admin/channels/sms` y `/admin/settings/integrations/sms-notifications`. Las tablas `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño original está en `docs/archive/2026-07-sms/`.
+SMS se retiró por completo en noviembre de 2026 ([ADR 0020](../decisions/0020-retiro-sms.md)): ya no existen los módulos `sms-credits` (salvo un stub sin transporte que importa `conversations/`), `sms-notifications`, el checkout `billing/sms-checkout.*`, el adaptador Twilio `channels/sms/`, el interruptor `sms.platform_enabled`, las rutas `/sms-credits/*`, `/sms-notifications/*` y `/channels/sms/*` ni las pantallas `/admin/sms-packages`, `/admin/channels/sms` y `/admin/settings/integrations/sms-notifications`. Las tablas `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño original está en `docs/archive/2026-07-sms/`.
 
 ---
 

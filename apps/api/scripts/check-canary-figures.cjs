@@ -43,6 +43,18 @@ const { execFileSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '../../..');
 const planner = path.join(root, 'apps/api/scripts/plan-certification-canary.cjs');
+/**
+ * The tree whose `docs/` is swept — and the only tree `--fix` may write into.
+ *
+ * The repository by default. A spec points `CANARY_FIGURES_DOCS_ROOT` at a copy
+ * under the system temp directory, so a probe it plants and a `--fix` it runs
+ * land in the copy: when the documents were stale, the spec's own `--fix` run
+ * used to rewrite the real ones in the developer's working tree. The planner is
+ * always the repository's — only the documents move.
+ */
+const docsRoot = process.env.CANARY_FIGURES_DOCS_ROOT
+    ? path.resolve(process.env.CANARY_FIGURES_DOCS_ROOT)
+    : root;
 
 /** The authority, asked once. Never re-derived here. */
 function plannedFigures() {
@@ -92,8 +104,13 @@ const usdEs = cents => `US$${(cents / 100).toFixed(2).replace('.', ',')}`;
  * only answers "may a script rewrite this sentence, or does a person have to?".
  */
 const ASSERTING = [
-    'docs/audits/2026-09-10/certification-canary.md',
-    'docs/audits/2026-09-10/release-closure-report.md',
+    // Empty on purpose. The two documents that used to be here —
+    // `certification-canary.md` and `release-closure-report.md` — are dated
+    // evidence of 2026-09-10 and carry the banner "Documento histórico". When R7
+    // took the knowledge cases out of the eval pack (ADR 0013) the planner went
+    // from 244 to 216 cases, and `--fix` would have written into them figures
+    // they never had. They are HISTORICAL now. A CURRENT document that states
+    // the canary's figures belongs here, so `--fix` can keep it agreeing.
 ];
 
 /**
@@ -104,12 +121,25 @@ const ASSERTING = [
  * into a blanket exemption.
  */
 const HISTORICAL = {
-    'docs/audits/2026-09-10/codex-certification-runner-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-certification-runner-review.md':
         'the independent review that refuted the 408/US$0,76 ceiling',
-    'docs/audits/2026-09-10/codex-release-readiness-review.md':
+    'docs/archive/2026-09-programa-octubre/codex-release-readiness-review.md':
         'the readiness review that refused 408/US$0,76 as a validated ceiling',
-    'docs/handoffs/2026-09-10/claude-october-release-parallel-execution.md':
+    'docs/archive/2026-09-programa-octubre/claude-october-release-parallel-execution.md':
         'the handoff that names US$0,76 as the figure NOT to treat as an authorisation',
+    // Dated 2026-09-10 and bannered "Documento histórico": each states the canary
+    // as the planner priced it that day (244 casos / 724 llamadas / US$1,24),
+    // before R7 retired the knowledge cases from the eval pack (ADR 0013).
+    'docs/archive/2026-09-programa-octubre/certification-canary.md':
+        'the canary as planned on 2026-09-10, including the correction of 408/US$0,76',
+    'docs/archive/2026-09-programa-octubre/release-closure-report.md':
+        'the 2026-09-10 closure report, which priced the canary as the planner did that day',
+    'docs/archive/2026-09-programa-octubre/whatsapp-runtime-batch-report.md':
+        'the 2026-09-10 WhatsApp runtime batch report, with the canary figures of that day',
+    'docs/archive/2026-09-programa-octubre/whatsapp-runtime-post-closure-independent-review.md':
+        'the 2026-09-10 independent review, with the canary figures of that day',
+    'docs/archive/2026-09-programa-octubre/claude-whatsapp-runtime-true-closure.md':
+        'the 2026-09-10 handoff, with the canary figures of that day',
 };
 
 /**
@@ -128,9 +158,8 @@ const HISTORICAL = {
  * a blanket list does not have.
  */
 const QUOTED_SUPERSEDED = {
-    'docs/audits/2026-09-10/certification-canary.md': [
-        'Este documento decía **408 llamadas y US$0,76**',
-    ],
+    // Empty since `certification-canary.md` — the document whose correction
+    // paragraph this mechanism was built for — became HISTORICAL as a whole.
 };
 
 /**
@@ -265,7 +294,7 @@ function markdownFiles(dir, found = []) {
             if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
             markdownFiles(full, found);
         } else if (entry.name.endsWith('.md')) {
-            found.push(path.relative(root, full).split(path.sep).join('/'));
+            found.push(path.relative(docsRoot, full).split(path.sep).join('/'));
         }
     }
     return found;
@@ -323,8 +352,8 @@ function main() {
     // it state a canary figure". If it does, it is checked. Being on ASSERTING now
     // only decides whether `--fix` may rewrite it or a person must.
     const asserted = [];
-    for (const relative of markdownFiles(path.join(root, 'docs'))) {
-        const file = path.join(root, relative);
+    for (const relative of markdownFiles(path.join(docsRoot, 'docs'))) {
+        const file = path.join(docsRoot, relative);
         // Newlines normalised before matching: `core.autocrlf` gives a Windows
         // checkout CRLF and a Linux one LF, and a checker that disagrees between
         // the two is a checker nobody trusts.
@@ -435,14 +464,14 @@ function main() {
 
     // A document on a list and not on disk is a list nobody maintained.
     for (const relative of [...ASSERTING, ...Object.keys(HISTORICAL), ...Object.keys(QUOTED_SUPERSEDED)]) {
-        if (!fs.existsSync(path.join(root, relative))) {
+        if (!fs.existsSync(path.join(docsRoot, relative))) {
             problems.push(`${relative}: classified by this checker and missing from the repository`);
         }
     }
     // And an excuse that is no longer needed is an excuse that will cover the next
     // mistake instead.
     for (const relative of Object.keys(HISTORICAL)) {
-        if (fs.existsSync(path.join(root, relative)) && !asserted.includes(relative)) {
+        if (fs.existsSync(path.join(docsRoot, relative)) && !asserted.includes(relative)) {
             problems.push(`${relative}: listed as HISTORICAL but carries no canary figure at all — the `
                 + 'exemption is dead and would silently cover the next figure written into this file');
         }
@@ -482,7 +511,7 @@ function main() {
 
 module.exports = {
     claims, inspect, markdownFiles, plannedFigures, usdEn, usdEs,
-    ASSERTING, HISTORICAL, QUOTED_SUPERSEDED, RETIRED, root,
+    ASSERTING, HISTORICAL, QUOTED_SUPERSEDED, RETIRED, root, docsRoot,
 };
 
 if (require.main === module) main();

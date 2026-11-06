@@ -1,6 +1,6 @@
 import { PlatformSmsService } from './platform-sms.service';
 
-describe('PlatformSmsService after the SMS retirement (ADR 0018)',()=>{
+describe('PlatformSmsService after the SMS retirement (ADR 0020)',()=>{
     const originalFetch=global.fetch;
     afterEach(()=>{global.fetch=originalFetch;});
 

@@ -8,7 +8,7 @@ Este documento describe cómo cancelar, suspender, reactivar o eliminar (hard-de
 
 Todo el ciclo está codificado en `OffboardingService` (`executeOffboarding`, `purgeTenant`, `reactivate`, `voluntaryCancel`, `extendTrial`) + `OffboardingCronService` (4 crons + 2 listeners de billing). **No hay que tocar la base de datos a mano**: se opera por la API `/api/v1/offboarding/*` y por el panel super_admin.
 
-> **SMS**: producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)). Sus tres tablas globales `sms_credit_*` siguen en la base hasta el DROP de fase 2 y el purge las sigue borrando (§7).
+> **SMS**: producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)). Sus tres tablas globales `sms_credit_*` siguen en la base hasta el DROP de fase 2 y el purge las sigue borrando (§7).
 
 ---
 
@@ -241,7 +241,7 @@ No hay export a ZIP ni cold storage por fases (día 37/97): eso no existe en el 
 - Conversaciones, mensajes, contactos, leads/oportunidades, media (`/data/media/{tenantId}/`), credenciales encriptadas, configuración de agentes, y todo el schema del tenant.
 
 ### Tablas SMS heredadas
-`sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` **sí** los borra `purgeTenant`: están en `TENANT_PUBLIC_PURGE_ORDER` y el gate de clasificación no dejaría purgar si no lo estuvieran. SMS es un producto retirado (ADR 0018) y en este entorno no se vendieron créditos, así que no hay saldo que resolver; las tablas esperan el DROP de fase 2.
+`sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` **sí** los borra `purgeTenant`: están en `TENANT_PUBLIC_PURGE_ORDER` y el gate de clasificación no dejaría purgar si no lo estuvieran. SMS es un producto retirado (ADR 0020) y en este entorno no se vendieron créditos, así que no hay saldo que resolver; las tablas esperan el DROP de fase 2.
 
 ### Rescate manual
 `infra/scripts/delete-tenant.sql` es el fallback si el endpoint no está disponible. Cubre menos tablas que el purge del servicio y se apoya en los `ON DELETE CASCADE` hacia `tenants` para el resto; las que no tienen esa FK necesitan su `DELETE` explícito o quedan huérfanas (es lo que pasaba con `billing_credit_ledger`, cuya única FK es a la suscripción y es `SET NULL`). Preferir siempre el endpoint.

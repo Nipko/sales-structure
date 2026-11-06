@@ -35,7 +35,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 
 const root = path.resolve(__dirname, '../../..');
-const researchDir = path.join(root, 'docs/research/2026-09-10');
+const researchDir = path.join(root, 'apps/api/data/whatsapp-rates');
 const outFile = path.join(
     root,
     'apps/api/src/modules/billing/whatsapp-rates/whatsapp-rate-table.generated.ts',

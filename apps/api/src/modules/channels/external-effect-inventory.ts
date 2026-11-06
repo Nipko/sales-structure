@@ -588,7 +588,7 @@ export const EXTERNAL_EFFECT_PRODUCERS: readonly ExternalEffectProducer[] = Obje
         id: 'handoff.fanout',
         effect: 'A transfer to a human, announced to its destinations: assignment, cache, inbox '
             + 'socket, CRM note, tenant webhooks, web/native push, Slack and agent email. The `sms` '
-            + 'destination is no longer announced (ADR 0018); it stays valid only for rows written before',
+            + 'destination is no longer announced (ADR 0020); it stays valid only for rows written before',
         lane: 'handoff_effects',
         status: 'live',
         derivation: 'census',
@@ -1212,7 +1212,7 @@ producer({
         source: 'modules/broadcast/broadcast-queue.processor.ts',
         symbol: 'dispatchWhatsApp',
         egress: 'ProactiveDispatchService.send -> `agent_dispatch_outbox`; the email branch keeps its own domain '
-            + 'queue. A legacy SMS recipient is closed as `sms_retired` with no egress (ADR 0018)',
+            + 'queue. A legacy SMS recipient is closed as `sms_retired` with no egress (ADR 0020)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['whatsapp', 'email'],
@@ -1288,7 +1288,7 @@ producer({
         id: 'auth.two_factor_sms',
         effect: 'The 2FA login code a dashboard user asks to receive by SMS',
         lane: 'delivery_outbox',
-        // SMS is a retired product (ADR 0018): the transport refuses every send in preparation,
+        // SMS is a retired product (ADR 0020): the transport refuses every send in preparation,
         // before any provider is contacted, so nothing reaches a carrier.
         status: 'off',
         derivation: 'declared',
@@ -1319,7 +1319,7 @@ producer({
         source: 'modules/customer-portal/customer-portal-access.service.ts',
         symbol: 'CustomerPortalAccessService',
         egress: 'customer_portal_access_challenges followed by bounded SMTP; a code requested by phone '
-            + 'is closed as `portal_sms_retired` with no egress (ADR 0018)',
+            + 'is closed as `portal_sms_retired` with no egress (ADR 0020)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['email'],
@@ -1344,7 +1344,7 @@ producer({
         source: 'modules/conversations/chat-identity.service.ts',
         symbol: 'startVerification',
         egress: 'chat_identity_challenges followed by bounded SMTP. The SMS branch calls the retired '
-            + 'stub `TenantNotificationSmsService`, which never sends (ADR 0018)',
+            + 'stub `TenantNotificationSmsService`, which never sends (ADR 0020)',
         reach: {
             class: 'customer_message', audience: 'contact', personalData: true,
             channels: ['email'],
@@ -2273,7 +2273,7 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
             + 'none of its own: the caller names the families whose switch governs it' },
     { source: 'modules/health/health.module.ts', kind: 'road', reason: 'dependency injection wiring' },
     { source: 'modules/sms-credits/sms-credits.module.ts', kind: 'road',
-        reason: 'dependency injection wiring of the retired SMS stub (ADR 0018)' },
+        reason: 'dependency injection wiring of the retired SMS stub (ADR 0020)' },
     { source: 'modules/operational-notices/operational-notice-outbox.ts', kind: 'road',
         reason: 'the outbox primitive its three producers write through' },
     { source: 'modules/operational-notices/operational-notice.service.ts', kind: 'road',

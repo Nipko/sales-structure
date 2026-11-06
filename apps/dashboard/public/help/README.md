@@ -106,7 +106,7 @@ that benefit from a walkthrough (e.g. `settingsSecurity`, `settingsScoringConfig
 ## Phase 4 — Channel setup (added, focus: how to connect)
 7 channel setup pages now have help: `channelsEmail`, `channelsInstagram`,
 `channelsMessenger`, `channelsTelegram`, `channelsWhatsapp`, `channelsWhatsappProfile`,
-`channelsWhatsappTemplates`. (SMS is a retired product, ADR 0018: there is no SMS page
+`channelsWhatsappTemplates`. (SMS is a retired product, ADR 0020: there is no SMS page
 and no `channelsSms` help.) GIFs of the connect flow are
 high-value here — prioritize `channelsWhatsapp` and `channelsInstagram`.
 

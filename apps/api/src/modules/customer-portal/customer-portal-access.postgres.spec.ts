@@ -120,7 +120,7 @@ describeDb('durable customer portal access against PostgreSQL', () => {
         expect(smtpAttempt).toHaveBeenCalledTimes(1);
     });
 
-    it('closes a code requested by phone for good: SMS is a retired product (ADR 0018)', async () => {
+    it('closes a code requested by phone for good: SMS is a retired product (ADR 0020)', async () => {
         const id = await service.issue(tenantId, schema, 'sms', '+573001112233', 'es');
         await expect(service.deliver(id!)).resolves.toBe('portal:suppressed');
         expect(smtpAttempt).not.toHaveBeenCalled();

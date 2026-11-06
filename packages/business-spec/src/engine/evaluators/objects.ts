@@ -27,6 +27,36 @@ function itemHasField(i: ItemRecord, f: string): boolean {
     return exists(v) && i.fieldStatus?.[f] !== 'seeded';
 }
 
+/**
+ * Opción B (dueño, 2026-11-06): campos opcionales cuyo valor es el default de columna sin confirmar (L4 por campo,
+ * `fieldStatus` sembrado). No bloquean (el motor de reservas aplica el límite igual), pero la preparación le pregunta al
+ * negocio por cada ítem confirmado; guardar el formulario con el campo lo confirma aunque el valor sea el mismo.
+ */
+const DEFAULT_FIELD_QUESTIONS: Readonly<Record<string, Readonly<Record<string, (name: string) => string>>>> = {
+    tour_booking: {
+        min_group: name => `¿Cuál es el mínimo de viajeros del tour «${name}»? El 1 que muestra es el valor por defecto, no un dato confirmado.`,
+        max_group: name => `¿Cuál es el máximo de viajeros del tour «${name}»? El 10 que muestra es el valor por defecto, no un dato confirmado.`,
+    },
+    lodging_booking: {
+        cleaning_fee: name => `¿Cobras tarifa de limpieza en «${name}»? El 0 que muestra es el valor por defecto; si no cobras, guárdalo para confirmarlo.`,
+    },
+};
+
+function defaultFieldQuestions(o: string, items: readonly ItemRecord[]): string[] {
+    const questions = DEFAULT_FIELD_QUESTIONS[o];
+    if (!questions) return [];
+    const out: string[] = [];
+    for (const i of items) {
+        // un ítem sembrado entero ya pide «confirmación» en el hueco del catálogo
+        if (!itemConfirmed(i)) continue;
+        const name = String(i.fields.name ?? i.fields.unit_name ?? i.id);
+        for (const [field, ask] of Object.entries(questions)) {
+            if (exists(i.fields[field]) && i.fieldStatus?.[field] === 'seeded') out.push(ask(name));
+        }
+    }
+    return out;
+}
+
 /** OBJ.*.CATALOG: todos los ítems activos con sus campos required confirmados; parcial = proporción. */
 const catalog: Evaluator = ctx => {
     const o = objectOf(ctx);
@@ -40,8 +70,10 @@ const catalog: Evaluator = ctx => {
         if (miss.length) miss.forEach(m => missing.add(m)); else okCount++;
     }
     const allSeeded = items.length > 0 && items.every(i => !itemConfirmed(i));
+    const warnings = defaultFieldQuestions(o, items);
     const out = ratioOutcome(okCount, items.length, 'ausente', {
         params: { n: items.length - okCount, m: items.length, 'ítems': noun(o).items, campos: [...missing].map(f => FIELD_LABELS[f] ?? f).join(', '), objeto: noun(o).records },
+        ...(warnings.length ? { warnings } : {}),
     });
     if (out.result !== 'cumple' && allSeeded) out.cause = 'sembrado';
     return out;

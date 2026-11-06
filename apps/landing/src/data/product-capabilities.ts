@@ -23,7 +23,7 @@ export const PRODUCT_CAPABILITY_COUNTS = {
   /**
    * Channels with end-to-end certification completed.
    *
-   * `docs/audits/2026-09-09/closure-report.md` reports 0 of 5. It is published
+   * `docs/generated/closure-report.md` reports 0 of 5. It is published
    * rather than hidden because a page that lists five channels and says nothing
    * about certification invites the reader to assume all five are certified —
    * which is precisely the claim the report refuses.

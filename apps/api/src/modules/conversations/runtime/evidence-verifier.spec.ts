@@ -146,17 +146,28 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 4 cupos.', 'El tour dura 4 horas.']);
     });
 
-    it('D1q: en una frase de tamaño de grupo, el mínimo y el máximo de la ficha respaldan la frase', () => {
+    it('D1q: en una frase de tamaño de grupo, el mínimo y el máximo confirmados de la ficha respaldan la frase', () => {
         const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
         const { kept, dropped } = dropBackedViolations([
-            v('El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 1 persona y un máximo de 10 personas.'),
+            v('El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 2 personas y un máximo de 12 personas.'),
             v('La habitación es para 2 huéspedes.'),
-            v('El grupo máximo es de 12 personas.'),
+            v('El grupo máximo es de 14 personas.'),
             v('El tour dura 4 horas.'),
-        ], new Set([1, 10, 2, 4]));
+        ], new Set([2, 12, 4]));
         expect(dropped.map(d => d.sentence)).toEqual([
-            'El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 1 persona y un máximo de 10 personas.', 'La habitación es para 2 huéspedes.']);
-        expect(kept.map(k => k.sentence)).toEqual(['El grupo máximo es de 12 personas.', 'El tour dura 4 horas.']);
+            'El paquete Spark QA Tour 20261018T2140Z es para un mínimo de 2 personas y un máximo de 12 personas.', 'La habitación es para 2 huéspedes.']);
+        expect(kept.map(k => k.sentence)).toEqual(['El grupo máximo es de 14 personas.', 'El tour dura 4 horas.']);
+    });
+
+    it('opción B (dueño, 2026-11-06): el 1 y el 10 que la base pone sin que el negocio los llene no respaldan «de 1 a 10 personas»', () => {
+        // get_package_details de un paquete sin mínimo ni máximo confirmados: llegan null y nombrados (catalog-content-status.ts)
+        const read = { result: { id: 'k1', name: 'Spark QA Tour', price: 125, priceStatus: 'confirmed', durationValue: 4,
+            minPartySize: null, maxCapacity: null, unconfirmedFields: ['minPartySize', 'maxCapacity'] } };
+        const numbers = authoritativeNumbers({ reads: [read] });
+        expect(numbers.has(1) || numbers.has(10)).toBe(false);
+        const v = (sentence: string) => ({ sentence, kind: 'claim' as const, requirementId: null });
+        const { kept } = dropBackedViolations([v('El tour es para grupos de 1 a 10 personas.')], numbers);
+        expect(kept.map(k => k.sentence)).toEqual(['El tour es para grupos de 1 a 10 personas.']);
     });
 
     it('D1i: una cifra que dijo el cliente no se comprueba; un trozo marcado se lee en su frase entera', () => {

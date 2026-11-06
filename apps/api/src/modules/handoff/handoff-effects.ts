@@ -239,7 +239,7 @@ export async function readUncertainHandoffEffects(query: HandoffEffectQuery, sch
 
 /**
  * The consumers the single `announced` flag used to cover between them. `sms`
- * left the list with the SMS retirement (ADR 0018); it stays a valid destination
+ * left the list with the SMS retirement (ADR 0020); it stays a valid destination
  * name only because rows written before it remain in `agent_handoff_effects`.
  */
 export const HANDOFF_ANNOUNCEMENT_DESTINATIONS: readonly HandoffEffectDestination[] =

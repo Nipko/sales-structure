@@ -259,7 +259,7 @@ Ejecutado dentro de transaccion. `SET LOCAL` garantiza que el search_path aplica
 
 ### 5.3 Twilio (SMS entrante) — retirado
 
-El webhook `POST /channels/webhook/sms/:phoneNumber`, su validacion de firma HMAC-SHA1 y el adaptador `channels/sms/sms.adapter.ts` se eliminaron con el retiro de SMS ([ADR 0018](../decisions/0018-retiro-sms.md)): ya no hay entrada SMS que validar. La ruta responde 404.
+El webhook `POST /channels/webhook/sms/:phoneNumber`, su validacion de firma HMAC-SHA1 y el adaptador `channels/sms/sms.adapter.ts` se eliminaron con el retiro de SMS ([ADR 0020](../decisions/0020-retiro-sms.md)): ya no hay entrada SMS que validar. La ruta responde 404.
 
 ### 5.4 Wompi / Stripe (Billing)
 
@@ -673,7 +673,7 @@ Un tenant puede conectar N conexiones del mismo tipo de canal (p. ej. 2 numeros 
 
 ## 18. SMS (producto retirado)
 
-El producto SMS se apago en agosto de 2026 y su codigo se retiro en noviembre de 2026 ([ADR 0018](../decisions/0018-retiro-sms.md)): ya no existen los modulos de creditos, notificaciones y checkout, el adaptador y webhook Twilio, el interruptor `sms.platform_enabled` ni las pantallas. El respaldo SMS del 2FA (`POST /auth/2fa/send-sms`) sigue como concepto OTP, pero su transporte falla siempre antes de contactar a un proveedor. Las tablas globales `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño historico esta en `docs/archive/2026-07-sms/`.
+El producto SMS se apago en agosto de 2026 y su codigo se retiro en noviembre de 2026 ([ADR 0020](../decisions/0020-retiro-sms.md)): ya no existen los modulos de creditos, notificaciones y checkout, el adaptador y webhook Twilio, el interruptor `sms.platform_enabled` ni las pantallas. El respaldo SMS del 2FA (`POST /auth/2fa/send-sms`) sigue como concepto OTP, pero su transporte falla siempre antes de contactar a un proveedor. Las tablas globales `sms_credit_balances`, `sms_credit_ledger` y `sms_package_orders` siguen en la base (y en `TENANT_PUBLIC_PURGE_ORDER`) hasta el DROP de fase 2. El diseño historico esta en `docs/archive/2026-07-sms/`.
 
 ## 19. Fiscal DIAN (Colombia) — gate collect-before-pay
 

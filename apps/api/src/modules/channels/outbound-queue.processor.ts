@@ -118,7 +118,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         private throttle: TenantThrottleService,
         private channelToken: ChannelTokenService,
         private redis: RedisService,
-        // Retired SMS slot (ADR 0018). SMS has no transport any more; the slot
+        // Retired SMS slot (ADR 0020). SMS has no transport any more; the slot
         // stays only because specs outside this module construct the processor
         // positionally. Nothing is injected and nothing reads it.
         @Optional() @Inject(RETIRED_SMS_SLOT) _retiredSms: unknown,
@@ -1300,7 +1300,7 @@ export class OutboundQueueProcessor extends WorkerHost {
         // already owns one of the counted slots; using it here stranded those
         // retries whenever the window was exactly full.
 
-        // SMS is a retired product (ADR 0018): there is no transport, so a
+        // SMS is a retired product (ADR 0020): there is no transport, so a
         // legacy SMS job is dropped for good instead of burning its retries.
         if (outbound.channelType === 'sms') {
             this.logger.warn(`[Outbound][SMS] retired product — dropped tenant=${outbound.tenantId} to=${outbound.to}`);

@@ -134,7 +134,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `POST /auth/2fa/disable` — Disable 2FA (password required)
   - `POST /auth/2fa/verify` — Verify TOTP/email/backup code at login
   - `POST /auth/2fa/send-email` — Send email OTP fallback
-  - `POST /auth/2fa/send-sms` — SMS OTP fallback; its transport was retired with SMS (ADR 0018), so it always answers that SMS delivery is unavailable
+  - `POST /auth/2fa/send-sms` — SMS OTP fallback; its transport was retired with SMS (ADR 0020), so it always answers that SMS delivery is unavailable
   - `POST /auth/2fa/backup-codes` — Generate/regenerate backup codes
   - `GET /auth/trusted-devices` — List user's trusted devices
   - `POST /auth/trusted-devices/:deviceId/revoke` — Revoke a trusted device
@@ -265,7 +265,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `DELETE /channels/messenger/disconnect` — Disconnect Messenger
   - `POST /channels/instagram/oauth-connect` — Instagram OAuth
   - `DELETE /channels/instagram/disconnect` — Disconnect Instagram
-  - > **Nota:** SMS es un producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)): no hay adaptador Twilio, webhook ni rutas `/channels/sms/*`; un trabajo saliente heredado con `channelType: 'sms'` se descarta como `skipped:sms_retired`. Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y Web Chat Widget (`widget/`).
+  - > **Nota:** SMS es un producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)): no hay adaptador Twilio, webhook ni rutas `/channels/sms/*`; un trabajo saliente heredado con `channelType: 'sms'` se descarta como `skipped:sms_retired`. Las superficies conversacionales autoservicio son WhatsApp, Instagram, Messenger, Telegram y Web Chat Widget (`widget/`).
   - **Email (interno, no autoservicio certificado):**
     - `POST /channels/email/inbound` — ingreso técnico JSON para una integración previamente administrada; falla cerrado si `EMAIL_INBOUND_WEBHOOK_SECRET` no está configurado, valida el header antes de resolver el tenant, enruta solo con un destinatario canónico en `envelope.to` y rechaza direcciones activas ambiguas entre tenants
     - `GET /channels/email/config` — coincide con el handler genérico `/:channelType/config` y solo devuelve instrucciones de webhook; no lee credenciales ni configuración tenant
@@ -632,7 +632,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 ### Billing & Finance (4 modules)
 
 #### 26. billing
-- **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende SMS (producto retirado, ADR 0018)
+- **Purpose:** Ciclo de vida de suscripción mediante motor interno/Wompi, facturas, cupones, ciclos mensual/anual y panel billing-ops cross-tenant (super_admin). No vende SMS (producto retirado, ADR 0020)
 - **Services:** `billing.service.ts`, `billing-email.service.ts`, `invoice-generator.service.ts`, `coupons.service.ts`, `payment-provider.factory.ts`
 - **Adapters (`billing/adapters/`):** `wompi.adapter.ts`, `wompi-config.service.ts`, `stripe.adapter.ts`, `stripe-config.service.ts`, `mock-payment-provider.adapter.ts`. Mercado Pago ya no existe como adaptador de plataforma (retirado ago 2026; ver `docs/decisions/previas/mercadopago-retirement-2026-08.md`)
 - **Processors:** `reconciliation.processor.ts`
@@ -1285,7 +1285,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Purpose:** Vehicle stock management for automotive verticals (dealerships, rentals)
 - **Services:** `vehicle-inventory.service.ts`
 - **Controller:** `vehicle-inventory.controller.ts`
-- **Per-tenant tables:** `vehicles`, `vehicle_inquiries`, `test_drives`
+- **Per-tenant tables:** `vehicles`, `test_drives`
 - **Endpoints:**
   - `GET /vehicles/:tenantId` — List vehicles
   - `POST /vehicles/:tenantId` — Create vehicle
@@ -1524,10 +1524,10 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Model:** `FiscalInvoice` (global). Ver `docs/archive/2026-08-pagos/facturacion-electronica-colombia-2026-06.md`
 
 #### 69. sms-credits (stub del producto retirado)
-- **Purpose:** SMS es un producto retirado ([ADR 0018](../decisions/0018-retiro-sms.md)). Solo queda `SmsCreditsModule` con `tenant-notification-sms.service.ts`, un stub que nunca envía (`isAvailable()` → `false`, `send()` → rechazo), porque `conversations/chat-identity.service.ts` todavía lo importa. Sin controlador, endpoints, créditos ni Twilio
+- **Purpose:** SMS es un producto retirado ([ADR 0020](../decisions/0020-retiro-sms.md)). Solo queda `SmsCreditsModule` con `tenant-notification-sms.service.ts`, un stub que nunca envía (`isAvailable()` → `false`, `send()` → rechazo), porque `conversations/chat-identity.service.ts` todavía lo importa. Sin controlador, endpoints, créditos ni Twilio
 
 #### 70. sms-notifications (retirado)
-- Retirado en ADR 0018 junto con el aviso de handoff por SMS (`handoff.escalated.sms` ya no es destino del anuncio). El número de sección se conserva para no renumerar el inventario
+- Retirado en ADR 0020 junto con el aviso de handoff por SMS (`handoff.escalated.sms` ya no es destino del anuncio). El número de sección se conserva para no renumerar el inventario
 
 #### 71. push
 - **Purpose:** Notificaciones a agentes/admins — **Web Push** (navegador), **Expo** (app móvil `@parallext/mobile`) y preferencias por usuario que también filtran los avisos en vivo del dashboard

@@ -3,7 +3,7 @@ id: modulos-industria
 title: "Herramientas y módulos según tu industria"
 routes: ["/admin/appointments", "/admin/properties", "/admin/stays", "/admin/tours", "/admin/tour-bookings", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/repair-orders", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/service-catalog", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/cases", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["industria", "vertical", "tipo de negocio", "perfil de negocio", "lista de espera", "solo cuentas existentes", "planeacion de eventos", "construccion", "modulos", "menu", "trabajo diario", "catalogo y recursos", "propiedades", "estadias", "tours", "reservas de tours", "vehiculos", "alquiler", "ordenes de taller", "casos", "paquetes y servicios", "pedidos", "membresias", "clases", "cursos", "seguros", "tratamientos", "mascotas", "fotografia", "inventario", "receta", "otro"]
+keywords: ["industria", "vertical", "tipo de negocio", "perfil de negocio", "lista de espera", "solo cuentas existentes", "planeacion de eventos", "construccion", "modulos", "menu", "trabajo diario", "catalogo y recursos", "propiedades", "estadias", "tours", "reservas de tours", "vehiculos", "alquiler", "ordenes de taller", "casos", "paquetes y servicios", "pedidos", "membresias", "clases", "cursos", "seguros", "tratamientos", "mascotas", "fotografia", "inventario", "receta", "otro", "ical", "airbnb", "fotos"]
 ---
 
 # Herramientas y módulos según tu industria
@@ -58,3 +58,12 @@ Lo que aparece ya escrito cuando activas una industria sale de una **receta**: e
 No todas las industrias tienen receta propia. Solo la tienen seis: moda y belleza, salud, restaurantes, retail, educación y servicios del hogar; educación añade además una capa por tipo de negocio para las academias de baile y de música o arte, las clases particulares y la autoescuela. Las demás industrias nacen con la definición base, sin receta. Si eliges **Otro**, Parallly propone una receta escrita con IA a partir de la frase que pusiste en el alta sobre qué hace tu negocio; aparece como sugerencia y nunca reemplaza lo que ya cambiaste. Si la generación falla, la cuenta conserva la definición genérica.
 
 Una receta **nunca inventa un dato de tu negocio**. No sabe tu dirección, tu teléfono, tus medios de pago ni cuántas horas antes se puede cancelar. Donde iría ese dato deja un espacio como `[dirección]` o `[precio]` para que lo llenes. Un dato inventado que suena bien es peor que un espacio vacío: el espacio se ve y se llena; la invención sale por WhatsApp.
+
+## Propiedades: sincronización iCal y fotos
+
+En hotel y alquiler vacacional, cada propiedad (en el menú, «Habitaciones» o «Alojamientos») se abre en pestañas: **Calendario**, **Datos**, **Fotos**, **Reservas**, **Sincronización iCal** y **Check-in**.
+
+- **Importar Airbnb o Booking.com**: en **Sincronización iCal** agrega una conexión con la URL `.ics` que te da esa plataforma. Parallly importa sus reservas y bloqueos, vuelve a sincronizar cada 30 minutos y puedes forzarlo con **Sincronizar ahora**.
+- **Exportar tu calendario**: cada conexión tiene su propia URL de exportación. Copia la de cada plataforma y pégala en su extranet: así esa plataforma ve las reservas tomadas en Parallly sin recibir de vuelta sus propios bloqueos.
+- **Lo que iCal no hace**: un calendario iCal solo bloquea fechas, nunca las reabre. Si cancelas una reserva en Parallly, Airbnb suele liberar las fechas solo, pero en Booking.com tienes que abrirlas a mano. Además, cada plataforma lee los calendarios con retraso, así que dos reservas casi simultáneas en sitios distintos pueden chocar; si vendes en varias plataformas a la vez, un channel manager te protege mejor.
+- **Fotos**: en propiedades e inmuebles puedes subir hasta 5 fotos de máximo 2 MB cada una, arrastrándolas o eligiéndolas. La primera es la portada, y es la foto que el agente manda primero en el chat; usa **Usar como portada** o las flechas para reordenarlas. Un archivo que no es imagen o pesa más de 2 MB se rechaza con su nombre, sin bloquear las demás fotos.

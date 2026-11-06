@@ -909,7 +909,7 @@ model BillingCouponRedemption {
 }
 
 // ============================================
-// SMS CREDITS — RETIRED PRODUCT (ADR 0018)
+// SMS CREDITS — RETIRED PRODUCT (ADR 0020)
 // ============================================
 // SMS was retired: no service reads or writes these three tables any more. The
 // models stay only so this schema keeps matching the database (a `migrate dev`

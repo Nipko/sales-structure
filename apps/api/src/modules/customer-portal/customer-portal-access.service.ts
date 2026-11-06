@@ -189,7 +189,7 @@ export class CustomerPortalAccessService {
         if (claim.state !== 'claimed') return `portal:${claim.state}`;
 
         const row = claim.row;
-        // SMS is a retired product (ADR 0018): a code requested by phone has no
+        // SMS is a retired product (ADR 0020): a code requested by phone has no
         // transport, so the challenge is closed for good instead of retried.
         if (row.channel === 'sms') {
             await this.prisma.$executeRawUnsafe(`UPDATE customer_portal_access_challenges

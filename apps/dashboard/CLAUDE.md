@@ -37,7 +37,7 @@ src/
       agent/[agentId]/    — Agent editor (hub card grid + channel assignment + sticky save bar)
       agent/_components/  — 9 extracted components (ConfigCard, IdentitySection, etc.)
       agent-analytics/  — Reports (4 tabs: Overview/Agents/Channels/CSAT)
-      broadcast/        — Campaign manager (las campañas nuevas solo aceptan WhatsApp; SMS es un producto retirado, ADR 0018). Selector de cuenta/número emisor (`senderAccountId` → `channelAccountId`) cuando el tenant tiene >1 conexión WhatsApp
+      broadcast/        — Campaign manager (las campañas nuevas solo aceptan WhatsApp; SMS es un producto retirado, ADR 0020). Selector de cuenta/número emisor (`senderAccountId` → `channelAccountId`) cuando el tenant tiene >1 conexión WhatsApp
       report-builder/   — Custom report builder (16 metrics, 4 chart types, save/edit/duplicate/favorite)
       channels/         — Channel overview (WhatsApp/IG/Messenger + agent assignment status)
       channels/whatsapp/ — WhatsApp Embedded Signup
@@ -148,7 +148,7 @@ src/
 - **Billing anual + Billing Ops**: planes con ciclo mensual/anual (~15% desc anual). El precio local congelado ES el contrato — **MercadoPago fue retirado (ago 2026)** y Wompi no tiene catálogo remoto que sincronizar. `/admin/billing-ops` — vistas cross-tenant de subs/pagos/eventos, refund inline, reconciliación on-demand, downgrade, auditoría de cambios de precio. `/admin/plans` edita tiers (`billing_plans`). Landing `/precios` es data-driven contra los planes
 - **Fiscal DIAN (Colombia)**: facturación electrónica vía Factus (`IFiscalInvoiceProvider`, modelo `FiscalInvoice`). Gate collect-before-pay (NIT/cédula) **OFF por defecto** → `FiscalBanner` + `FiscalGateModal`. `/admin/fiscal` cross-tenant; `settings/fiscal/` por tenant
 - **Ops Center (super_admin)**: `/admin/ops` (platform-monitor) — salud de contenedores/backup, alertas; incluye `/admin/storage` (monitoreo + quota por tenant), `/admin/health`, `/admin/incidents`. Alerta si el heartbeat `backup:last_success` supera ~26h
-- **SMS**: producto retirado ([ADR 0018](../../docs/decisions/0018-retiro-sms.md)). No hay pantallas `/admin/sms-packages`, `/admin/channels/sms` ni `/admin/settings/integrations/sms-notifications`; no vuelvas a ofrecer SMS como canal o destino en ningún selector
+- **SMS**: producto retirado ([ADR 0020](../../docs/decisions/0020-retiro-sms.md)). No hay pantallas `/admin/sms-packages`, `/admin/channels/sms` ni `/admin/settings/integrations/sms-notifications`; no vuelvas a ofrecer SMS como canal o destino en ningún selector
 
 ## New Features (May 2026)
 - **Visual Automation Builder**: React Flow canvas (@xyflow/react), toggleable with existing 4-step wizard, same data format. Trigger, condition, action, delay node types

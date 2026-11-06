@@ -319,7 +319,7 @@ Las siguientes variables deben estar tanto en **GitHub Actions Secrets** como en
 | `BULL_BOARD_TOKEN` | `BULL_BOARD_TOKEN` | Token para acceder al dashboard de colas BullMQ |
 | `GRAFANA_PASSWORD` | `GRAFANA_PASSWORD` | Password del admin de Grafana |
 | `TELEGRAM_ALERT_BOT_TOKEN` / `TELEGRAM_ALERT_CHAT_ID` | idem | Canal Telegram de alertas del Ops Center (§17) |
-| `SMS_ALERT_ACCOUNT_SID` / `SMS_ALERT_AUTH_TOKEN` / `SMS_ALERT_FROM` / `SMS_ALERT_TO` / `SMS_SENDER_ID` | idem | **Sin lector** desde el retiro de SMS (ADR 0018); `deploy.yml` todavia los escribe en `.env` y se quitan cuando se toque ese workflow |
+| `SMS_ALERT_ACCOUNT_SID` / `SMS_ALERT_AUTH_TOKEN` / `SMS_ALERT_FROM` / `SMS_ALERT_TO` / `SMS_SENDER_ID` | idem | **Sin lector** desde el retiro de SMS (ADR 0020); `deploy.yml` todavia los escribe en `.env` y se quitan cuando se toque ese workflow |
 | `SENTRY_AUTH_TOKEN` / `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_API_URL` | idem | Lectura de la tasa de errores de Sentry para `sentry:errors:*` (§17) |
 | `OFFSITE_BUCKET` / `OFFSITE_PROVIDER` / `OFFSITE_REGION` / `OFFSITE_ENDPOINT` / `OFFSITE_ACCESS_KEY` / `OFFSITE_SECRET_KEY` | idem | Backup offsite via rclone a bucket S3-compatible (R2/S3/B2) (§18) |
 
@@ -489,7 +489,7 @@ El boton "correr checks ahora" (`POST /health/checks/run`) invoca `runChecksNow(
 | Profundidad cola automation-jobs | 300 | 1000 |
 | Profundidad cola nurturing | 200 | 500 |
 
-Escalares: `queueFailed=100`, `paymentFailures=5`, `llmBudgetPct=90`, `storageQuotaPct=90`, `diskProjectionDays=14`, `backupStaleHours=26`. Canales por defecto: `email:true, telegram:true` (el canal `sms` se retiro con ADR 0018; un valor guardado se ignora). La config se guarda como JSON en `platform_settings` (key `ops.alert_config`) y se cachea en Redis (`ops:alert_config`, TTL 300s).
+Escalares: `queueFailed=100`, `paymentFailures=5`, `llmBudgetPct=90`, `storageQuotaPct=90`, `diskProjectionDays=14`, `backupStaleHours=26`. Canales por defecto: `email:true, telegram:true` (el canal `sms` se retiro con ADR 0020; un valor guardado se ignora). La config se guarda como JSON en `platform_settings` (key `ops.alert_config`) y se cachea en Redis (`ops:alert_config`, TTL 300s).
 
 ### Claves de alerta / incidente (`key`)
 

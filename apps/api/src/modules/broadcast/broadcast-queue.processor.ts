@@ -106,7 +106,7 @@ export class BroadcastQueueProcessor extends WorkerHost {
         // ── WHATSAPP IS ITS OWN SHAPE NOW: COMMIT, THEN CLOSE LATER ─────────
         if (channel === 'whatsapp') return this.dispatchWhatsApp(job);
 
-        // SMS is a retired product (ADR 0018): a legacy SMS recipient still in
+        // SMS is a retired product (ADR 0020): a legacy SMS recipient still in
         // the queue is closed for good, never retried — there is no transport.
         if (channel === 'sms') {
             this.logger.warn(`Broadcast SMS dropped (sms_retired): campaign=${campaignId} recipient=${recipientId}`);

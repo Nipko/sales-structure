@@ -29,7 +29,7 @@ message, that this money never passes through Parallly, and that it is not part 
 any plan.
 
 **Derived from:** `docs/architecture/product-capabilities-reference.md` (lines 49–55) and
-`docs/audits/2026-09-12/m4-pricing-proposal.md` (lines 13–16).
+`docs/archive/2026-09-programa-octubre/m4-pricing-proposal.md` (lines 13–16).
 
 **Review question for the terms owner:** do the current terms say anywhere, or imply
 by silence, that platform fees cover message delivery? If the fee schedule lists
@@ -90,7 +90,7 @@ None of these is a coding task. Each needs a person with the authority to decide
 
 | # | Decision | Why it is blocked | Consequence of leaving it |
 |---|---|---|---|
-| 1 | Whether to state publicly that Parallly is a Meta Tech Provider | True as a description of the billing model, but the commercial contract and account ownership are not proven by anything in the repository (`docs/research/2026-09-10/plan-economics-code-audit.md`, line 9), and the badge is frozen by `validate-marketing-claims.cjs` | The pages state the payment FACT without the badge, which is accurate but gives up a real differentiator |
+| 1 | Whether to state publicly that Parallly is a Meta Tech Provider | True as a description of the billing model, but the commercial contract and account ownership are not proven by anything in the repository (`docs/archive/2026-09-programa-octubre/plan-economics-code-audit.md`, line 9), and the badge is frozen by `validate-marketing-claims.cjs` | The pages state the payment FACT without the badge, which is accurate but gives up a real differentiator |
 | 2 | Whether `whatsappCreditUsdCents` was ever sold to anyone | It is seed data with no consuming logic: a plan feature that grants nothing. If it was presented as a credit to any existing tenant, that is an outstanding commitment | Nothing on the public site mentions it, which is correct for new sales and says nothing about existing ones |
 | 3 | Whether spend enforcement will ever be offered as a cap | The gate defaults to `observe` and no screen or endpoint writes `enforce` (`apps/api/src/modules/billing/whatsapp-spend/whatsapp-send-admission.service.ts`, line 816) | The site claims metering and visibility and claims no cap, which matches the code |
 | 4 | Fee schedule wording once the estimator is public | A reader who sees an estimated Meta total beside a subscription price may ask which is contractual | The estimator says it is not an invoice, in four languages, and lists four exclusions — but the terms have not been read against it |

@@ -114,7 +114,7 @@ jobs:
       - name: Generated artefacts match their sources
         run: |
           node apps/api/scripts/generate-whatsapp-rates.cjs --check
-          node docs/audits/2026-09-09/verify-artifacts.cjs
+          node apps/api/scripts/artifacts/verify-artifacts.cjs
           node apps/api/scripts/outbound-producer-inventory.cjs --check
       # The business requirements specification (packages/business-spec): one test per spec
       # defect, a passing and a failing snapshot per requirement, the 7 QA tenant goldens.

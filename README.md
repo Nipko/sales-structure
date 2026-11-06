@@ -28,7 +28,7 @@ Una plataforma SaaS completa que permite a empresas en Latinoamerica automatizar
 - Telegram Bot API
 - Web Chat Widget
 - Email tiene adaptador e ingreso tecnico interno, pero no configuracion autoservicio ni certificacion conversacional E2E
-- SMS es un producto retirado (ADR 0018: su código y pantallas se eliminaron); nunca fue un canal conversacional
+- SMS es un producto retirado (ADR 0020: su código y pantallas se eliminaron); nunca fue un canal conversacional
 - Arquitectura de adaptadores extensible para agregar nuevos canales
 
 **Que negocios soporta**

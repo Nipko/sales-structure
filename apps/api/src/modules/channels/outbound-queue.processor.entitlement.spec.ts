@@ -62,7 +62,7 @@ describe('OutboundQueueProcessor subscription boundary', () => {
         expect(h.channelGateway.sendMessage).not.toHaveBeenCalled();
     });
 
-    it('drops a legacy SMS job for good: SMS is a retired product (ADR 0018)', async () => {
+    it('drops a legacy SMS job for good: SMS is a retired product (ADR 0020)', async () => {
         const h = harness('active');
 
         await expect(h.processor.process(h.job)).resolves.toBe('skipped:sms_retired');

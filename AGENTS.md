@@ -6,7 +6,7 @@ Single source of context for coding agents (Codex, Claude Code and others). `CLA
 
 ## What is this project?
 
-Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and service across WhatsApp, Instagram, Messenger, Telegram and a Web Chat widget. Email has an internal inbound adapter but no certified tenant self-service configuration. SMS is a **retired product** ([ADR 0018](docs/decisions/0018-retiro-sms.md): its modules, routes, screens and platform switch were removed; only an always-refusing stub in `sms-credits/` remains for `conversations/`) and was never a conversational channel.
+Multi-tenant conversational AI SaaS platform (Parallly) for automating sales and service across WhatsApp, Instagram, Messenger, Telegram and a Web Chat widget. Email has an internal inbound adapter but no certified tenant self-service configuration. SMS is a **retired product** ([ADR 0020](docs/decisions/0020-retiro-sms.md): its modules, routes, screens and platform switch were removed; only an always-refusing stub in `sms-credits/` remains for `conversations/`) and was never a conversational channel.
 
 Monorepo with 5 apps, deployed on a Hostinger VPS via Docker + Cloudflare Tunnel; mobile binaries ship separately through EAS / Google Play. Structural counters drift: recompute them (see "Counters") instead of copying numbers into docs.
 
@@ -175,7 +175,7 @@ cd apps/api && npm run test:bootstrap      # NestJS DI errors (CRITICAL — tsc 
 cd apps/dashboard && npx tsc --noEmit      # Dashboard type errors
 cd apps/landing && npx tsc --noEmit        # Landing type errors
 npm run verify:artifacts                   # Generated documents (closure report, catalogs, business spec) still match the code
-node apps/api/scripts/check-canary-figures.cjs --check   # Every docs/*.md agrees with the canary planner
+node apps/api/scripts/check-canary-figures.cjs --check   # Every docs/*.md agrees with the canary planner or is declared HISTORICAL
 docker exec parallext-pgbouncer pg_isready -h localhost -p 5432  # PgBouncer health (production compose port)
 ```
 

@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 /**
  * Platform SMS transport for the dashboard-user 2FA fallback.
  *
- * SMS was retired as a product (ADR 0018) together with the platform switch
+ * SMS was retired as a product (ADR 0020) together with the platform switch
  * `sms.platform_enabled` that kept this transport off. The 2FA "send me an SMS"
  * fallback (endpoint, user columns and outbox kind `auth.access_code_sms`) is an
  * OTP concept and stays, but nothing is sent: every attempt fails before any

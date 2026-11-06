@@ -457,7 +457,7 @@ describe('the inventory is honest about what is not covered', () => {
     });
 
     it('the SMS producers are off because the code cannot send, not because we hope', () => {
-        // SMS is a retired product (ADR 0018). What makes `off` a fact is that
+        // SMS is a retired product (ADR 0020). What makes `off` a fact is that
         // neither remaining SMS seam has a transport: the stub never sends and
         // the 2FA transport refuses before any provider is contacted.
         const stub = fs.readFileSync(

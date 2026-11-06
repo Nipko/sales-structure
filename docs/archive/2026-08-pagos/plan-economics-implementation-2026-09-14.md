@@ -1,6 +1,6 @@
 # Catálogo rentable, control del superadmin y financiación de Meta
 
-> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/audits/2026-09-09/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
+> **Documento histórico (2026-09-14) — no refleja el estado actual; ver `docs/generated/closure-report.md` (estado de cierre regenerado desde el código), `docs/product-capabilities-reference.md` y `docs/README.md`.** Es evidencia fechada del programa de certificación de septiembre de 2026; las cifras y los estados que cita eran los de ese día.
 
 Implementación del 14-sep-2026. El usuario autorizó un catálogo único para los tenants existentes y nuevos, así como commit, push e integración en main. No se guardan precios antiguos de forma indefinida. El contrato custom sigue requiriendo cotización.
 

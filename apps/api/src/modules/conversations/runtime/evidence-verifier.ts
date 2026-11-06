@@ -316,7 +316,9 @@ export function dropBackedViolations(violations: readonly EvidenceViolation[], n
         const negated = clauses.filter(c => NEGATION.test(c) && !(figuresOf(c).any && figuresOf(c).ok));
         const all = figuresOf(whole);
         if (!negated.length) {
-            if (v.kind === 'claim' && all.checked && all.ok) dropped.push(v); else kept.push(v);
+            // E2o (store C10, 3 of 3): the classifier also labels «no es posible pedir 3 unidades, solo quedan 2» a denial. Its
+            // only «no» repeats the customer's figure and the sentence's figures are in the data: backed, whatever the label.
+            if (all.checked && all.ok) dropped.push(v); else kept.push(v);
             continue;
         }
         const positive = clauses.filter(c => !negated.includes(c));

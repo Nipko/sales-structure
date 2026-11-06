@@ -172,6 +172,17 @@ describe('EvidenceVerifier (D1b)', () => {
         expect(kept.map(k => k.sentence)).toEqual(['Quedan 5 cupos para 3 personas.']);
     });
 
+    it('E2o: la misma frase etiquetada como negación se respalda igual; una negación sin cifras no', () => {
+        const reply = 'El Audífono QA Aurora tiene un precio de 119.900 COP cada uno, pero actualmente solo hay 2 en stock. '
+            + 'Por lo tanto, no es posible pedir 3 unidades, solo quedan 2 disponibles. No hacemos envíos internacionales.';
+        const { kept, dropped } = dropBackedViolations([
+            { sentence: 'no es posible pedir 3 unidades', kind: 'denial', requirementId: null },
+            { sentence: 'No hacemos envíos internacionales.', kind: 'denial', requirementId: null },
+        ], new Set([2, 119900]), { reply, customerMessage: 'Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?' });
+        expect(dropped.map(d => d.sentence)).toEqual(['no es posible pedir 3 unidades']);
+        expect(kept.map(k => k.sentence)).toEqual(['No hacemos envíos internacionales.']);
+    });
+
     it('D1d: un encabezado de lista sin ítems no queda colgado; una cifra al final de frase se conserva', () => {
         const reply = 'Estos son nuestros servicios:\n\n1. Asesoría legal gratuita incluida. El precio es 250.000.';
         const r = repairReply(reply, [{ sentence: 'Asesoría legal gratuita incluida.', kind: 'claim', requirementId: null }], contract(), 'es');

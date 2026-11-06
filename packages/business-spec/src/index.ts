@@ -15,6 +15,7 @@ export { resolveValue, isAffirmable, isTextWithoutData, extractFigures, isInheri
 export type { ResolvedValue } from './status';
 export {
     fromLegacyRows, normalizeHours, rowStatus, hoursFromAgenda, inferCovers, FAQ_COVERS_RULES, legacyRowProvenance, rowProvenance, legacyContextOf,
+    COLUMN_DEFAULTS, CONFIRMED_FIELDS_KEY, confirmedFieldsOf, unconfirmedColumnDefaults,
 } from './legacy-status';
 export type { LegacyTenantRows, LegacyContext } from './legacy-status';
 export {

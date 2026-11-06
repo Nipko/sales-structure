@@ -7,6 +7,7 @@ import {
     requirePositiveIntegerUnit,
 } from '../../common/utils/commercial-units.util';
 import { resolveWriteCurrency, type OperatingCurrencySource } from '../../common/utils/write-currency.util';
+import { CONFIRMED_FIELDS_KEY, confirmedFieldsStamp, metadataWithConfirmedFieldsSql } from '../../common/utils/column-defaults.util';
 import { RegionalProfileService } from '../tenants/regional-profile.service';
 import {
     assertOptionalContactId,
@@ -20,6 +21,9 @@ import {
     resolvePaymentPolicy,
 } from '../../common/utils/payment-policy.util';
 import { enqueueOperationalNotice } from '../operational-notices/operational-notice-outbox';
+
+/** Campos del formulario de paquetes cuyo valor sin llenar es un default de columna (opción B, dueño, 2026-11-06). */
+const PACKAGE_DEFAULT_FIELDS: Readonly<Record<string, string>> = { maxCapacity: 'max_capacity', minPartySize: 'min_party_size' };
 
 function assertTourPackageUuid(value: unknown): void {
     if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
@@ -126,6 +130,10 @@ export class ToursService {
         const durationType = data.durationType || 'hours';
         const durationValue = requirePositiveIntegerUnit(data.durationValue ?? 1, 'durationValue');
         const currency = await this.writeCurrency(data.currency, tenantId);
+        // Opción B (dueño, 2026-11-06): el 10 y el 1 sin llenar son defaults, no datos; los que trae el formulario quedan confirmados.
+        const confirmedFields = confirmedFieldsStamp('tour_packages', data, PACKAGE_DEFAULT_FIELDS);
+        const metadata = Object.keys(confirmedFields).length
+            ? { ...(data.metadata || {}), [CONFIRMED_FIELDS_KEY]: confirmedFields } : (data.metadata || {});
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -151,7 +159,7 @@ export class ToursService {
                 JSON.stringify(data.images || []),
                 JSON.stringify(data.tags || []),
                 data.sortOrder || 0,
-                JSON.stringify(data.metadata || {}),
+                JSON.stringify(metadata),
             ],
         );
         return rows?.[0];
@@ -191,7 +199,7 @@ export class ToursService {
         }
         const jsonFields: Record<string, string> = {
             languages: 'languages', includes: 'includes', excludes: 'excludes',
-            images: 'images', tags: 'tags', metadata: 'metadata',
+            images: 'images', tags: 'tags',
         };
         for (const [jsKey, dbKey] of Object.entries(jsonFields)) {
             if (data[jsKey] !== undefined) {
@@ -199,6 +207,17 @@ export class ToursService {
                 params.push(JSON.stringify(data[jsKey]));
                 idx++;
             }
+        }
+        // Opción B (dueño, 2026-11-06): guardar el mínimo o el máximo de viajeros los confirma aunque sean el mismo valor;
+        // reemplazar `metadata` conserva las confirmaciones anteriores.
+        const confirmedFields = confirmedFieldsStamp('tour_packages', data, PACKAGE_DEFAULT_FIELDS);
+        const stamping = Object.keys(confirmedFields).length > 0;
+        if (data.metadata !== undefined || stamping) {
+            let replacement: string | null = null;
+            if (data.metadata !== undefined) { replacement = `$${idx}`; params.push(JSON.stringify(data.metadata ?? {})); idx++; }
+            let stamp: string | null = null;
+            if (stamping) { stamp = `$${idx}`; params.push(JSON.stringify(confirmedFields)); idx++; }
+            sets.push(`"metadata" = ${metadataWithConfirmedFieldsSql(replacement, stamp)}`);
         }
 
         if (sets.length === 0) return this.getPackage(schemaName, packageId);

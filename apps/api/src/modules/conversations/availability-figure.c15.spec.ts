@@ -10,6 +10,8 @@ describe('C15: availability is answered with its figure', () => {
         const assembler = new PromptAssemblerService({ buildSystemPrompt: () => '<persona/>' } as any);
         const contract = (assembler as any).buildContractLayer() as string;
         expect(contract).toContain('13i. AVAILABILITY WITH ITS FIGURE');
+        // E2p store C10 (3 of 3): «solo quedan 2, no es posible pedir 3» and no price, though the customer asked the total.
+        expect(contract).toContain('more units than the stock, say how many are left AND still give the confirmed unit price');
         expect(contract).toMatch(/Never answer only "sí, hay disponibilidad"/);
     });
 });

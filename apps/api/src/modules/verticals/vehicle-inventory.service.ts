@@ -81,22 +81,6 @@ export class VehicleInventoryService {
             `);
 
             await tx.$queryRawUnsafe(`
-                CREATE TABLE IF NOT EXISTS "${schemaName}".vehicle_inquiries (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,
-                    contact_id UUID,
-                    contact_name TEXT,
-                    contact_phone TEXT,
-                    contact_email TEXT,
-                    inquiry_type TEXT DEFAULT 'info',
-                    notes TEXT,
-                    status TEXT DEFAULT 'new',
-                    assigned_to UUID,
-                    created_at TIMESTAMPTZ DEFAULT now()
-                )
-            `);
-
-            await tx.$queryRawUnsafe(`
                 CREATE TABLE IF NOT EXISTS "${schemaName}".test_drives (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     vehicle_id UUID NOT NULL REFERENCES "${schemaName}".vehicles(id) ON DELETE CASCADE,

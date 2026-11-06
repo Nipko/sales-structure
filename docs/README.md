@@ -2,7 +2,7 @@
 
 _Índice único de `docs/`. Última reorganización: 2026-10-30 (K3, [ADR 0005](decisions/0005-base-de-conocimiento-y-limpieza-k3.md))._
 
-Contexto para agentes de código: [`../AGENTS.md`](../AGENTS.md) (`CLAUDE.md` solo lo importa). Ayuda al usuario final que llega al producto: la KB de Parallly Assist en [`../apps/api/kb/assistant/`](../apps/api/kb/assistant/) ([contrato](architecture/platform-assistant-knowledge.md)).
+Contexto para agentes de código: [`../AGENTS.md`](../AGENTS.md) (`CLAUDE.md` solo lo importa). Ayuda al usuario final: la KB de Parallly Assist en [`../apps/api/kb/assistant/`](../apps/api/kb/assistant/) ([contrato](architecture/platform-assistant-knowledge.md)) es la **única fuente**; el antiguo manual web para tenants (`domain/user-manual.md`) se retiró en K3 y su contenido vigente pasó a esa KB.
 
 ## Reglas de la base (K1–K4)
 
@@ -45,7 +45,6 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 | [onboarding-implementation-closeout-2026-09-18.md](domain/onboarding-implementation-closeout-2026-09-18.md) | Cierre de implementación del onboarding de septiembre | vigente | 2026-09-18 | — |
 | [vertical-strategy.md](domain/vertical-strategy.md) | Visión de adaptación por vertical (la lista vigente es el catálogo generado) | vigente | 2026-10-08 | — |
 | [analytics-manual.md](domain/analytics-manual.md) | Analytics, alertas, BI API, anomalías, cohortes | vigente | 2026-08-24 | `modules/analytics/` |
-| [user-manual.md](domain/user-manual.md) | Manual web para tenants | **pendiente de decisión**: la ayuda que llega al producto es la KB de Assist; decidir si este manual se mantiene o se retira | 2026-10-08 | `apps/api/kb/assistant/` |
 | [mobile-user-manual.md](domain/mobile-user-manual.md) | Manual funcional de la app móvil | vigente | 2026-09-14 | `apps/mobile/` |
 | [appointments-manual.md](appointments-manual.md) | Citas (sigue en la raíz de `docs/` porque lo copia `Dockerfile.landing`) | vigente | 2026-10-09 | `modules/appointments/` |
 
@@ -58,7 +57,7 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 | [api-reference.md](architecture/api-reference.md) | Endpoints REST principales, WebSocket y colas; no exhaustivo. La API pública está en Swagger `/docs/public` | vigente | 2026-10-30 | controllers; `main.ts` (Swagger) |
 | [product-capabilities-reference.md](architecture/product-capabilities-reference.md) | Superficies, roles, planes y navegación | vigente | 2026-10-08 | `packages/shared/src/dashboard-page-access.ts` |
 | [agent-quality-center.md](architecture/agent-quality-center.md) | Centro de calidad: pilares, estados, atribución y bucle de mejora | vigente | 2026-10-08 | `modules/quality/` |
-| [platform-assistant-knowledge.md](architecture/platform-assistant-knowledge.md) | Fuente runtime, alcance y publicación de Parallly Assist | vigente | 2026-09-17 | `apps/api/kb/assistant/` |
+| [platform-assistant-knowledge.md](architecture/platform-assistant-knowledge.md) | Fuente runtime, alcance y publicación de Parallly Assist (única fuente de ayuda al usuario) | vigente | 2026-11-05 | `apps/api/kb/assistant/` |
 | [analytics-billing-reference.md](architecture/analytics-billing-reference.md) | Referencia técnica de analytics y billing (precios: `billing_plans`) | snapshot | 2026-10-08 | `modules/analytics/`, `modules/billing/` |
 | [multi-channel-per-type-implementation-2026-07.md](architecture/multi-channel-per-type-implementation-2026-07.md) | N conexiones del mismo tipo, agente por conexión | vigente | 2026-08-11 | `channel-certification-matrix.ts` |
 

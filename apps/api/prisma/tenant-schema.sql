@@ -424,29 +424,6 @@ ALTER TABLE "{{SCHEMA_NAME}}"."kb_retrieval_log"
     ADD COLUMN IF NOT EXISTS "attributed_at" TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_krl_attribution_batch ON "{{SCHEMA_NAME}}"."kb_retrieval_log" ("retrieval_batch_id") WHERE "retrieval_batch_id" IS NOT NULL;
 
--- ---- KB Unanswered Queries ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_unanswered_queries" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "query" TEXT NOT NULL,
-    "query_hash" VARCHAR(64) NOT NULL,
-    "occurrences" INTEGER DEFAULT 1,
-    "last_seen_at" TIMESTAMP DEFAULT NOW(),
-    "resolved" BOOLEAN DEFAULT false,
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_kuq_hash_{{SCHEMA_NAME}} ON "{{SCHEMA_NAME}}"."kb_unanswered_queries" ("query_hash") WHERE resolved = false;
-
--- ---- Conversation Memory (Long-term summaries) ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_memory" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "contact_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."contacts"("id") ON DELETE CASCADE,
-    "conversation_id" UUID REFERENCES "{{SCHEMA_NAME}}"."conversations"("id") ON DELETE SET NULL,
-    "summary" TEXT NOT NULL,
-    "key_facts" JSONB DEFAULT '[]',
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_conversation_memory_contact_id_created_at" ON "{{SCHEMA_NAME}}"."conversation_memory" ("contact_id", "created_at");
-
 -- ---- Products / Inventory ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."products" (
     "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -524,35 +501,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."order_items" (
     "created_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "idx_order_items_order" ON "{{SCHEMA_NAME}}"."order_items" ("order_id");
-
--- ---- Tool Configs ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."tool_configs" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "name" VARCHAR(255) NOT NULL,
-    "description" TEXT,
-    "type" VARCHAR(50) NOT NULL DEFAULT 'internal', -- internal, external
-    "endpoint" VARCHAR(500),
-    "auth_type" VARCHAR(50),
-    "auth_credentials" TEXT, -- Encrypted
-    "parameters_schema" JSONB DEFAULT '{}',
-    "is_active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
-
--- ---- Business Rules ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."business_rules" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "name" VARCHAR(255) NOT NULL,
-    "description" TEXT,
-    "rule_type" VARCHAR(100) NOT NULL, -- greeting, faq, escalation, routing, validation
-    "conditions" JSONB NOT NULL DEFAULT '{}',
-    "actions" JSONB NOT NULL DEFAULT '{}',
-    "priority" INTEGER DEFAULT 0,
-    "is_active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
 
 -- ---- Analytics Events ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."analytics_events" (
@@ -657,14 +605,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."campaigns" (
 CREATE INDEX IF NOT EXISTS "idx_campaigns_status" ON "{{SCHEMA_NAME}}"."campaigns" ("status");
 CREATE INDEX IF NOT EXISTS "idx_campaigns_course_id" ON "{{SCHEMA_NAME}}"."campaigns" ("course_id");
 CREATE INDEX IF NOT EXISTS "idx_campaigns_code" ON "{{SCHEMA_NAME}}"."campaigns" ("code");
-
--- ---- Campaign ↔ Courses (Many-to-Many) ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."campaign_courses" (
-    "campaign_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."campaigns"("id") ON DELETE CASCADE,
-    "course_id"   UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."courses"("id") ON DELETE CASCADE,
-    "is_primary"  BOOLEAN DEFAULT false,
-    PRIMARY KEY ("campaign_id", "course_id")
-);
 
 -- ---- Commercial Offers ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."commercial_offers" (
@@ -1245,17 +1185,6 @@ CREATE INDEX IF NOT EXISTS "idx_form_submissions_landing_page_id" ON "{{SCHEMA_N
 CREATE INDEX IF NOT EXISTS "idx_form_submissions_lead_id" ON "{{SCHEMA_NAME}}"."form_submissions" ("lead_id");
 CREATE INDEX IF NOT EXISTS "idx_form_submissions_created_at" ON "{{SCHEMA_NAME}}"."form_submissions" ("created_at");
 
--- ---- Intake Sources ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."intake_sources" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255),
-    "type" VARCHAR(50) NOT NULL, -- webhook, api, manual
-    "name" VARCHAR(255) NOT NULL,
-    "config_json" JSONB DEFAULT '{}',
-    "active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-
 -- ============================================
 -- PARALLLY — Workflow & Automation (V4)
 -- ============================================
@@ -1316,19 +1245,6 @@ CREATE INDEX IF NOT EXISTS "idx_automation_executions_rule_id" ON "{{SCHEMA_NAME
 CREATE INDEX IF NOT EXISTS "idx_automation_executions_entity_type_entity_id" ON "{{SCHEMA_NAME}}"."automation_executions" ("entity_type", "entity_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "uidx_automation_executions_event_key" ON "{{SCHEMA_NAME}}"."automation_executions" ("event_key") WHERE "event_key" IS NOT NULL;
 
--- ---- Wait Jobs ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."wait_jobs" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255) NOT NULL,
-    "job_type" VARCHAR(50) NOT NULL,
-    "run_at" TIMESTAMP WITH TIME ZONE NOT NULL,
-    "payload_json" JSONB DEFAULT '{}',
-    "status" VARCHAR(50) DEFAULT 'pending',
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_wait_jobs_status_run_at" ON "{{SCHEMA_NAME}}"."wait_jobs" ("status", "run_at");
-
 -- ============================================
 -- PARALLLY — Compliance & Audit (V4)
 -- ============================================
@@ -1382,61 +1298,6 @@ CREATE INDEX IF NOT EXISTS "idx_daily_metrics_metric_date_dimension_type" ON "{{
 CREATE INDEX IF NOT EXISTS "idx_daily_metrics_tenant_id_metric_date" ON "{{SCHEMA_NAME}}"."daily_metrics" ("tenant_id", "metric_date");
 
 -- ============================================
--- PARALLLY — Carla AI Sales Agent (V4)
--- ============================================
-
--- ---- Personality Profiles ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."carla_personality_profiles" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255) NOT NULL,
-    "name" VARCHAR(255) NOT NULL,
-    "tone" VARCHAR(50) DEFAULT 'professional',
-    "language" VARCHAR(10) DEFAULT 'es',
-    "objectives_json" JSONB DEFAULT '[]',
-    "rules_json" JSONB DEFAULT '[]',
-    "disclaimers" TEXT,
-    "active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_carla_personality_profiles_tenant_id_active" ON "{{SCHEMA_NAME}}"."carla_personality_profiles" ("tenant_id", "active");
-
--- ---- Prompt Templates ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."carla_prompt_templates" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "tenant_id" VARCHAR(255) NOT NULL,
-    "name" VARCHAR(255) NOT NULL,
-    "campaign_id" UUID,
-    "course_id" UUID,
-    "template_type" VARCHAR(50) DEFAULT 'system',
-    "content" TEXT NOT NULL,
-    "version" INTEGER DEFAULT 1,
-    "active" BOOLEAN DEFAULT true,
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_carla_prompt_templates_tenant_id_template_type_active" ON "{{SCHEMA_NAME}}"."carla_prompt_templates" ("tenant_id", "template_type", "active");
-
--- ---- Conversation Context Snapshots ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."carla_conversation_context" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "conversation_id" UUID NOT NULL,
-    "lead_id" UUID,
-    "intent_primary" VARCHAR(100),
-    "intent_secondary" VARCHAR(100),
-    "confidence" DECIMAL(5, 2),
-    "score_delta" INTEGER DEFAULT 0,
-    "should_handoff" BOOLEAN DEFAULT false,
-    "handoff_reason" TEXT,
-    "summary_for_agent" TEXT,
-    "tags_to_apply" TEXT[] DEFAULT '{}',
-    "suggested_stage" VARCHAR(50),
-    "context_json" JSONB DEFAULT '{}',
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_carla_conversation_context_conversation_id" ON "{{SCHEMA_NAME}}"."carla_conversation_context" ("conversation_id");
-CREATE INDEX IF NOT EXISTS "idx_carla_conversation_context_lead_id" ON "{{SCHEMA_NAME}}"."carla_conversation_context" ("lead_id");
-
--- ============================================
 -- PARALLLY — Knowledge Base / RAG (V4)
 -- ============================================
 
@@ -1459,27 +1320,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_resources" (
 );
 CREATE INDEX IF NOT EXISTS "idx_knowledge_resources_tenant_id_status" ON "{{SCHEMA_NAME}}"."knowledge_resources" ("tenant_id", "status");
 CREATE INDEX IF NOT EXISTS "idx_knowledge_resources_course_id" ON "{{SCHEMA_NAME}}"."knowledge_resources" ("course_id");
-
--- ---- Knowledge Chunks ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_chunks" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "resource_id" UUID NOT NULL,
-    "chunk_index" INTEGER NOT NULL,
-    "content" TEXT NOT NULL,
-    "metadata_json" JSONB DEFAULT '{}',
-    "created_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_knowledge_chunks_resource_id" ON "{{SCHEMA_NAME}}"."knowledge_chunks" ("resource_id");
-
--- ---- Knowledge Approvals ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."knowledge_approvals" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "resource_id" UUID NOT NULL,
-    "approved_by" VARCHAR(255),
-    "approved_at" TIMESTAMP DEFAULT NOW(),
-    "notes" TEXT
-);
-CREATE INDEX IF NOT EXISTS "idx_knowledge_approvals_resource_id" ON "{{SCHEMA_NAME}}"."knowledge_approvals" ("resource_id");
 
 -- ============================================
 -- Agent Console — Internal Notes, Canned Responses, Assignments & CSAT
@@ -2278,16 +2118,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."scheduled_reports" (
     "updated_at" TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS "sr_tenant_idx" ON "{{SCHEMA_NAME}}"."scheduled_reports" ("tenant_id");
-
--- ---- Dashboard Widget Preferences ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."dashboard_preferences" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "user_id" UUID NOT NULL,
-    "layout_json" JSONB DEFAULT '[]',
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "dp_user_idx" ON "{{SCHEMA_NAME}}"."dashboard_preferences" ("user_id");
 
 -- ============================================
 -- PARALLLY — Multi-Agent System
@@ -3157,28 +2987,8 @@ CREATE INDEX IF NOT EXISTS "idx_member_check_ins_date" ON "{{SCHEMA_NAME}}"."mem
 -- nivelación stage that often precedes enrollment.
 -- =====================================================================
 
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."courses" (
-    "id" UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    "name" VARCHAR(255) NOT NULL,
-    "description" TEXT,
-    "subject" VARCHAR(100),                                -- ingles, frances, programacion, contabilidad
-    "level" VARCHAR(50),                                   -- A1, A2, B1, B2, principiante, intermedio, avanzado
-    "modality" VARCHAR(20) DEFAULT 'presencial',           -- presencial | online | hybrid
-    "duration_hours" INTEGER,                              -- total course hours (e.g. 60h for an A2 module)
-    "duration_weeks" INTEGER,
-    "price" DECIMAL(10,2) NOT NULL DEFAULT 0,
-    "currency" VARCHAR(10) DEFAULT 'COP',
-    "certification" VARCHAR(255),                          -- e.g. 'Cambridge Preliminary', 'Internal certificate'
-    "prerequisites" TEXT,
-    "syllabus_url" VARCHAR(500),
-    "image_url" VARCHAR(500),
-    "is_active" BOOLEAN DEFAULT true,
-    "metadata" JSONB DEFAULT '{}',
-    "created_at" TIMESTAMP DEFAULT NOW(),
-    "updated_at" TIMESTAMP DEFAULT NOW()
-);
--- La tabla legacy del catálogo (más arriba, línea ~312) gana por IF NOT EXISTS,
--- así que TODO el shape de education debe llegar por ALTER. Con solo subject y
+-- `courses` se crea arriba con el catálogo (sección Courses), así que todo el shape de
+-- education llega por ALTER. Con solo subject y
 -- level parchados, createCourse fallaba (insertaba 5 columnas inexistentes) y
 -- get_course_schedule reventaba — la vertical education entera estaba rota.
 ALTER TABLE "{{SCHEMA_NAME}}"."courses" ADD COLUMN IF NOT EXISTS "subject" VARCHAR(100);
@@ -3539,19 +3349,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vehicles" (
 );
 CREATE INDEX IF NOT EXISTS "idx_vehicles_status" ON "{{SCHEMA_NAME}}"."vehicles"("status");
 CREATE INDEX IF NOT EXISTS "idx_vehicles_make_model" ON "{{SCHEMA_NAME}}"."vehicles"("make", "model");
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."vehicle_inquiries" (
-    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    "vehicle_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."vehicles"("id") ON DELETE CASCADE,
-    "contact_id" UUID,
-    "contact_name" TEXT,
-    "contact_phone" TEXT,
-    "contact_email" TEXT,
-    "inquiry_type" TEXT DEFAULT 'info',
-    "notes" TEXT,
-    "status" TEXT DEFAULT 'new',
-    "assigned_to" UUID,
-    "created_at" TIMESTAMPTZ DEFAULT now()
-);
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."test_drives" (
     "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     "vehicle_id" UUID NOT NULL REFERENCES "{{SCHEMA_NAME}}"."vehicles"("id") ON DELETE CASCADE,
@@ -3992,19 +3789,6 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_feedback" (
 CREATE INDEX IF NOT EXISTS "idx_kb_feedback_document" ON "{{SCHEMA_NAME}}"."kb_feedback"("document_id");
 CREATE INDEX IF NOT EXISTS "idx_kb_feedback_rating" ON "{{SCHEMA_NAME}}"."kb_feedback"("rating");
 
--- ---- KB health issues ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."kb_health_issues" (
-    "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    "type" VARCHAR(30) NOT NULL,
-    "document_id" UUID,
-    "related_document_id" UUID,
-    "detail" TEXT,
-    "suggestion" TEXT,
-    "status" VARCHAR(20) NOT NULL DEFAULT 'open',
-    "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS "idx_kbhealth_status" ON "{{SCHEMA_NAME}}"."kb_health_issues"("status", "created_at");
-
 -- ---- Customer memory (Mem0-style) ----
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memories" (
     "contact_id" UUID PRIMARY KEY,
@@ -4105,7 +3889,6 @@ CREATE INDEX IF NOT EXISTS idx_cqs_agent_created ON "{{SCHEMA_NAME}}"."conversat
 CREATE INDEX IF NOT EXISTS idx_cqs_agent_version_conversation_created ON "{{SCHEMA_NAME}}"."conversation_quality_scores"(agent_id, agent_config_version, conversation_id, created_at DESC) WHERE agent_id IS NOT NULL;
 
 -- ---- Production QA revision, privacy and provenance ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."customer_memory_erasure" (contact_id UUID PRIMARY KEY, erased_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS resolution_type VARCHAR(50);
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS was_handed_off BOOLEAN DEFAULT false;
 ALTER TABLE "{{SCHEMA_NAME}}"."conversations" ADD COLUMN IF NOT EXISTS agent_persona_id UUID;
@@ -5049,7 +4832,6 @@ BEGIN
     END LOOP;
 END
 $native_evidence_opportunity_triggers$;
-
 
 -- ============================================
 -- ANDAMIAJE DE INTEGRACIONES (provider-neutral)

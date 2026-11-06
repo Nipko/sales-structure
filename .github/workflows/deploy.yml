@@ -335,7 +335,7 @@ jobs:
       # being shipped, and the artefacts are what the programme is read from.
       # `--check` regenerates in memory and compares; it writes nothing.
       - name: Generated artefacts match their sources
-        run: node docs/audits/2026-09-09/verify-artifacts.cjs
+        run: npm run verify:artifacts
 
       - name: Business spec suite
         run: |

@@ -5,7 +5,7 @@ import { fromLegacyRows, generateRehearsal, type RehearsalBank } from '@parallex
 import { loadSpec } from '@parallext/business-spec/load';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { sessionCanExecute } from '../conversations/agent-turn-adapters';
-import { REHEARSAL_COMPLETED_EVENT, RehearsalService, MAX_RUNS_PER_DAY, RUN_DEADLINE_MS } from './rehearsal.service';
+import { CASE_CONCURRENCY, REHEARSAL_COMPLETED_EVENT, RehearsalService, MAX_RUNS_PER_DAY, RUN_DEADLINE_MS } from './rehearsal.service';
 
 /**
  * RehearsalService (R7, ADR 0013): corre el banco por Agent Test en vista previa y guarda los resultados. Lo que se
@@ -122,10 +122,26 @@ describe('RehearsalService: ejecución sin efectos', () => {
     it('la cuota de IA agotada detiene la ejecución (stopped) sin seguir gastando', async () => {
         const h = harness({ testError: new HttpException('ai_message_quota_exceeded', HttpStatus.TOO_MANY_REQUESTS) });
         await h.service.execute('t1', 'tenant_qa', RUN, AGENT, bank);
-        expect(h.agentTest.test).toHaveBeenCalledTimes(1);
-        expect(h.stored).toEqual([expect.objectContaining({ outcome: 'error' })]);
+        // only the cases already in flight finish; none starts after the quota error
+        expect(h.agentTest.test).toHaveBeenCalledTimes(CASE_CONCURRENCY);
+        expect(h.stored).toHaveLength(CASE_CONCURRENCY);
+        for (const s of h.stored) expect(s).toEqual(expect.objectContaining({ outcome: 'error' }));
         const fin = h.calls.find(c => /SET status = \$2, error = \$3, summary/.test(c.sql));
         expect(fin?.params.slice(1, 3)).toEqual(['stopped', 'ai_message_quota_exceeded']);
+    });
+
+    it(`corre hasta ${CASE_CONCURRENCY} casos a la vez y guarda todos`, async () => {
+        const h = harness();
+        let inFlight = 0, peak = 0;
+        const orig = h.agentTest.test.getMockImplementation()!;
+        h.agentTest.test.mockImplementation(async (...args: any[]) => {
+            inFlight++; peak = Math.max(peak, inFlight);
+            await new Promise(r => setTimeout(r, 5));
+            try { return await (orig as any)(...args); } finally { inFlight--; }
+        });
+        await h.service.execute('t1', 'tenant_qa', RUN, AGENT, bank);
+        expect(peak).toBe(Math.min(CASE_CONCURRENCY, bank.cases.length));
+        expect(new Set(h.stored.map(s => s.case_key)).size).toBe(bank.cases.length);
     });
 
     it('el reloj de 10 minutos corta lo que falte', async () => {

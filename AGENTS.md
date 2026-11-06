@@ -176,7 +176,7 @@ cd apps/api && npm run test:bootstrap      # NestJS DI errors (CRITICAL — tsc 
 cd apps/dashboard && npx tsc --noEmit      # Dashboard type errors
 cd apps/landing && npx tsc --noEmit        # Landing type errors
 npm run verify:artifacts                   # Generated documents (closure report, catalogs, business spec) still match the code
-node apps/api/scripts/check-canary-figures.cjs --check   # Every docs/*.md agrees with the canary planner
+node apps/api/scripts/check-canary-figures.cjs --check   # Every docs/*.md agrees with the canary planner or is declared HISTORICAL
 docker exec parallext-pgbouncer pg_isready -h localhost -p 5432  # PgBouncer health (production compose port)
 ```
 

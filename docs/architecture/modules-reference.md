@@ -1289,7 +1289,7 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
 - **Purpose:** Vehicle stock management for automotive verticals (dealerships, rentals)
 - **Services:** `vehicle-inventory.service.ts`
 - **Controller:** `vehicle-inventory.controller.ts`
-- **Per-tenant tables:** `vehicles`, `vehicle_inquiries`, `test_drives`
+- **Per-tenant tables:** `vehicles`, `test_drives`
 - **Endpoints:**
   - `GET /vehicles/:tenantId` — List vehicles
   - `POST /vehicles/:tenantId` — Create vehicle

@@ -5,10 +5,10 @@ el estado sale de ella: con una condición local sin cumplir la fila está `abie
 cumplida y un gate externo nombrado está `bloqueada`; sólo sin condición y sin gate está `aceptada`.
 Cerrar un hueco cambia esta tabla cambiando el código, y reabrirlo la cambia de vuelta.
 
-Revisión: `06ce1e2590f7407d618b1d5d625846c525998bab`.
+Revisión: `32522b9d9d8893516718975fa23b8e65060dea19`.
 
-**El programa no está terminado.** 26 filas aceptadas, 27 bloqueadas por un
-gate externo concreto, 0 abiertas y 1 diferidas por decisión
+**El programa no está terminado.** 25 filas aceptadas, 27 bloqueadas por un
+gate externo concreto, 1 abiertas y 1 diferidas por decisión
 explícita de alcance; 0 perfiles certificados
 de 80.
 
@@ -77,7 +77,7 @@ Ese barrido corre dos veces: sobre las filas recién construidas y otra vez sobr
 | T5 | **bloqueada** por gate 1 y 4 | contador | — | Universo canónico conservado: 80 perfiles, 444 tareas, 158 que comprometen al negocio. La verificación determinista local es lo que esta fila mide; la certificación por canal y modelo real sigue en cero (0/76) y es gate externo, no trabajo local. | — |
 | T6 | **aceptada** | contador | — | Derivado del AST de `copilot.service.ts`: Assist inyecta `AgentContentProposalService`, consulta `listOperations`, deriva de sus veredictos la lista ejecutable y no vuelve a leer `effectiveCapabilities` como una autoridad paralela. | — |
 | T8 | **aceptada** | contador | — | Derivado de `native-backlog.ts`: 58 perfiles build/hybrid comercializables y 276 alertas comprueban writers, capacidad atómica, lecturas vivas, superficies y CTA, seguridad, SOR, pagos y evaluaciones. Una alerta interna reabre esta fila aunque el inventario estático de tools siga completo. | — |
-| T7 | **aceptada** | contador | — | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
+| T7 | **abierta** | contador | deploy no llama al verificador compartido | El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test. | — |
 | L0 | **aceptada** | contador | — | La autoridad comercial está en registros versionados y seis verificadores independientes; el build público ejecuta el conjunto completo. | — |
 | L1 | **aceptada** | contador | — | Planes, capacidades, tarifas de WhatsApp y decisiones pendientes salen de fuentes versionadas; no se completan con cifras de diseño. | — |
 | L2 | **aceptada** | contador | — | La web distingue suscripción a Parallly, entregas que Meta cobra a la WABA y pagos que el cliente final hace directamente al negocio. | — |

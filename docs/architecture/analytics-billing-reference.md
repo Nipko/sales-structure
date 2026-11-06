@@ -88,7 +88,6 @@ conversation_assignments — Agent handoff tracking (first_response_at, resolved
 alert_rules            — Threshold alert config
 alert_history          — Alert trigger history
 scheduled_reports      — Report delivery config
-dashboard_preferences  — Widget config per user
 automation_executions  — Rule execution audit trail
 agent_personas         — Multi-agent config
 agent_templates        — Reusable agent templates

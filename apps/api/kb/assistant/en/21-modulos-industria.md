@@ -3,7 +3,7 @@ id: modulos-industria
 title: "Tools and modules for your industry"
 routes: ["/admin/appointments", "/admin/properties", "/admin/stays", "/admin/tours", "/admin/tour-bookings", "/admin/listings", "/admin/vehicles", "/admin/resource-rentals", "/admin/repair-orders", "/admin/menu", "/admin/food-orders", "/admin/memberships", "/admin/classes", "/admin/courses", "/admin/insurance", "/admin/service-requests", "/admin/service-catalog", "/admin/treatment-plans", "/admin/pets", "/admin/photo-sessions", "/admin/cases", "/admin/inventory", "/admin/orders"]
 roles: ["tenant_admin", "tenant_supervisor", "tenant_agent"]
-keywords: ["industry", "vertical", "business type", "business profile", "waitlist", "existing accounts only", "event planning", "construction", "modules", "menu", "daily work", "catalogue and resources", "properties", "stays", "tours", "tour bookings", "vehicles", "rentals", "workshop orders", "cases", "packages and services", "orders", "memberships", "classes", "courses", "insurance", "treatments", "pets", "photography", "inventory", "recipe", "other"]
+keywords: ["industry", "vertical", "business type", "business profile", "waitlist", "existing accounts only", "event planning", "construction", "modules", "menu", "daily work", "catalogue and resources", "properties", "stays", "tours", "tour bookings", "vehicles", "rentals", "workshop orders", "cases", "packages and services", "orders", "memberships", "classes", "courses", "insurance", "treatments", "pets", "photography", "inventory", "recipe", "other", "ical", "airbnb", "photos"]
 ---
 
 # Tools and modules for your industry
@@ -58,3 +58,12 @@ Everything that appears already written when you turn on an industry comes from 
 Not every industry has its own recipe. Only six do: fashion and beauty, healthcare, restaurants, retail, education, and home services; education also adds a layer per business type for dance and music or art academies, private lessons, and driving schools. The other industries start from the base definition, with no recipe. If you choose **Other**, Parallly proposes a recipe written with AI from the sentence you entered at sign-up about what your business does; it appears as a suggestion and never replaces what you already changed. If generation fails, the account keeps the generic definition.
 
 A recipe **never invents a fact about your business**. It does not know your address, your phone, your payment methods or how many hours ahead someone can cancel. Where that fact would go it leaves a space like `[dirección]` or `[precio]` for you to fill. An invented fact that sounds plausible is worse than an empty space: the space is visible and gets filled; the invention goes out over WhatsApp.
+
+## Properties: iCal sync and photos
+
+In hotels and vacation rentals, each property (labelled «Rooms» or «Lodgings» in the menu) opens in tabs: **Calendar**, **Details**, **Photos**, **Bookings**, **iCal Sync**, and **Check-in**.
+
+- **Import Airbnb or Booking.com**: under **iCal Sync**, add a connection with the `.ics` URL that platform gives you. Parallly imports its bookings and blocks, syncs again every 30 minutes, and you can force it with **Sync now**.
+- **Export your calendar**: each connection has its own export URL. Copy the one for each platform and paste it into that platform's extranet, so it sees the bookings taken in Parallly without receiving its own blocks back.
+- **What iCal does not do**: an iCal calendar can only block dates, never reopen them. If you cancel a booking in Parallly, Airbnb usually frees the dates on its own, but on Booking.com you have to open them by hand. Each platform also reads calendars with a delay, so two near-simultaneous bookings on different sites can collide; if you sell on several platforms at once, a channel manager protects you better.
+- **Photos**: on properties and listings you can upload up to 5 photos of at most 2 MB each, by dragging them or selecting them. The first one is the cover, and it is the photo the agent sends first in the chat; use **Set as cover** or the arrows to reorder them. A file that is not an image or is larger than 2 MB is rejected by name without blocking the other photos.

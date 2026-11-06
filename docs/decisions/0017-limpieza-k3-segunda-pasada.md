@@ -31,6 +31,13 @@ Se retira, en tres PR temáticos:
 - **Scripts operativos sin referencia:** se documentan en el runbook en vez de borrarse. `apps/landing/scripts/verify-export-navigation.cjs` (comprueba enlaces del export estático) no está en ningún `package.json`: se deja para que la landing decida si lo cuelga de `build`.
 - **Flags:** no se encontró ningún flag de configuración siempre encendido o siempre apagado fuera de `sms.platform_enabled`, que depende de la decisión sobre SMS.
 
+**Actualización K3c (2026-11-05).** Los tres primeros puntos y el de `verify-export-navigation.cjs` se resolvieron por decisión del dueño:
+- Los validadores de la landing leen lo que se renderiza: `TestimonialsSection`, `TrustRow`, `VerticalsShowcase` (y lo que solo él montaba: `MultiChannelShowcase`, tres widgets, `CLUSTER_LABELS`), `demos/OrderPaymentDemo`, `data/testimonial-evidence.ts` y los mensajes `howItWorks`, `testimonials`, `trust`, `demos`, `solutions.heroTitle/heroSubtitle` y las claves de `verticals`/`channels` que solo usaban esas secciones se retiraron. Las reglas que protegían se reescribieron sobre las páginas vivas (sin testimonios en fuente ni mensajes; sin insignias de partner en ninguna fuente ni idioma; el aviso `solutions.validationRequired` de cada industria; el titular de `/soluciones` frente al estado canónico de certificación; cada demo renderizada registrada).
+- La landing ya no lee el reporte de cierre: el conteo de canales que publica se compara con la matriz de certificación de canales dentro de `generate-closure-report.cjs` (`landingCapabilityDrift`), que falla en todo modo desde `npm run verify:artifacts`. `Dockerfile.landing` deja de copiar el reporte.
+- `ToolsTour.tsx` y sus dos specs se retiraron con las claves `setupWizard.discover.*` que solo él usaba (queda `opensInNewTab`). La fila T4 del reporte de cierre queda congelada como histórica (`declared`), sin lectura.
+- Generados e insumos reubicados (ADR 0005, PR de K3c).
+- `verify-export-navigation.cjs` pasa (3656 enlaces en 156 documentos, menos de un segundo) y quedó al final de `npm run build` de la landing.
+
 ### Para decisión del dueño (base de datos y SMS)
 
 Sin cambios en esta pasada; la lista de ADR 0005 («Pendiente») sigue vigente y se confirmó contra `main`:

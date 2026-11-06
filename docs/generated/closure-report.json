@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "revision": "dda44eda9476a17e49c35696bccef25ae727e999",
-  "generatedAt": "2026-11-06T17:39:02.757Z",
+  "revision": "cca42f17e0a496d6ab5e3e8f6c04be0e57bb859e",
+  "generatedAt": "2026-11-06T18:27:08.482Z",
   "finished": false,
   "counts": {
     "aceptada": 25,
@@ -10,9 +10,9 @@
     "diferida": 1
   },
   "provenance": {
-    "derived": 37,
+    "derived": 36,
     "executed_evidence": 3,
-    "declared": 14
+    "declared": 15
   },
   "contradictions": [],
   "gates": {
@@ -672,12 +672,12 @@
     {
       "id": "T4",
       "open": 0,
-      "openLabel": "0 de 23 elementos de descubrimiento sin recorrido",
+      "openLabel": "",
       "gates": [],
       "status": "aceptada",
-      "provenance": "derived",
+      "provenance": "declared",
       "artefact": null,
-      "evidence": "Derivado de `DISCOVERY_ORDER` contra la tabla por elemento del tour. Un elemento que aparece en el panel y no en el recorrido es una pantalla a la que se manda al dueño sin decirle para qué sirve, qué datos necesita, qué puede confirmar ni qué cuesta.",
+      "evidence": "Histórica, congelada en K3c. Medía `DISCOVERY_ORDER` contra la tabla por elemento del recorrido del asistente de configuración (`ToolsTour`), que no se monta desde el 4-sep-2026 (4f2390e4) y se retiró: ya no hay una superficie viva que medir. El orden sigue vivo como `primaryTourItem` del recorrido del producto. Condición de cierre: cumplida al retirarse; se reabre solo si vuelve a montarse un recorrido por elemento, y entonces como fila derivada.",
       "commits": [],
       "deferral": null
     },

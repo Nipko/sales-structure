@@ -20,10 +20,6 @@ docs/*
 !docs/appointments-manual.md
 !docs/vertical-competitive-evidence.json
 !docs/vertical-competitive-matrix-2026-08.md
-!docs/generated/
-docs/generated/*
-!docs/generated/closure-report.json
-!docs/generated/closure-report.md
 .claude
 .claude-memory
 .agent

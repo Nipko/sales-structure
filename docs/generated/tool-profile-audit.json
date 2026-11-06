@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "dda44eda9476a17e49c35696bccef25ae727e999",
+  "sourceRevision": "cca42f17e0a496d6ab5e3e8f6c04be0e57bb859e",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -73,7 +73,7 @@
     "apps/api/src/modules/simulation/isolated-eval-namespace.ts": "4b43f8ec67e6246ff502130f546d7c86023bab8a3ef897e955566a8409bee672",
     "apps/api/src/modules/simulation/task-competence-matrix.ts": "225c9d64a8b9b63c0d5a7e4d73aa36b9e410628d22a1140e44b349a4f7fe355b",
     "apps/dashboard/src/lib/navigation-contract.ts": "a5f8e4beeda498ba32a9f437f2fd602424c6e877053359c4e7da74a88bfbcca8",
-    "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "05899447bdc61a9cb7f68330731f4087142686cbd771614ad55e5d1eb6a6c15c",
+    "apps/dashboard/src/lib/vertical-dashboard-resolver.ts": "91da9c8d31b1f7ef75451bdd8d8f112a6b0dbc250a900bcc13fda88fb1c46de2",
     "packages/shared/src/active-object-deep-link.ts": "738a7f5f1180bcfec4e8d9dc1cb424515419e4001dfbf1e82bd6a4802fd7003b",
     "packages/shared/src/agent-assessment-contract.ts": "cd5e829f502112f9c3ce22607c2c1fb01f1ecc81353a784030337b622285f889",
     "packages/shared/src/agent-configuration-contract.ts": "73663da28d6daacaf21ce6bde753b3907bfbec58e0a381e52f4ce1b95a489eac",

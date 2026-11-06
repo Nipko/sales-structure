@@ -98,4 +98,35 @@ function landingRows(row, authority) {
     ];
 }
 
-module.exports = { REQUIRED_CLAIM_CHECKS, landingAuthorities, landingRows };
+/**
+ * The landing's published certification counts, against the authorities that
+ * decide them.
+ *
+ * The landing validator used to read this generator's OUTPUT
+ * (`closure-report.json`) to check `PRODUCT_CAPABILITY_COUNTS`, which made the
+ * landing build depend on a CI artefact copied into its Docker stage. The check
+ * now runs here, against the same live authorities the report is built from
+ * (the channel certification matrix), and a drift fails the generator in
+ * every mode: regenerating cannot make it green. The landing keeps its own
+ * check of the industry headline against the canonical product policy.
+ */
+function landingCapabilityDrift({ root, channels }) {
+    const source = read(root, 'apps/landing/src/data/product-capabilities.ts');
+    const count = name => {
+        const match = new RegExp(`\\b${name}:\\s*(\\d+)`).exec(source);
+        return match ? Number(match[1]) : null;
+    };
+    const drift = [];
+    for (const [name, expected] of [
+        ['selfServiceChannels', channels.selfService],
+        ['certifiedChannels', channels.certified],
+    ]) {
+        const published = count(name);
+        if (published !== expected) {
+            drift.push(`la landing publica ${name}=${published ?? 'sin valor'} y la matriz de certificación de canales dice ${expected}`);
+        }
+    }
+    return drift;
+}
+
+module.exports = { REQUIRED_CLAIM_CHECKS, landingAuthorities, landingRows, landingCapabilityDrift };

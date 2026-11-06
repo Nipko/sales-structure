@@ -24,7 +24,7 @@ src/
     offline/page.tsx         — Fallback PWA offline
     admin/
       layout.tsx        — Authenticated layout con AppSidebar + banners (Fiscal, Trial, Maintenance) + session/timeout modals
-      setup-wizard/     — Onboarding guiado post-registro: conectar primer canal + probar agente (AgentTestChat) + canales secundarios (SecondaryChannels) + ToolsTour
+      setup-wizard/     — Onboarding guiado post-registro: conectar primer canal + probar agente (AgentTestChat) + canales secundarios (SecondaryChannels)
       page.tsx          — Dashboard overview
       inbox/            — Agent console (WhatsApp-style chat + bell notifications)
       contacts/         — CRM contacts + lead detail (edit mode + custom fields + score breakdown)

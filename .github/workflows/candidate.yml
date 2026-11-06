@@ -510,6 +510,7 @@ jobs:
           PARALLLY_MIGRATION_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_migration_eval_isolation
           KNOWLEDGE_MEMORY_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           KNOWLEDGE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
+          KNOWLEDGE_FILE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           KNOWLEDGE_CONFLICT_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           LEARNING_EVIDENCE_TEST_DATABASE_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:5432/parallly_knowledge_eval_isolation
           PARALLLY_PGBOUNCER_TEST_URL: postgresql://postgres:candidate_ci_only@127.0.0.1:6432/parallly_eval_isolation?pgbouncer=true

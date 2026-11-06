@@ -11,7 +11,6 @@ import { AppointmentPaymentListener } from './appointment-payment.listener';
 import { ensureOperationalNoticeOutbox } from '../operational-notices/operational-notice-outbox';
 import { AIToolExecutorService } from '../conversations/ai-tool-executor.service';
 import { TemporalCapacityContractService } from '../verticals/temporal-capacity-contract.service';
-import { AgentQualityService } from '../quality/agent-quality.service';
 
 const url = process.env.PARALLLY_ISOLATION_TEST_URL;
 (url ? describe : describe.skip)('vehicle appointments in the canonical agenda (real PostgreSQL)', () => {
@@ -78,16 +77,9 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         expect(await vehicles.listTestDrives(tenantId)).toEqual([expect.objectContaining({ id: first.id, source: 'appointment', status: 'pending', vehicle_id: vehicleId })]);
         expect(events.emit).toHaveBeenCalledTimes(1); expect(outbox.enqueueWithQuery).toHaveBeenCalledTimes(1);
     });
-    it('checks the compatible services and active staff windows used by setup', async () => {
-        const quality: any = new AgentQualityService(prisma);
-        jest.spyOn(quality.logger, 'debug').mockImplementation(() => undefined);
-        let facts = await quality.loadReadinessFacts(tenantId, schema);
-        expect(facts).toMatchObject({ vehicles: 1, testDriveServices: 2, testDriveSlots: 2 });
-        expect(facts.unavailableSources).not.toContain('appointments');
-        await q("UPDATE services SET location_type='online'");
-        facts = await quality.loadReadinessFacts(tenantId, schema);
-        expect(facts).toMatchObject({ services: 2, availabilitySlots: 2, testDriveServices: 0, testDriveSlots: 0 });
-    });
+    // The setup readiness check of test-drive services and staff windows (AgentQualityService vehicles /
+    // testDriveServices / testDriveSlots) was retired with the other business-data signals in R2 (#324, bb03520a):
+    // readiness is now the business-spec engine's verdict, not this service's counts, so there is nothing left here to test.
     it('keeps payment terms on retry and does not sync an unpaid appointment', async () => {
         await q("UPDATE services SET payment_policy='any',deposit_percent=25 WHERE id=$1::uuid", [serviceId]);
         const data = request(); const first = await vehicles.scheduleTestDrive(tenantId, data);

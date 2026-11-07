@@ -23,6 +23,53 @@ const safeIdentifier = (name: string): string => {
 export class EvaluationRevisionService {
     constructor(private readonly prisma: PrismaService, private readonly router: LLMRouterService) {}
 
+    /**
+     * Freshness checks for one tenant (ADR 0021). Every model call of an
+     * evaluation checks the revision before and after (`dataSourceAuthority`),
+     * and one check hashes every dependency table of the tenant: about 0.8 s of
+     * PostgreSQL CPU and ~250 round trips. With several cases of one tenant in
+     * flight those checks saturated the database and the catalogue tools timed
+     * out (E2r, E2s).
+     *
+     * A check may use a capture that STARTED at most `FRESHNESS_WINDOW_MS`
+     * before the check was asked for, running or finished; otherwise it waits
+     * for the next capture, which starts after the running one ends. A tenant
+     * edit during an evaluation is therefore caught within that window, by the
+     * next check after it, instead of by the very next one. A failed capture is
+     * never reused.
+     */
+    static readonly FRESHNESS_WINDOW_MS = 2_000;
+    private readonly freshness = new Map<string, {
+        running?: { startedAt: number; result: Promise<EvaluationRevisionManifest> };
+        last?: { startedAt: number; result: Promise<EvaluationRevisionManifest> };
+        next?: Promise<EvaluationRevisionManifest>;
+    }>();
+
+    protected now(): number { return Date.now(); }
+
+    private captureFresh(tenantId: string): Promise<EvaluationRevisionManifest> {
+        const askedAt = this.now();
+        const recent = (startedAt: number) => askedAt - startedAt <= EvaluationRevisionService.FRESHNESS_WINDOW_MS;
+        let slot = this.freshness.get(tenantId);
+        if (!slot) { slot = {}; this.freshness.set(tenantId, slot); }
+        const own = slot;
+        const start = (): Promise<EvaluationRevisionManifest> => {
+            const entry = { startedAt: this.now(), result: this.capture(tenantId) };
+            own.running = entry;
+            entry.result.then(() => { own.last = entry; }, () => undefined)
+                .finally(() => { if (own.running === entry) own.running = undefined; });
+            return entry.result;
+        };
+        if (own.running && recent(own.running.startedAt)) return own.running.result;
+        if (!own.running && own.last && recent(own.last.startedAt)) return own.last.result;
+        if (!own.running) return start();
+        if (!own.next) {
+            own.next = own.running.result.then(() => undefined, () => undefined)
+                .then(() => { own.next = undefined; return start(); });
+        }
+        return own.next;
+    }
+
     captureStructuredKnowledge(tenantId: string) {
         return captureStructuredKnowledge(serviceCatalogCaptureDatabase(this.prisma), tenantId);
     }
@@ -105,7 +152,7 @@ export class EvaluationRevisionService {
 
     async assertCurrent(manifest?: EvaluationRevisionManifest): Promise<void> {
         assertRevisionIntegrity(manifest);
-        const current = await this.capture(manifest.tenantId);
+        const current = await this.captureFresh(manifest.tenantId);
         // Frozen inputs have their own content hashes, checked against the private snapshot at every turn.
         const liveRevision = sealRevision(manifest.tenantId,manifest.dependencies.filter(item=>!item.key.startsWith('frozen.')),manifest.exclusions);
         if (current.revision !== liveRevision.revision) {

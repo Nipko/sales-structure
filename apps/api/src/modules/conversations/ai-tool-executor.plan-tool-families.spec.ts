@@ -119,4 +119,26 @@ describe('AIToolExecutorService: familias de tools por plan', () => {
         const status = await run(f.executor, 'get_payment_status', { payableReference: 'order:11111111-1111-4111-8111-111111111111' });
         expect(status).toEqual({ found: true, paymentStatus: 'pending', paid: false });
     });
+
+    it('lee el plan una vez cada 30 s por tenant, no en cada tool', async () => {
+        const f = createExecutor({ toolFamilies: ['appointments'] });
+        const now = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+        try {
+            await run(f.executor, 'list_services');
+            await run(f.executor, 'list_services');
+            expect(f.throttle!.getPlanFeatures).toHaveBeenCalledTimes(1);
+            now.mockReturnValue(1_000_000 + AIToolExecutorService.PLAN_FEATURES_TTL_MS + 1);
+            await run(f.executor, 'list_services');
+            expect(f.throttle!.getPlanFeatures).toHaveBeenCalledTimes(2);
+        } finally {
+            now.mockRestore();
+        }
+    });
+
+    it('no guarda en caché una lectura fallida', async () => {
+        const f = createExecutor(new Error('redis caído'));
+        await run(f.executor, 'list_services');
+        await run(f.executor, 'list_services');
+        expect(f.throttle!.getPlanFeatures).toHaveBeenCalledTimes(2);
+    });
 });

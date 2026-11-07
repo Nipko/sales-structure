@@ -343,6 +343,33 @@ export class AIToolExecutorService {
     private readonly planLookupWarnedAt = new Map<string, number>();
 
     /**
+     * Plan leído hace menos de `PLAN_FEATURES_TTL_MS`, por tenant.
+     *
+     * Sin esto cada llamada a una tool sumaba una lectura de Redis y otra de la
+     * base, en el mismo camino donde la carga de la base ya causó timeouts de
+     * tools (E2r/E2s, ADR 0021). Un cambio de plan tarda como mucho 30 s en
+     * llegar a la ejecución; publicar sigue leyendo el plan fresco. Sólo se
+     * guardan lecturas exitosas y sólo sin `executionContext` (las evaluaciones
+     * leen su propio contexto).
+     */
+    static readonly PLAN_FEATURES_TTL_MS = 30_000;
+    private readonly planFeaturesCache = new Map<string, { at: number; features: Record<string, any> }>();
+
+    private async cachedPlanFeatures(
+        tenantId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<Record<string, any>> {
+        if (executionContext) return this.planThrottle!.getPlanFeatures(tenantId, executionContext);
+        const now = Date.now();
+        const hit = this.planFeaturesCache.get(tenantId);
+        if (hit && now - hit.at < AIToolExecutorService.PLAN_FEATURES_TTL_MS) return hit.features;
+        const features = await this.planThrottle!.getPlanFeatures(tenantId, undefined);
+        if (this.planFeaturesCache.size > 2000) this.planFeaturesCache.clear();
+        this.planFeaturesCache.set(tenantId, { at: now, features });
+        return features;
+    }
+
+    /**
      * La puerta del plan en la ejecución.
      *
      * Publicar ya retira las familias que el plan no incluye, pero publicar sólo
@@ -365,7 +392,7 @@ export class AIToolExecutorService {
         if (!family) return null;
         let features: Record<string, any>;
         try {
-            features = await this.planThrottle.getPlanFeatures(tenantId, executionContext);
+            features = await this.cachedPlanFeatures(tenantId, executionContext);
         } catch (error: any) {
             if (family === 'payments') {
                 return { error: 'plan_unavailable', tool: toolName, family, controlBlocked: true, persisted: false, shouldHandoff: true,

@@ -6,7 +6,8 @@ import {
     CONVERSATIONAL_CHANNELS,
     EFFECTIVE_CAPABILITY_CONTRACT_VERSION,
     OPERATIONAL_ROLES,
-    TOOL_GROUP_PLAN_FEATURE,
+    planAllowsToolFamily,
+    planToolFamiliesAllow,
     TOOL_GROUP_READINESS,
     TOOL_READINESS,
     VERTICAL_TOOL_GROUPS,
@@ -341,24 +342,43 @@ export class EffectiveCapabilityService {
             this.logger.warn(`[Capability] plan lookup failed for ${input.tenantId}: ${error?.message}`);
         }
 
+        // El plan decide qué familias entran (`toolFamilies`) y, para las que
+        // tienen feature propia, si está encendida. Una caída de la consulta
+        // deja `planFeatures` vacío: las features booleanas fallan cerradas
+        // (pagos) y `toolFamilies` ausente se lee como sin límite, a propósito
+        // — un parpadeo de Redis no puede dejar mudo a cada agente que agenda.
+        const planExcludes = (group: string) => !planAllowsToolFamily(planFeatures, group);
+        const pushPlanExclusion = (group: string) => excluded.push({
+            subject: group,
+            reason: 'plan_missing_feature',
+            detail: CAPABILITY_EXCLUSION_TEXT.plan_missing_feature,
+            repairRoute: '/admin/settings/billing',
+        });
         const withinPlan: VerticalToolGroup[] = [];
         for (const group of withinSubtype) {
-            const feature = TOOL_GROUP_PLAN_FEATURE[group];
-            if (!feature) { withinPlan.push(group); continue; }
-            const granted = planFeatures?.[feature] === true;
-            if (granted) { withinPlan.push(group); continue; }
-            excluded.push({
-                subject: group,
-                reason: 'plan_missing_feature',
-                detail: CAPABILITY_EXCLUSION_TEXT.plan_missing_feature,
-                repairRoute: '/admin/settings/billing',
-            });
+            if (!planExcludes(group)) { withinPlan.push(group); continue; }
+            pushPlanExclusion(group);
+        }
+        // Las familias horizontales no pasan por el techo del subtipo, pero el
+        // plan sí las alcanza: CRM o conocimiento pueden quedar fuera de un plan.
+        const globalWithinPlan: string[] = [];
+        for (const group of globalFamilies) {
+            if (!planExcludes(group)) { globalWithinPlan.push(group); continue; }
+            pushPlanExclusion(group);
+        }
+        // `payments` no está en el registro estático: lo publica el compositor
+        // del turno contra `customerPayments` y la salud del proveedor. Acá sólo
+        // se decide la lista `toolFamilies`; el compositor lee esta exclusión y
+        // retira el escritor de cobro.
+        if ((input.toolsConfig as Record<string, any> | null)?.payments?.enabled === true
+            && !planToolFamiliesAllow(planFeatures, 'payments')) {
+            pushPlanExclusion('payments');
         }
 
         // (3) Readiness. "Enabled" and "has something to answer with" were never
         // the same claim, and only the first was being made.
         const candidateConfig = Object.fromEntries(
-            [...withinPlan, ...globalFamilies].map(group => [
+            [...withinPlan, ...globalWithinPlan].map(group => [
                 group,
                 { ...(input.toolsConfig as Record<string, any> | null)?.[group], enabled: true },
             ]),
@@ -409,7 +429,7 @@ export class EffectiveCapabilityService {
             ? input.toolsConfig as Record<string, Record<string, unknown>>
             : {};
         const publishedConfig = Object.fromEntries(
-            [...published, ...globalFamilies].map(group => [
+            [...published, ...globalWithinPlan].map(group => [
                 group,
                 { ...(savedTools[group] || {}), enabled: true },
             ]),

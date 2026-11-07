@@ -16,7 +16,7 @@ import { McpClientService } from '../mcp/mcp-client.service';
 import { EffectiveCapabilityService, type ProviderHealthInput } from './effective-capability.service';
 import { PaymentOperationService } from './payment-operation.service';
 import { discountToolsForRuntime, paymentToolsForRuntime } from './payment-tool-registration';
-import { staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
+import { planGatedFamilyForTool, staticToolsForAgentConfig, subpermissionDeniedToolNames } from './agent-tool-registry';
 import { identityStepUpToolsFor } from './identity-step-up-registration';
 import {
     GET_FITNESS_SCHEDULE_TOOL,
@@ -260,10 +260,22 @@ export class TurnCapabilityComposerService {
                     canApplyDiscount: (cfgTools as any)?.ecommerce?.canApplyDiscount,
                     maxDiscountPercent: input.config.upsell?.maxDiscountPercent,
                 }, paymentCapability);
-                tools = uniqueTools([...tools, ...paymentTools, ...discountTools]);
+                // El contrato ya decidió qué familias deja fuera el plan
+                // (`toolFamilies`). El dinero se publica acá, después del
+                // contrato, así que se recorta con esa misma decisión: sin esto
+                // un plan sin `payments` seguía anunciando el link de cobro.
+                const planExcluded = new Set(base.excluded
+                    .filter(item => item.reason === 'plan_missing_feature')
+                    .map(item => item.subject));
+                const moneyTools = [...paymentTools, ...discountTools].filter((tool) => {
+                    const family = planGatedFamilyForTool(String(tool.name));
+                    return !family || !planExcluded.has(family);
+                });
+                tools = uniqueTools([...tools, ...moneyTools]);
 
                 if ((cfgTools as any)?.payments?.enabled === true
                     && (cfgTools as any)?.payments?.canCreateLinks === true
+                    && !planExcluded.has('payments')
                     && !paymentTools.some(tool => String(tool.name) === 'create_payment_link')) {
                     exclusions.push({
                         subject: 'payments',

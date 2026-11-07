@@ -52,7 +52,8 @@ const FALLBACK_LIMITS: PlanLimits = {
     automation: 50, outbound: 200, broadcast: 500, priority: 5, maxPendingJobs: 50,
 };
 
-const DEFAULT_PLAN = 'starter';
+/** Plan que se asume cuando un tenant no tiene uno legible. No se puede archivar (billing-admin). */
+export const DEFAULT_PLAN = 'starter';
 const WINDOW_SECONDS = 3600;
 const PLAN_CACHE_TTL = 300;
 const FEATURES_CACHE_TTL = 300;

@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { buildDomainContractDraft, resolveSubtypeExperienceProfile, TOOL_GROUP_PLAN_FEATURE, VERTICAL_TOOL_GROUPS } from '@parallext/shared';
+import { buildDomainContractDraft, isPlanToolFamily, planToolFamiliesAllow, resolveSubtypeExperienceProfile, TOOL_GROUP_PLAN_FEATURE, VERTICAL_TOOL_GROUPS } from '@parallext/shared';
 import type { AgentConfigurationWorkspace, AgentDraftRevision, SaveAgentDraftRequest, SavedAgentDraft, DiscardAgentDraftRequest } from '@parallext/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
@@ -279,6 +279,10 @@ export class AgentDraftService {
         const profile = resolveSubtypeExperienceProfile(industry, subType);
         const manifest = new Set<string>(profile.capability.toolGroups);
         const scoped = new Set<string>(VERTICAL_TOOL_GROUPS);
+        // Las features del plan se leen una vez y sólo si hace falta. Al guardar
+        // se falla cerrado: un plan que no se pudo leer no autoriza una familia.
+        let planFeatures: Record<string, any> | undefined;
+        const features = async () => planFeatures ??= await this.throttle.getPlanFeatures(tenantId);
         for (const [family, config] of Object.entries(body.configJson.tools ?? {}) as Array<[string, any]>) {
             if (config?.enabled !== true) continue;
             // Reuse the runtime subtype ceiling and plan mapping, including horizontal families.
@@ -286,6 +290,8 @@ export class AgentDraftService {
                 throw new BadRequestException({ error: 'configuration_capability_blocked', reasons: ['not_in_subtype'], family });
             const feature = TOOL_GROUP_PLAN_FEATURE[family];
             if (feature && !await this.throttle.isFeatureEnabled(tenantId, feature))
+                throw new ForbiddenException({ error: 'configuration_capability_blocked', reasons: ['plan_missing_feature'], family });
+            if (isPlanToolFamily(family) && !planToolFamiliesAllow(await features(), family))
                 throw new ForbiddenException({ error: 'configuration_capability_blocked', reasons: ['plan_missing_feature'], family });
         }
         if ((body.configJson.editorMode ?? body.configJson._mode) === 'prompt'

@@ -40,10 +40,18 @@ interface CatalogEntry {
   advertised: boolean;
 }
 
+interface PlanCoverage {
+  available: boolean;
+  plans: Array<{ slug: string; name: string; isActive: boolean; toolFamilies: string[] | null }>;
+  /** Familia → planes activos que la incluyen. Sólo familias que el plan gobierna. */
+  byFamily: Record<string, string[]>;
+}
+
 interface CatalogPayload {
   totals: { tools: number; reads: number; writes: number; withGaps: number; families: number };
-  families: Array<{ family: string; tools: number; reads: number; writes: number }>;
+  families: Array<{ family: string; tools: number; reads: number; writes: number; planGated?: boolean }>;
   entries: CatalogEntry[];
+  planCoverage?: PlanCoverage;
 }
 
 interface TenantRow {
@@ -64,6 +72,8 @@ interface TenantRow {
     subpermissionDenials: Array<{ family: string; flag: string; tools: string[] }>;
   }>;
   planFeatures: Record<string, boolean | null>;
+  /** `null` = el plan no limita familias. */
+  planToolFamilies?: string[] | null;
   enabledTools: string[];
   usedTools: string[];
   enabledButUnused: string[];
@@ -169,6 +179,21 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone?: "dan
   );
 }
 
+/** Qué planes activos incluyen la familia; las que el plan no gobierna van en todos. */
+function PlanCoverageCell({ family, coverage, t }: { family: string; coverage?: PlanCoverage; t: ReturnType<typeof useTranslations> }) {
+  if (!coverage?.available) return <span className="text-muted-foreground">—</span>;
+  const plans = coverage.byFamily[family];
+  if (!plans) return <span className="text-[11px] text-muted-foreground">{t("catalog.allPlans")}</span>;
+  if (!plans.length) return <span className="text-[11px] text-rose-600 dark:text-rose-400">{t("catalog.noPlans")}</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {plans.map(slug => (
+        <span key={slug} className={cn(pill, "border-border text-muted-foreground")}>{slug}</span>
+      ))}
+    </div>
+  );
+}
+
 function CatalogTab({ data, t }: { data: CatalogPayload; t: ReturnType<typeof useTranslations> }) {
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState("all");
@@ -193,6 +218,9 @@ function CatalogTab({ data, t }: { data: CatalogPayload; t: ReturnType<typeof us
       <p className="text-sm text-muted-foreground">
         {t("catalog.totals", data.totals)}
       </p>
+      {data.planCoverage && !data.planCoverage.available && (
+        <p className="text-xs text-amber-700 dark:text-amber-300">{t("catalog.planCoverageUnavailable")}</p>
+      )}
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         <label className="relative flex-1">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -250,7 +278,10 @@ function CatalogTab({ data, t }: { data: CatalogPayload; t: ReturnType<typeof us
                   <td className={tdClass}><AccessBadge access={entry.access} label={t(`catalog.${entry.access}`)} /></td>
                   <td className={tdClass}>{entry.confirmation}</td>
                   <td className={tdClass}>{entry.humanApproval}</td>
-                  <td className={tdClass}>{entry.planFeature ?? "—"}</td>
+                  <td className={tdClass}>
+                    {entry.planFeature && <div>{entry.planFeature}</div>}
+                    <PlanCoverageCell family={entry.family} coverage={data.planCoverage} t={t} />
+                  </td>
                   <td className={tdClass}>{entry.readiness ?? "—"}</td>
                   <td className={tdClass}>
                     {entry.verticalScoped ? t("catalog.profilesCount", { count: entry.profiles.length }) : t("catalog.horizontal")}
@@ -360,6 +391,9 @@ function TenantsTab({ data, t }: { data: TenantsPayload; t: ReturnType<typeof us
                   <td className={tdClass}>
                     {row.plan}
                     {row.planFeatures.customerPayments === false && <div className="text-[10px] text-muted-foreground">{t("tenants.noPayments")}</div>}
+                    {Array.isArray(row.planToolFamilies) && (
+                      <div className="text-[10px] text-muted-foreground">{t("tenants.planFamiliesCount", { count: row.planToolFamilies.length })}</div>
+                    )}
                   </td>
                   <td className={tdClass}>
                     {row.agentsError ? <span className="text-rose-600 dark:text-rose-400">{t("tenants.agentsError")}</span> : row.agents.length}
@@ -408,6 +442,11 @@ function TenantsTab({ data, t }: { data: TenantsPayload; t: ReturnType<typeof us
                           <ToolChips tools={row.blockedByPlan} tone="muted" />
                         </div>
                       )}
+                      <div className="text-[11px] text-muted-foreground">
+                        {Array.isArray(row.planToolFamilies)
+                          ? t("tenants.planFamilies", { families: row.planToolFamilies.join(", ") || "—" })
+                          : t("tenants.planAllFamilies")}
+                      </div>
                       {row.usage.length > 0 && (
                         <table className="w-full max-w-2xl text-left text-[11px]">
                           <thead className="text-muted-foreground">

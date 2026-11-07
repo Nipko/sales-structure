@@ -2,7 +2,7 @@
   "version": 1,
   "evidenceKind": "structural_only",
   "sourceHashEncoding": "utf8-lf",
-  "sourceRevision": "989b2226ecb2a8031728676b0bdffceb017344b4",
+  "sourceRevision": "bcd977673e1cb43b9399018c0d77d7ce197f53e2",
   "summary": {
     "verticals": 20,
     "profiles": 80,
@@ -98,7 +98,7 @@
     "packages/shared/src/email-verification-policy.ts": "65ec4e669d3e43fc3fbba597eb8a60ce3d0ffec8f30a1725ba298d34bd49c178",
     "packages/shared/src/eval-phrase.ts": "b8b346f5bf1d46a7d3769eafa43e67ec31e9033ea4bb6304c16e9cee3875c980",
     "packages/shared/src/guided-tour-contract.ts": "bb0cd8da676afda37cd2e5eff7501e365a77cd4056860fc6e14ad581d9748384",
-    "packages/shared/src/index.ts": "a85aa6635047f34d30096a9b09587be1fc5f5e4fe289c2a1136ddeff465609d7",
+    "packages/shared/src/index.ts": "ad6478159bb8ad40c85cbfbbb6bbc66851763d1363c06a6a677b543e2f057c55",
     "packages/shared/src/insurance-task-eval-pack.ts": "c54d37a631f2419857d57cddba631d6fffbb46e18e078237a4d171ab02d25af9",
     "packages/shared/src/integration-scaffolding.ts": "3b830967a82db77a4ea5253a3102cd68103eb595f2059d54bfb487b4c1e77d33",
     "packages/shared/src/intent-workflow-contract.ts": "d9ba194c34cf4ed0a61fb852ce91b68b910a07d3bfdaf92106a8bbb14196dd2a",

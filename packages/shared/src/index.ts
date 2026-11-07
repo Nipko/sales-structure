@@ -1097,6 +1097,8 @@ export interface TurnContext {
         currency?: string;
         /** What the service includes, as the business wrote it (trimmed): lets the model answer "¿qué incluye X?". */
         description?: string;
+        /** Opción B: a template service from onboarding (seeded/example); it may be named, never presented as confirmed. */
+        contentStatus?: 'seeded' | 'example';
     }>;
     retrievedKnowledge?: RetrievedKnowledgeItem[];
     /**

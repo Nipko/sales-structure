@@ -883,6 +883,17 @@ export class AuthService {
     }
 
     async validateUser(payload: JwtPayload) {
+        // The 2FA-pending token ({sub, purpose:'2fa'}) and the customer-portal
+        // token ({type:'customer'}) are signed with the same secret as access
+        // tokens. Without this check the 2FA token, handed out after the
+        // password step alone, authenticated every AuthGuard('jwt') route and
+        // made the second factor optional. Only access tokens carry a role and
+        // no purpose/type claim.
+        const claims = payload as JwtPayload & { purpose?: unknown; type?: unknown };
+        if (claims.purpose !== undefined || claims.type !== undefined || !claims.role) {
+            throw new UnauthorizedException('Invalid token type');
+        }
+
         const user = await this.prisma.user.findUnique({
             where: { id: payload.sub },
             select: {

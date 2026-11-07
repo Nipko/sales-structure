@@ -26,6 +26,8 @@ export interface MediaFile {
     createdAt: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const ALLOWED_MIME_TYPES = [
     'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml',
 ];
@@ -460,8 +462,19 @@ export class MediaService {
     }
 
     readFile(tenantId: string, fileName: string): { buffer: Buffer; exists: boolean } {
+        // The public serve route passes tenantId straight from the URL, and
+        // Express decodes %2F inside a param: an unchecked tenantId would let
+        // `..%2F..%2Fproc%2Fself` escape the media root. Only a UUID names a
+        // tenant directory, and the resolved path must stay inside the root.
+        if (!UUID_RE.test(tenantId)) {
+            return { buffer: Buffer.alloc(0), exists: false };
+        }
         const safeName = path.basename(fileName);
-        const filePath = path.join(this.storagePath, tenantId, safeName);
+        const root = path.resolve(this.storagePath);
+        const filePath = path.resolve(root, tenantId, safeName);
+        if (!filePath.startsWith(root + path.sep)) {
+            return { buffer: Buffer.alloc(0), exists: false };
+        }
         this.logger.debug(`Serving: ${filePath} exists=${fs.existsSync(filePath)}`);
 
         if (!fs.existsSync(filePath)) {

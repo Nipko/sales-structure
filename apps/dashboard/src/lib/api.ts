@@ -2227,6 +2227,10 @@ export const api = {
     getFeatureRegistry: () => apiGet('/billing-admin/feature-registry'),
     updateAdminPlan: (slug: string, data: any) => apiPut(`/billing-admin/plans/${slug}`, data),
     invalidatePlanCache: (slug: string) => apiPost(`/billing-admin/plans/${slug}/invalidate-cache`, {}),
+    createAdminPlan: (data: { slug: string; name: string; copyFrom?: string; features?: Record<string, any>; isActive?: boolean }) =>
+        apiPost('/billing-admin/plans', data),
+    archiveAdminPlan: (slug: string, reason?: string) => apiPost(`/billing-admin/plans/${slug}/archive`, { reason }),
+    unarchiveAdminPlan: (slug: string, reason?: string) => apiPost(`/billing-admin/plans/${slug}/unarchive`, { reason }),
     getPaymentProviderStatus: () =>
         apiGet<PaymentProvidersStatus>(
             '/billing-admin/provider-status',

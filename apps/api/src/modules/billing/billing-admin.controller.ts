@@ -1,12 +1,12 @@
 import { BadRequestException, Body, ConflictException, Controller, Get, HttpCode, HttpStatus, Logger, NotFoundException, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsPositive, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { BillingService } from './billing.service';
 import { StripeRefundService } from './stripe-refund.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { DEFAULT_PLAN, TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { BillingReconciliationProcessor } from './processors/reconciliation.processor';
 import {
     PLAN_FEATURE_REGISTRY,
@@ -79,6 +79,50 @@ class UpdatePlanDto {
     @IsOptional() @IsObject() features?: Record<string, any>;
     @IsOptional() @IsObject() priceLocalOverrides?: Record<string, any>;
     @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+/** Slug de plan: minúsculas, dígitos y guiones; es la clave que guarda `tenants.plan`. */
+export const PLAN_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,40}$/;
+
+class CreatePlanDto {
+    @IsString() @Matches(PLAN_SLUG_PATTERN) slug!: string;
+    @IsString() @MinLength(1) @MaxLength(80) name!: string;
+    /** Plan existente del que se copian features, límites y precios (lo que venga en el body gana). */
+    @IsOptional() @IsString() @Matches(PLAN_SLUG_PATTERN) copyFrom?: string;
+    @IsOptional() @IsInt() @Min(0) @Max(2147483647) priceUsdCents?: number;
+    @IsOptional() @IsInt() @Min(0) trialDays?: number;
+    @IsOptional() @IsBoolean() requiresCardForTrial?: boolean;
+    @IsOptional() @IsInt() @Min(-1) maxAgents?: number;
+    @IsOptional() @IsInt() @Min(-1) maxAiMessages?: number;
+    @IsOptional() @IsObject() features?: Record<string, any>;
+    @IsOptional() @IsObject() priceLocalOverrides?: Record<string, any>;
+    @IsOptional() @IsBoolean() isActive?: boolean;
+    @IsOptional() @IsInt() @Min(0) sortOrder?: number;
+}
+
+class ArchivePlanDto {
+    @IsOptional() @IsString() @MaxLength(500) reason?: string;
+}
+
+/**
+ * Sólo los montos editables de un override de precio. Los ids y huellas de
+ * sincronización con el proveedor pertenecen al plan de origen: copiarlos haría
+ * que el plan nuevo cobrara con el plan remoto de otro.
+ */
+function copyablePriceOverrides(overrides: unknown): Record<string, any> {
+    const result: Record<string, any> = {};
+    if (!overrides || typeof overrides !== 'object') return result;
+    for (const [country, raw] of Object.entries(overrides as Record<string, any>)) {
+        if (!raw || typeof raw !== 'object') continue;
+        const entry: Record<string, any> = {};
+        if (typeof raw.currency === 'string') entry.currency = raw.currency;
+        if (Number.isSafeInteger(raw.amountCents)) entry.amountCents = raw.amountCents;
+        if (raw.annual && typeof raw.annual === 'object' && Number.isSafeInteger(raw.annual.amountCents)) {
+            entry.annual = { currency: raw.annual.currency ?? raw.currency, amountCents: raw.annual.amountCents };
+        }
+        if (Object.keys(entry).length) result[country] = entry;
+    }
+    return result;
 }
 
 class ReconcileDto {
@@ -206,6 +250,9 @@ export class BillingAdminController {
             if (!body.expectedUpdatedAt || new Date(body.expectedUpdatedAt).getTime() !== new Date(existing.updatedAt).getTime()) {
                 throw new ConflictException({ error: 'plan_edit_conflict' });
             }
+            // Archivar por la edición completa sigue las mismas reglas que el
+            // endpoint dedicado: el plan de respaldo no se archiva.
+            if (body.isActive === false && existing.isActive) this.assertArchivable(slug);
 
             let priceSync;
             try {
@@ -341,6 +388,160 @@ export class BillingAdminController {
     async invalidateCache(@Param('slug') slug: string) {
         const count = await this.throttle.invalidatePlanCacheForSlug(slug);
         return { success: true, invalidatedCount: count };
+    }
+
+    // ── Crear y archivar planes ──────────────────────────────────
+    //
+    // Un plan nuevo nace del registro de features (nada de claves muertas) y,
+    // si se pide, como copia de otro. Archivar no mueve a nadie: los tenants
+    // que ya están en el plan lo conservan con todas sus features; lo que se
+    // corta es asignarlo de nuevo (super_admin, autoservicio y altas ya exigen
+    // `isActive`). Borrar no existe a propósito: `tenants.plan` y las
+    // suscripciones apuntan al plan y no hay forma reversible de deshacerlo.
+
+    @Post('plans')
+    async createPlan(@Body() body: CreatePlanDto, @Req() req: any) {
+        if (!PLAN_SLUG_PATTERN.test(body.slug ?? '')) {
+            throw new BadRequestException({ error: 'invalid_plan_slug', message: 'El slug debe ser minúsculas, dígitos y guiones (2 a 41 caracteres).' });
+        }
+        const name = String(body.name ?? '').trim();
+        if (!name) throw new BadRequestException({ error: 'plan_name_required' });
+
+        const created = await this.prisma.$transaction(async tx => {
+            if (await tx.billingPlan.findUnique({ where: { slug: body.slug } })) {
+                throw new ConflictException({ error: 'plan_slug_taken', slug: body.slug });
+            }
+            const source = body.copyFrom ? await tx.billingPlan.findUnique({ where: { slug: body.copyFrom } }) : null;
+            if (body.copyFrom && !source) throw new NotFoundException({ error: 'copy_source_not_found', slug: body.copyFrom });
+
+            const priceUsdCents = body.priceUsdCents ?? source?.priceUsdCents;
+            const maxAgents = body.maxAgents ?? source?.maxAgents;
+            const maxAiMessages = body.maxAiMessages ?? source?.maxAiMessages;
+            const missing = Object.entries({ priceUsdCents, maxAgents, maxAiMessages })
+                .filter(([, value]) => value === undefined || value === null).map(([key]) => key);
+            if (missing.length) {
+                throw new BadRequestException({ error: 'plan_fields_required', missing,
+                    message: 'Sin plan de origen hay que indicar precio, máximo de agentes y de mensajes IA.' });
+            }
+
+            const features = { ...((source?.features as Record<string, any>) ?? {}), ...(body.features ?? {}) };
+            const validation = validatePlanFeatures(features);
+            if (validation.unknownKeys.length || validation.typeErrors.length) {
+                throw new BadRequestException({ error: 'invalid_features', ...validation,
+                    message: 'El objeto features contiene claves desconocidas o tipos inválidos. Consulta GET /billing-admin/feature-registry.' });
+            }
+
+            let priceSync;
+            try {
+                priceSync = reconcilePlanPriceSync({
+                    planSlug: body.slug,
+                    existingOverrides: {},
+                    incomingOverrides: body.priceLocalOverrides ?? copyablePriceOverrides(source?.priceLocalOverrides),
+                    existingUsdPriceCents: priceUsdCents!,
+                    nextUsdPriceCents: priceUsdCents!,
+                    existingLegacyMpPlanId: null,
+                });
+            } catch (error) {
+                if (error instanceof PriceOverrideValidationError) {
+                    throw new BadRequestException({ error: 'invalid_price_local_overrides',
+                        message: 'priceLocalOverrides contiene países, monedas o montos inválidos.', issues: error.issues });
+                }
+                throw error;
+            }
+
+            const last = await tx.billingPlan.findFirst({ orderBy: { sortOrder: 'desc' }, select: { sortOrder: true } });
+            const plan = await tx.billingPlan.create({
+                data: {
+                    slug: body.slug,
+                    name,
+                    priceUsdCents: priceUsdCents!,
+                    trialDays: body.trialDays ?? source?.trialDays ?? 0,
+                    requiresCardForTrial: body.requiresCardForTrial ?? source?.requiresCardForTrial ?? false,
+                    maxAgents: maxAgents!,
+                    maxAiMessages: maxAiMessages!,
+                    features,
+                    priceLocalOverrides: priceSync.priceLocalOverrides,
+                    isActive: body.isActive ?? true,
+                    sortOrder: body.sortOrder ?? ((last?.sortOrder ?? 0) + 1),
+                },
+            });
+            await tx.auditLog.create({
+                data: {
+                    tenantId: null,
+                    userId: auditActor(req?.user).userId,
+                    action: 'billing_plan_created',
+                    resource: `billing-plans/${body.slug}`,
+                    details: { slug: body.slug, copyFrom: body.copyFrom ?? null, isActive: plan.isActive },
+                },
+            });
+            return plan;
+        });
+        // Nadie está en un plan recién creado, pero la invalidación es la misma
+        // llamada que el resto de las ediciones y deja el contrato uniforme.
+        const cacheInvalidationPending = await this.invalidatePlanCacheSafely(body.slug);
+        return { success: true, data: { ...created, tenantCount: 0 }, cacheInvalidationPending };
+    }
+
+    @Post('plans/:slug/archive')
+    @HttpCode(HttpStatus.OK)
+    async archivePlan(@Param('slug') slug: string, @Body() body: ArchivePlanDto, @Req() req: any) {
+        this.assertArchivable(slug);
+        return this.setPlanActive(slug, false, body?.reason ?? null, req);
+    }
+
+    @Post('plans/:slug/unarchive')
+    @HttpCode(HttpStatus.OK)
+    async unarchivePlan(@Param('slug') slug: string, @Body() body: ArchivePlanDto, @Req() req: any) {
+        return this.setPlanActive(slug, true, body?.reason ?? null, req);
+    }
+
+    /** El plan de respaldo (`DEFAULT_PLAN`) es el que se asume cuando un tenant no tiene uno legible. */
+    private assertArchivable(slug: string): void {
+        if (slug === DEFAULT_PLAN) {
+            throw new BadRequestException({ error: 'default_plan_not_archivable', slug,
+                message: 'Este plan es el de respaldo de la plataforma y no se puede archivar.' });
+        }
+    }
+
+    private async setPlanActive(slug: string, isActive: boolean, reason: string | null, req: any) {
+        const result = await this.prisma.$transaction(async tx => {
+            await tx.$queryRawUnsafe('SELECT id FROM public.billing_plans WHERE slug = $1 FOR UPDATE', slug);
+            const existing = await tx.billingPlan.findUnique({ where: { slug } });
+            if (!existing) throw new NotFoundException('Plan not found');
+            const tenantCount = await tx.tenant.count({ where: { plan: slug, isActive: true } });
+            if (existing.isActive === isActive) return { plan: existing, tenantCount, changed: false };
+            const plan = await tx.billingPlan.update({ where: { slug }, data: { isActive } });
+            await tx.auditLog.create({
+                data: {
+                    tenantId: null,
+                    userId: auditActor(req?.user).userId,
+                    action: isActive ? 'billing_plan_unarchived' : 'billing_plan_archived',
+                    resource: `billing-plans/${slug}`,
+                    details: { slug, tenantsOnPlan: tenantCount, reason },
+                },
+            });
+            return { plan, tenantCount, changed: true };
+        });
+        const cacheInvalidationPending = result.changed ? await this.invalidatePlanCacheSafely(slug) : false;
+        return {
+            success: true,
+            data: { ...result.plan, tenantCount: result.tenantCount },
+            changed: result.changed,
+            // Los tenants que siguen en el plan: archivar no los mueve.
+            tenantsOnPlan: result.tenantCount,
+            cacheInvalidationPending,
+        };
+    }
+
+    /** Un cambio ya confirmado no se reporta como fallido si la caché pide reintento (TTL de cinco minutos). */
+    private async invalidatePlanCacheSafely(slug: string): Promise<boolean> {
+        try {
+            await this.throttle.invalidatePlanCacheForSlug(slug);
+            return false;
+        } catch {
+            this.logger.error(`Plan cache invalidation pending: ${slug}`);
+            return true;
+        }
     }
 
     // ── Provider status ─────────────────────────────────────────
@@ -744,7 +945,8 @@ export class BillingAdminController {
         @Req() req: any,
     ) {
         const plan = await this.prisma.billingPlan.findUnique({ where: { slug: body.planSlug } });
-        if (!plan || !plan.isActive) throw new NotFoundException('Active plan not found');
+        // Un plan archivado conserva a sus tenants pero no recibe nuevos.
+        if (!plan || !plan.isActive) throw new NotFoundException({ error: plan ? 'plan_archived' : 'plan_not_found', message: 'Active plan not found' });
         const tenant = await this.prisma.tenant.findUnique({
             where: { id: tenantId },
             select: { id: true, plan: true },

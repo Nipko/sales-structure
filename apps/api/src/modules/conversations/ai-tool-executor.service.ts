@@ -60,6 +60,7 @@ import { bindMcpArguments } from '../mcp/mcp-tool-approval';
 import {
     TOOL_READ_ERROR_CODES,
     decideToolAuthority,
+    planToolFamiliesAllow,
     type PolicyType,
     type ToolAuthorityDecision,
     type ToolExecutionAuthority,
@@ -115,6 +116,8 @@ import { RepairOrdersService } from '../repair-orders/repair-orders.service';
 import { selectSlotWindow, selectSlotsInWindow } from './slot-window';
 import { minutesToHhmm, parseTimeWindow, resolveTimeWindow, type TimeWindow } from './time-window';
 import { FeatureFlagsService, SLOT_WINDOW_FLAG } from '../throttle/feature-flags.service';
+import { TenantThrottleService } from '../throttle/tenant-throttle.service';
+import { planGatedFamilyForTool } from './agent-tool-registry';
 import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.util';
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
@@ -328,7 +331,88 @@ export class AIToolExecutorService {
          * armados a mano: `execute` corre exactamente igual, sin medir.
          */
         @Optional() private readonly toolUsage?: ToolUsageRecorder,
+        /**
+         * Las features del plan (caché de Redis) para la puerta de familias por
+         * plan. Ausente en los specs armados a mano: no hay puerta de plan acá y
+         * quedan las de publicación, como antes.
+         */
+        @Optional() private readonly planThrottle?: TenantThrottleService,
     ) { }
+
+    /** Último aviso por tenant de que no se pudo leer el plan: uno por minuto, no uno por tool. */
+    private readonly planLookupWarnedAt = new Map<string, number>();
+
+    /**
+     * Plan leído hace menos de `PLAN_FEATURES_TTL_MS`, por tenant.
+     *
+     * Sin esto cada llamada a una tool sumaba una lectura de Redis y otra de la
+     * base, en el mismo camino donde la carga de la base ya causó timeouts de
+     * tools (E2r/E2s, ADR 0021). Un cambio de plan tarda como mucho 30 s en
+     * llegar a la ejecución; publicar sigue leyendo el plan fresco. Sólo se
+     * guardan lecturas exitosas y sólo sin `executionContext` (las evaluaciones
+     * leen su propio contexto).
+     */
+    static readonly PLAN_FEATURES_TTL_MS = 30_000;
+    private readonly planFeaturesCache = new Map<string, { at: number; features: Record<string, any> }>();
+
+    private async cachedPlanFeatures(
+        tenantId: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<Record<string, any>> {
+        if (executionContext) return this.planThrottle!.getPlanFeatures(tenantId, executionContext);
+        const now = Date.now();
+        const hit = this.planFeaturesCache.get(tenantId);
+        if (hit && now - hit.at < AIToolExecutorService.PLAN_FEATURES_TTL_MS) return hit.features;
+        const features = await this.planThrottle!.getPlanFeatures(tenantId, undefined);
+        if (this.planFeaturesCache.size > 2000) this.planFeaturesCache.clear();
+        this.planFeaturesCache.set(tenantId, { at: now, features });
+        return features;
+    }
+
+    /**
+     * La puerta del plan en la ejecución.
+     *
+     * Publicar ya retira las familias que el plan no incluye, pero publicar sólo
+     * alcanza al loop del LLM: el motor de reservas, Procedures, la confirmación
+     * server-side y MCP llaman por nombre. Igual que con lo que el dueño apagó,
+     * la verificación tiene que estar en la puerta común.
+     *
+     * Si el plan no se puede leer: pagos falla cerrado (como siempre: el dinero
+     * no sale sin plan confirmado) y el resto falla abierto con un aviso. Un
+     * parpadeo de Redis o de la base no puede dejar sin agenda ni catálogo a
+     * todos los tenants a la vez; publicar ya filtró con el plan del turno.
+     */
+    private async planFamilyDenied(
+        tenantId: string,
+        toolName: string,
+        executionContext?: ServiceExecutionContext,
+    ): Promise<Record<string, unknown> | null> {
+        if (!this.planThrottle) return null;
+        const family = planGatedFamilyForTool(toolName);
+        if (!family) return null;
+        let features: Record<string, any>;
+        try {
+            features = await this.cachedPlanFeatures(tenantId, executionContext);
+        } catch (error: any) {
+            if (family === 'payments') {
+                return { error: 'plan_unavailable', tool: toolName, family, controlBlocked: true, persisted: false, shouldHandoff: true,
+                    message: 'No pude confirmar esto ahora. Te paso con alguien del equipo.' };
+            }
+            const now = Date.now();
+            if (now - (this.planLookupWarnedAt.get(tenantId) ?? 0) > 60_000) {
+                this.planLookupWarnedAt.set(tenantId, now);
+                this.logger.warn(`[Tool] plan no disponible para ${tenantId}; ${toolName} sigue sin puerta de plan: ${error?.message}`);
+            }
+            return null;
+        }
+        // Sólo la lista `toolFamilies`: `customerPayments` ya lo verifica
+        // PaymentOperationService al cobrar, con sus propios códigos de error, y
+        // repetirlo acá cambiaría la respuesta que el resto del flujo espera.
+        if (planToolFamiliesAllow(features, family)) return null;
+        this.logger.warn(`[Tool] ${toolName} denegada: el plan de ${tenantId} no incluye la familia ${family}`);
+        return { error: 'plan_excludes_tool_family', tool: toolName, family, controlBlocked: true, persisted: false, shouldHandoff: true,
+            message: 'Eso no lo puedo hacer por chat. Te paso con alguien del equipo.' };
+    }
 
     /**
      * Convert service failures into the closed tool-result contract.
@@ -567,6 +651,8 @@ export class AIToolExecutorService {
                 );
                 return this.authorityDenied(toolName, authorityDecision);
             }
+            const planDenied = await this.planFamilyDenied(tenantId, toolName, opts?.executionContext);
+            if (planDenied) return planDenied;
 
             if(toolName==='schedule_test_drive') {
                 if(![args.vehicleId,args.serviceId,args.staffId].every(value=>typeof value==='string'&&AIToolExecutorService.UUID_PATTERN.test(value)))

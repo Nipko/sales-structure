@@ -20,7 +20,7 @@ integration('Administrative draft boundary with real Prisma transactions', () =>
     const tenantId = randomUUID(), agentId = randomUUID(), actor = { id: randomUUID(), role: 'tenant_admin' };
     let client: PrismaClient, prisma: PrismaService, service: AgentDraftService, assist: AgentConfigurationService;
     const events = { emit: jest.fn() }, caches = jest.fn(), finalize = jest.fn();
-    const throttle = { isFeatureEnabled: jest.fn(async () => true) };
+    const throttle = { isFeatureEnabled: jest.fn(async () => true), getPlanFeatures: jest.fn(async () => ({})) };
     const query = (sql: string, params: any[] = []) => prisma.executeInTenantSchema<any[]>(schema, sql, params);
     const operational = () => query('SELECT * FROM agent_personas WHERE id=$1::uuid', [agentId]).then(rows => rows[0]);
     const request = async (overrides: Partial<SaveAgentDraftRequest> = {}): Promise<SaveAgentDraftRequest> => ({

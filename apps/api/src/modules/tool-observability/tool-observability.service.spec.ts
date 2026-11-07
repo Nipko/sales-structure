@@ -68,6 +68,13 @@ describe('buildToolCatalog', () => {
         expect(byTool.get('get_policy')).toEqual(expect.objectContaining({ family: 'policies', verticalScoped: false, profiles: [] }));
     });
 
+    it('marca qué familias gobierna el plan y deja el núcleo fuera', () => {
+        const byFamily = new Map(catalog.families.map(family => [family.family, family]));
+        expect(byFamily.get('appointments')?.planGated).toBe(true);
+        expect(byFamily.get('payments')?.planGated).toBe(true);
+        expect(byFamily.get('core')?.planGated ?? false).toBe(false);
+    });
+
     it('marks the payment family as plan-gated and refund as never advertised', () => {
         for (const tool of ['create_payment_link', 'get_payment_status', 'refund_payment']) {
             expect(byTool.get(tool)).toEqual(expect.objectContaining({ family: 'payments', planFeature: 'customerPayments' }));
@@ -123,6 +130,36 @@ describe('buildTenantToolRow', () => {
         expect(row.usage[0]).toEqual({ tool: 'create_appointment', calls: 5, errors: 1, blocked: 0, lastAt: '2026-11-05T10:00:00.000Z' });
     });
 
+    it('blockedByPlan cubre cualquier familia fuera de toolFamilies, salvo el estado de un pago ya emitido', () => {
+        const row = buildTenantToolRow({
+            tenant,
+            agents: [{ meta: { id: 'a1', is_active: true }, tools: { appointments: { enabled: true }, faqs: { enabled: true }, payments: { enabled: true } } }],
+            planFeatures: { customerPayments: true },
+            planToolFamilies: ['faqs'],
+            usage: [],
+            familyByTool,
+        });
+        expect(row.planToolFamilies).toEqual(['faqs']);
+        expect(row.blockedByPlan).toEqual(expect.arrayContaining(['create_appointment', 'list_services', 'create_payment_link', 'refund_payment']));
+        expect(row.blockedByPlan).not.toContain('search_faqs');
+        expect(row.blockedByPlan).not.toContain('get_payment_status');
+        expect(row.enabledTools).toEqual(expect.arrayContaining(['search_faqs', 'get_payment_status']));
+        expect(row.enabledTools).not.toContain('create_appointment');
+    });
+
+    it('sin lista en el plan, toolFamilies no retira nada', () => {
+        const row = buildTenantToolRow({
+            tenant,
+            agents: [{ meta: { id: 'a1', is_active: true }, tools: { appointments: { enabled: true } } }],
+            planFeatures: { customerPayments: true },
+            planToolFamilies: null,
+            usage: [],
+            familyByTool,
+        });
+        expect(row.planToolFamilies).toBeNull();
+        expect(row.blockedByPlan).toEqual([]);
+    });
+
     it('tolerates an unreadable agents table', () => {
         const row = buildTenantToolRow({ tenant, agents: null, agentsError: 'agents_unreadable', planFeatures: {}, usage: [], familyByTool });
         expect(row).toEqual(expect.objectContaining({ agentsError: 'agents_unreadable', agents: [], enabledTools: [], usedButNotEnabled: [] }));
@@ -165,7 +202,7 @@ describe('ToolObservabilityService.getTenantMatrix', () => {
 
     it('skips eval replicas and missing schemas, quotes the schema and resolves plan features', async () => {
         const { prisma, queries } = prismaMock();
-        const throttle = { getPlanFeatures: jest.fn().mockResolvedValue({ customerPayments: true }) };
+        const throttle = { getPlanFeatures: jest.fn().mockResolvedValue({ customerPayments: true, toolFamilies: ['appointments'] }) };
         const service = new ToolObservabilityService(prisma as any, throttle as any);
 
         const result = await service.getTenantMatrix();
@@ -174,7 +211,7 @@ describe('ToolObservabilityService.getTenantMatrix', () => {
         expect(result.skippedSchemas).toBe(1);
         expect(result.tenants).toHaveLength(1);
         expect(result.tenants[0]).toEqual(expect.objectContaining({
-            tenantId: T1, planFeatures: { customerPayments: true }, usedTools: ['list_services'],
+            tenantId: T1, planFeatures: { customerPayments: true }, planToolFamilies: ['appointments'], usedTools: ['list_services'],
         }));
         expect(result.tenants[0].enabledTools).toContain('list_services');
         expect(queries.find(sql => sql.includes('agent_personas') && !sql.includes('to_regclass'))).toContain('FROM "tenant_uno"."agent_personas"');
@@ -192,6 +229,39 @@ describe('ToolObservabilityService.getTenantMatrix', () => {
         const result = await service.getTenantMatrix();
         expect(result.usageAvailable).toBe(false);
         expect(result.tenants[0].planFeatures).toEqual({ customerPayments: null });
+        expect(result.tenants[0].planToolFamilies).toBeNull();
+    });
+});
+
+describe('ToolObservabilityService.getPlanCoverage', () => {
+    it('lista qué planes activos incluyen cada familia, con pagos atado también a customerPayments', async () => {
+        const prisma = {
+            billingPlan: {
+                findMany: jest.fn().mockResolvedValue([
+                    { slug: 'starter', name: 'Starter', isActive: true, features: { toolFamilies: ['faqs', 'appointments'] } },
+                    { slug: 'pro', name: 'Pro', isActive: true, features: { customerPayments: true } },
+                    { slug: 'legacy', name: 'Legacy', isActive: false, features: {} },
+                ]),
+            },
+        };
+        const service = new ToolObservabilityService(prisma as any);
+        const coverage = await service.getPlanCoverage();
+        expect(coverage.available).toBe(true);
+        expect(coverage.byFamily.faqs).toEqual(['starter', 'pro']);
+        expect(coverage.byFamily.catalog).toEqual(['pro']);
+        expect(coverage.byFamily.payments).toEqual(['pro']);
+        expect(coverage.byFamily.core).toBeUndefined();
+        expect(coverage.plans).toEqual([
+            { slug: 'starter', name: 'Starter', isActive: true, toolFamilies: ['faqs', 'appointments'] },
+            { slug: 'pro', name: 'Pro', isActive: true, toolFamilies: null },
+            { slug: 'legacy', name: 'Legacy', isActive: false, toolFamilies: null },
+        ]);
+    });
+
+    it('si la tabla de planes no se puede leer, el catálogo sigue sin cobertura', async () => {
+        const service = new ToolObservabilityService({ billingPlan: { findMany: jest.fn().mockRejectedValue(new Error('down')) } } as any);
+        jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+        await expect(service.getPlanCoverage()).resolves.toEqual({ available: false, plans: [], byFamily: {} });
     });
 });
 

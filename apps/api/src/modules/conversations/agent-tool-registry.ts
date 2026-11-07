@@ -4,7 +4,7 @@ import { CATALOG_TOOLS, OFFER_TOOL } from './tools/catalog-tools';
 import { FAQ_TOOL, KB_TOOL, POLICY_TOOL } from './tools/knowledge-tools';
 import { CUSTOMER_CONTEXT_TOOL, ORDER_TOOL } from './tools/crm-tools';
 import { CRM_WRITE_TOOLS } from './tools/crm-write-tools';
-import { ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
+import { APPLY_DISCOUNT_TOOL, ECOMMERCE_TOOLS } from './tools/ecommerce-tools';
 import { VACATION_RENTAL_TOOLS } from './tools/vacation-rental-tools';
 import { TOURS_TOOLS } from './tools/tours-tools';
 import { TREATMENT_TOOLS } from './tools/treatment-tools';
@@ -134,6 +134,35 @@ export function toolFamilyForTool(toolName: string): string | undefined {
     return TOOL_FAMILIES.find(family => (
         family.tools.some(tool => String(tool.name) === toolName)
     ))?.key;
+}
+
+const PAYMENT_FAMILY_TOOL_NAMES: ReadonlySet<string> = new Set(
+    [...PAYMENT_STATUS_TOOLS, ...PAYMENT_CREATE_TOOLS, REFUND_PAYMENT_TOOL].map(tool => String(tool.name)),
+);
+
+/**
+ * Tools que el plan nunca retira aunque excluya su familia.
+ *
+ * `get_payment_status` sigue el mismo criterio que `PaymentOperationService`:
+ * un link emitido antes de un cambio de plan tiene que poder verificarse y
+ * cerrarse. Retirarlo dejaría al cliente con un pago sin confirmar.
+ */
+export const PLAN_GATE_EXEMPT_TOOLS: ReadonlySet<string> = new Set(
+    PAYMENT_STATUS_TOOLS.map(tool => String(tool.name)),
+);
+
+/**
+ * La familia por la que el plan decide sobre esta tool, o `undefined` si el
+ * plan no la gobierna: tools de núcleo sin familia, MCP (`mcp__*`, con su
+ * propia aprobación revisada) y las exentas de arriba.
+ */
+export function planGatedFamilyForTool(toolName: string): string | undefined {
+    if (toolName.startsWith('mcp__') || PLAN_GATE_EXEMPT_TOOLS.has(toolName)) return undefined;
+    if (PAYMENT_FAMILY_TOOL_NAMES.has(toolName)) return 'payments';
+    // `apply_discount` cuelga de `ecommerce.canApplyDiscount`: se publica aparte
+    // contra el proveedor, pero es de la familia de comercio electrónico.
+    if (toolName === String(APPLY_DISCOUNT_TOOL.name)) return 'ecommerce';
+    return toolFamilyForTool(toolName);
 }
 
 /** Explicit owner subpermission controlling a tool, when one exists. */

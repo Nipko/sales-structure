@@ -26,6 +26,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0020](0020-retiro-sms.md) | Retiro completo de SMS: código, rutas, pantallas e interruptor; las tablas `sms_package_orders`, `sms_credit_ledger` y `sms_credit_balances` esperan un DROP de fase 2 | aprobada | 2026-11-05 |
 | [0021](0021-ventana-de-vigencia-de-la-evaluacion.md) | Ventana de vigencia de 2 s para las verificaciones de la evaluación: una verificación reutiliza una captura que empezó hace 2 s o menos | aprobada | 2026-11-06 |
 | [0022](0022-control-de-herramientas-en-superadmin.md) | Control de las herramientas del agente en el superadmin: registro de cada uso, agregado por día, y vistas de catálogo, matriz por tenant y salud | aprobada | 2026-11-07 |
+| [0023](0023-familias-de-herramientas-por-plan.md) | Los planes deciden qué familias de herramientas recibe cada tenant (sin lista = todas), con puerta en la ejecución y caché de 30 s; crear y archivar planes | aprobada | 2026-11-07 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

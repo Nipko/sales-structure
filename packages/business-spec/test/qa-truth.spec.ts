@@ -28,7 +28,7 @@ describe('qaTruth', () => {
         const seeded = dental.items.appointment[0];
         const t = qaTruth(spec, dental, { requirementId: 'OBJ.APPOINTMENT.CATALOG', itemId: seeded.id });
         expect(t.cases[0].fields?.price).toBe('ejemplo');
-        expect(t.cases[0].affirm).not.toHaveProperty('price');
+        expect(t.cases[0].affirm ?? {}).not.toHaveProperty('price');
         expect(t.cases[0].never.join(' ')).toMatch(/precio de ejemplo/);
         const s = base('salud/dental');
         item(s, 'appointment', { name: 'Implante' }, { priceType: 'a_cotizar', priceStatus: 'confirmed' });

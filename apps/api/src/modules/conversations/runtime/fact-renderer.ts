@@ -495,6 +495,21 @@ const FEE_SENTENCE = / (?:limpieza|aseo|limpeza|cleaning|menage|nettoyage|fee|fe
 const FEE_FIELD = /fee|deposit|surcharge/i;
 /** A sentence about how long something takes. */
 const DURATION_WORDS = / (?:min|mins|minuto|minutos|minute|minutes|hora|horas|hour|hours|heure|heures|dura|duran|duracion|duracao|duree|duration|takes|long|demora|tarda|leva) /;
+/** Palabras de un monto o un total: el hueco que las sigue es una cifra de dinero. */
+const MONEY_SLOT_WORDS = / (?:precio|precios|total|totales|suma|sumando|sumaria|sumarian|cuesta|cuestan|costo|coste|valor|vale|valen|pagar|tarifa|price|cost|costs|amount|totaling|totalling|preco|custa|custam|somando|prix|coute|montant) /;
+/** Palabras de disponibilidad: «precio y disponibilidad: ⟦avail⟧» no es un hueco de dinero. */
+const AVAILABILITY_SLOT_WORDS = / (?:disponible|disponibles|disponibilidad|cupo|cupos|available|availability|disponivel|disponibilidade|libre|libres) /;
+
+/**
+ * E2v (hotel P05-5, 3 de 3): «El precio total por las tres noches es 150.000 COP por noche, sumando ⟦avail⟧ en total» salió
+ * como «…sumando disponible en total»: un dato que no es dinero en el hueco de un monto o un total. Hueco de dinero: una
+ * palabra de monto en las cuatro palabras de antes (sin una de disponibilidad), o «en total» justo después.
+ */
+export function moneySlot(before: string, after: string): boolean {
+    const window = norm(before).trim().split(' ').slice(-4).join(' ');
+    if (MONEY_SLOT_WORDS.test(` ${window} `) && !AVAILABILITY_SLOT_WORDS.test(` ${window} `)) return true;
+    return /^ (?:en|in|au|no|de) total /.test(norm(after));
+}
 
 export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
     const turnLang = langOf(input.language);
@@ -726,6 +741,13 @@ export function renderReplyFacts(input: RenderFactsInput): RenderFactsOutcome {
             if (!rendered.ok) {
                 return { text: rendered.reason === 'example_price' ? t.example(fact?.subject.name ? say(fact.subject.name) : undefined) : t.unknown,
                     reason: rendered.reason };
+            }
+            // E2v: una disponibilidad o un sí/no en el hueco de un monto o un total no se dice; la frase pasa a la plantilla
+            // segura del precio (o a «no doy una cifra sin confirmar»).
+            const notAmount = token[1] === 'avail' || fact?.kind === 'availability' || typeof fact?.value === 'boolean';
+            if (notAmount && moneySlot(sentence.slice(0, token.index).replace(FACT_TOKEN_RE, ' '),
+                sentence.slice((token.index ?? 0) + token[0].length).replace(FACT_TOKEN_RE, ' '))) {
+                return { text: priceTemplate(stripped) ?? t.amount, reason: 'wrong_token_kind' };
             }
             values.push(rendered.text);
         }

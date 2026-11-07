@@ -11,7 +11,9 @@
  *   salida** (ADR 0010: Agent Test y el ensayo no registran decisiones en `go_live_decisions`). El uso de LLM cuenta en
  *   la cuota del tenant como cualquier Agent Test.
  * - **Calificación.** `gradeCase`: chequeos deterministas primero; el juez de paráfrasis (RehearsalJudge) solo si no
- *   hubo evidencia, y nunca anula un fallo determinista.
+ *   hubo evidencia, y nunca anula un fallo determinista. E2v: el veredicto se reutiliza por (caso, respuesta
+ *   normalizada) desde `rehearsal_results.judge` (clave `judgeCacheKey`): los k intentos de un banco que dan la misma
+ *   respuesta reciben la misma calificación.
  * - **Límites.** Una ejecución a la vez por tenant, `MAX_RUNS_PER_DAY` por día, ≤ 40 casos, 10 minutos de reloj
  *   (lo que falte queda sin correr y la ejecución termina `stopped`). Se guardan modelo, tokens y costo.
  *
@@ -21,13 +23,13 @@ import { ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFo
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
     generateRehearsal, gradeCase, passHatK, summarize, REHEARSAL_MAX_CASES,
-    type RehearsalBank, type RehearsalCase, type RehearsalGrade, type RehearsalObservation, type RehearsalSummary, type RehearsalToolCall,
+    type JudgeVerdict, type RehearsalBank, type RehearsalCase, type RehearsalGrade, type RehearsalObservation, type RehearsalSummary, type RehearsalToolCall,
 } from '@parallext/business-spec';
 import { AgentTestService } from '../conversations/agent-test.service';
 import type { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReadinessService } from '../readiness/readiness.service';
-import { RehearsalJudge } from './rehearsal-judge';
+import { judgeCacheKey, RehearsalJudge, type JudgeCall } from './rehearsal-judge';
 
 export const REHEARSAL_COMPLETED_EVENT = 'rehearsal.completed';
 /** Ensayos por tenant y día (cuota del dueño; el uso de LLM además cuenta en la cuota de mensajes de IA). */
@@ -116,6 +118,9 @@ export interface RehearsalRunDetail extends RehearsalRunView {
     /** pass^k del mismo banco congelado (todas las ejecuciones con este `bank_hash`), para la fase E. */
     passHatK: ReturnType<typeof passHatK> | null;
 }
+
+/** E2v: lo que pasó con el juez en un caso: llamada nueva o veredicto reutilizado (`call.cached`), con su clave. */
+interface JudgedCase { called: boolean; key: string; call: JudgeCall | null }
 
 interface CaseRun { obs: RehearsalObservation; model: string | null; inputTokens: number; outputTokens: number; costUsd: number; latencyMs: number }
 
@@ -207,15 +212,19 @@ export class RehearsalService {
                     const c = bank.cases[next++];
                     const run = await this.runCase(tenantId, agentId, c, frozen);
                     let grade = gradeCase(c, run.obs);
-                    let judgeTokens = 0;
-                    let judgeCostUsd = 0;
-                    let judged = false;
+                    let judged: JudgedCase | null = null;
                     if (grade.needsJudge && this.judge?.available) {
-                        const call = await this.judge.judge(tenantId, c, run.obs.replies, this.agentTest.snapshotSourceAuthority(frozen));
-                        judged = true;
-                        if (call) { grade = gradeCase(c, run.obs, call.verdict); judgeTokens = call.tokens; judgeCostUsd = call.costUsd; }
+                        const judge = this.judge;
+                        const key = judgeCacheKey(judge.model, c, run.obs.replies);
+                        const stored = await this.storedVerdict(schema, c.key, key);
+                        if (stored) judge.remember(key, stored);
+                        const call: JudgeCall | null = stored ? { verdict: stored, tokens: 0, costUsd: 0, key, cached: true }
+                            : await judge.judge(tenantId, c, run.obs.replies, this.agentTest.snapshotSourceAuthority(frozen));
+                        judged = { called: !call?.cached, key, call };
+                        // el veredicto (nuevo o reutilizado) pasa por gradeCase: nunca anula un fallo determinista
+                        if (call) grade = gradeCase(c, run.obs, call.verdict);
                     }
-                    await this.storeResult(schema, runId, c, run, grade, judged, judgeTokens, judgeCostUsd);
+                    await this.storeResult(schema, runId, c, run, grade, judged);
                     if (run.obs.error === 'ai_message_quota_exceeded') { status = 'stopped'; error = 'ai_message_quota_exceeded'; return; }
                 }
             };
@@ -265,8 +274,23 @@ export class RehearsalService {
         }
     }
 
-    private async storeResult(schema: string, runId: string, c: RehearsalCase, run: CaseRun, grade: RehearsalGrade, judged: boolean, judgeTokens: number,
-        judgeCostUsd = 0): Promise<void> {
+    /**
+     * E2v: veredicto ya dado para la misma clave (mismo caso, misma respuesta normalizada, mismo modelo y prompt) en
+     * cualquier ejecución del tenant. La clave cubre la entrada completa del juez, así que no hace falta atarla al banco.
+     */
+    private async storedVerdict(schema: string, caseKey: string, key: string): Promise<JudgeVerdict | null> {
+        const [row] = await this.sql<{ raw: { pass?: unknown; reason?: unknown; model?: unknown } | null }[]>(schema,
+            `SELECT judge->'raw' AS raw FROM rehearsal_results
+              WHERE case_key = $1 AND judge->>'key' = $2 AND jsonb_typeof(judge->'raw'->'pass') = 'boolean'
+              ORDER BY created_at LIMIT 1`, [caseKey, key]);
+        const raw = row?.raw;
+        if (!raw || typeof raw.pass !== 'boolean') return null;
+        return { pass: raw.pass, reason: String(raw.reason ?? ''), model: raw.model === undefined || raw.model === null ? null : String(raw.model) };
+    }
+
+    private async storeResult(schema: string, runId: string, c: RehearsalCase, run: CaseRun, grade: RehearsalGrade, judged: JudgedCase | null): Promise<void> {
+        const judgeTokens = judged?.call && !judged.call.cached ? judged.call.tokens : 0;
+        const judgeCostUsd = judged?.call && !judged.call.cached ? judged.call.costUsd : 0;
         const turns = c.turns.map((customer, i) => ({ customer, agent: (run.obs.replies[i] ?? '').slice(0, 8_000) }));
         const judgeCheck = grade.checks.find(k => k.id === 'judge');
         await this.sql(schema,
@@ -277,7 +301,11 @@ export class RehearsalService {
             [runId, c.key, c.intentId, c.requirementIds, c.itemId, c.language, c.expected, c.valueState, grade.outcome,
                 grade.missClass, grade.decidedBy, (run.obs.error ?? grade.reason).slice(0, 2_000), JSON.stringify(turns),
                 JSON.stringify(run.obs.toolCalls.map(t => ({ turn: t.turn, name: t.name }))), JSON.stringify(grade.checks),
-                judged ? JSON.stringify({ called: true, tokens: judgeTokens, verdict: judgeCheck ? { ok: judgeCheck.ok, detail: judgeCheck.detail } : null }) : null,
+                judged ? JSON.stringify({
+                    called: judged.called, ...(judged.call?.cached ? { cached: true } : {}), key: judged.key, tokens: judgeTokens,
+                    raw: judged.call ? { pass: judged.call.verdict.pass, reason: judged.call.verdict.reason, model: judged.call.verdict.model ?? null } : null,
+                    verdict: judgeCheck ? { ok: judgeCheck.ok, detail: judgeCheck.detail } : null,
+                }) : null,
                 run.model, run.inputTokens, run.outputTokens, run.latencyMs]);
         await this.sql(schema,
             `UPDATE rehearsal_runs SET completed_count = completed_count + 1,
@@ -285,7 +313,7 @@ export class RehearsalService {
                     judge_calls = judge_calls + $5, judge_tokens = judge_tokens + $6,
                     models = CASE WHEN $7::text IS NULL OR $7::text = ANY(models) THEN models ELSE array_append(models, $7::text) END
               WHERE id = $1::uuid`,
-            [runId, run.inputTokens, run.outputTokens, run.costUsd + judgeCostUsd, judged ? 1 : 0, judgeTokens, run.model]);
+            [runId, run.inputTokens, run.outputTokens, run.costUsd + judgeCostUsd, judged?.called ? 1 : 0, judgeTokens, run.model]);
     }
 
     private async finish(schema: string, runId: string, status: RehearsalRunStatus, error: string | null): Promise<RehearsalSummary> {

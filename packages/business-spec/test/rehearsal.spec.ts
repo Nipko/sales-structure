@@ -1,7 +1,7 @@
 /** Ensayo antes de salir (C0 §1.4, rebanada R7, ADR 0013): generador determinista y calificador. */
 import { qaTruth } from '../src/qa/truth';
 import { figuresOfText, figuresOfValue, hasMoneyFigure } from '../src/rehearsal/figures';
-import { generateRehearsal, REHEARSAL_MAX_CASES, servedLanguages, type RehearsalCase } from '../src/rehearsal/generate';
+import { generateRehearsal, rehearsalCaseFor, REHEARSAL_MAX_CASES, servedLanguages, type RehearsalCase } from '../src/rehearsal/generate';
 import { gradeCase, passHatK, PENDING_TOOL, summarize } from '../src/rehearsal/grade';
 import { admin, fixtureSnapshot, spec, val } from './helpers';
 
@@ -243,5 +243,51 @@ describe('resumen y pass^k', () => {
         ];
         expect(passHatK(attempts, 3)).toEqual({ k: 3, cases: 2, passAll: 1, rate: 0.5 });
         expect(passHatK(attempts, 1)).toEqual({ k: 1, cases: 3, passAll: 3, rate: 1 });
+    });
+});
+
+describe('E2v: calificación de la medición', () => {
+    it('viajes C07/C08: una cifra de un campo sembrado que también está confirmada en la ficha (10 cupos) no se prohíbe', () => {
+        const snap = fixtureSnapshot('agencia-qa-viajes');
+        const tour = snap.items.tour_booking[0];
+        // max_group 10 = default de columna sin confirmar; la salida confirmada tiene 10 cupos
+        tour.fields.max_group = 10;
+        tour.fieldStatus = { ...(tour.fieldStatus ?? {}), max_group: 'seeded' };
+        expect(tour.fields.departures).toEqual([{ date: '2026-12-15', seats_left: 10 }]);
+        const query = { intentId: 'C07', itemId: tour.id, language: 'es', turns: [`¿Hacen o venden ${String(tour.fields.name)}?`] };
+        const r = rehearsalCaseFor(spec, snap, query);
+        expect(r.case?.truth.fields).toMatchObject({ max_group: 'sembrado', departures: 'confirmado' });
+        expect(r.case?.expectation.forbiddenFigures).not.toContain('n:10');
+        const g = gradeCase(r.case!, { replies: ['Sí, lo ofrecemos: salida el 15 de diciembre con 10 cupos libres.'], toolCalls: [] });
+        expect(g.checks.find(k => k.id === 'forbidden_figures')?.ok ?? true).toBe(true);
+        // sin la salida confirmada, el 10 sembrado sigue prohibido
+        tour.fields.departures = [];
+        expect(rehearsalCaseFor(spec, snap, query).case?.expectation.forbiddenFigures).toContain('n:10');
+    });
+
+    it('electrónica C06: el catálogo que ve el juez trae la descripción de cada ítem con su estado', () => {
+        const snap = fixtureSnapshot('tienda-qa-electronica');
+        const r = rehearsalCaseFor(spec, snap, { intentId: 'C06', language: 'es', turns: ['¿Qué ofrecen?'] });
+        const aurora = r.case?.facts?.catalog?.find(i => i.name === 'Audífono QA Aurora');
+        expect(aurora?.fields?.description).toEqual({ state: expect.any(String), value: expect.stringContaining('color azul') });
+        expect(aurora?.fields?.description?.state).toBe(aurora?.content);
+    });
+
+    it('electrónica C26: «¿tiene garantía?» la responde CORE.POLICY.WARRANTY y la FAQ confirmada llega a los hechos del juez', () => {
+        expect(spec.intents.C26.answeredBy).toEqual(['CORE.POLICY.WARRANTY', 'CORE.POLICY.CONSUMER_RIGHTS']);
+        const snap = fixtureSnapshot('tienda-qa-electronica');
+        const turns = ['¿Audífono QA Aurora tiene garantía?'];
+        const r = rehearsalCaseFor(spec, snap, { intentId: 'C26', language: 'es', turns });
+        expect(r.case?.requirementIds).toEqual(['CORE.POLICY.WARRANTY']);
+        expect(r.case?.expected).toBe('AFIRMA');
+        expect(r.case?.facts?.texts?.[0]).toMatchObject({ covers: ['CORE.POLICY.WARRANTY'], body: expect.stringContaining('72 días') });
+        // aunque el caso quede atado al pack legal, el juez ve la FAQ de garantía (requisito que responde la misma intención)
+        const legal = rehearsalCaseFor(spec, snap, { intentId: 'C26', requirementId: 'CORE.POLICY.CONSUMER_RIGHTS', language: 'es', turns });
+        expect(legal.case?.requirementIds).toEqual(['CORE.POLICY.CONSUMER_RIGHTS']);
+        expect(legal.case?.facts?.texts?.map(t => t.title)).toEqual([expect.stringMatching(/garant/i)]);
+        // y el banco de electrónica pregunta C26 primero por la garantía del negocio
+        const bank = generateRehearsal(spec, snap, { seed: 'r7' });
+        const c26 = bank.cases.filter(c => c.intentId === 'C26');
+        if (c26.length) expect(c26[0].requirementIds).toEqual(['CORE.POLICY.WARRANTY']);
     });
 });

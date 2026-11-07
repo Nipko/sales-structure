@@ -25,6 +25,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0019](0019-tablas-sin-uso-k3c.md) | Tablas sin uso: dejar de crearlas (fase 1) y borrarlas después del respaldo (fase 2) | aprobada (fase 1) | 2026-11-05 |
 | [0020](0020-retiro-sms.md) | Retiro completo de SMS: código, rutas, pantallas e interruptor; las tablas `sms_package_orders`, `sms_credit_ledger` y `sms_credit_balances` esperan un DROP de fase 2 | aprobada | 2026-11-05 |
 | [0021](0021-ventana-de-vigencia-de-la-evaluacion.md) | Ventana de vigencia de 2 s para las verificaciones de la evaluación: una verificación reutiliza una captura que empezó hace 2 s o menos | aprobada | 2026-11-06 |
+| [0024](0024-correcciones-de-calidad-e2v.md) | Correcciones de calidad tras E2v: calificación, juez determinista, reparación con el tema preguntado, datos sembrados fuera de la evidencia y disponibilidad sin fuente | aprobada | 2026-11-07 |
 | [0022](0022-control-de-herramientas-en-superadmin.md) | Control de las herramientas del agente en el superadmin: registro de cada uso, agregado por día, y vistas de catálogo, matriz por tenant y salud | aprobada | 2026-11-07 |
 | [0023](0023-familias-de-herramientas-por-plan.md) | Los planes deciden qué familias de herramientas recibe cada tenant (sin lista = todas), con puerta en la ejecución y caché de 30 s; crear y archivar planes | aprobada | 2026-11-07 |
 

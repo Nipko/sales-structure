@@ -69,6 +69,48 @@ export interface EvidenceFact {
     readonly currency?: string;
 }
 
+/** Un ítem de plantilla (sembrado o de ejemplo, catalog-content-status.ts): el negocio no lo confirmó. */
+const templateItem = (value: unknown): boolean => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const record = value as Record<string, unknown>;
+    const status = record.contentStatus ?? record.content_status;
+    return status === 'seeded' || status === 'example';
+};
+
+/**
+ * E2v (dental C01 y P08-1): «ofrecemos consulta general, consulta especializada…» pasó porque los servicios de la
+ * plantilla del alta llegaban como evidencia igual que los confirmados. Un ítem sembrado o de ejemplo no respalda nada
+ * (opción B): sale de la evidencia, y la frase que lo presenta como oferta queda sin respaldo. Solo se recorren arreglos
+ * y objetos planos: un `Date` o un `Decimal` de Prisma quedan tal cual (su JSON es su valor).
+ */
+export function withoutTemplateItems(value: unknown, depth = 0): unknown {
+    if (depth > 8 || !value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.filter(v => !templateItem(v)).map(v => withoutTemplateItems(v, depth + 1));
+    const proto = Object.getPrototypeOf(value);
+    if (proto !== Object.prototype && proto !== null) return value;
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, withoutTemplateItems(v, depth + 1)]));
+}
+
+/**
+ * Los ids de los ítems de plantilla de las fuentes del turno: los hechos proyectados de ellos («Consulta general ·
+ * durationMinutes = 30») tampoco son evidencia de que el negocio los ofrece.
+ */
+export function templateItemIds(...sources: unknown[]): Set<string> {
+    const out = new Set<string>();
+    const walk = (value: unknown, depth: number): void => {
+        if (depth > 8 || !value || typeof value !== 'object' || value instanceof Date) return;
+        if (Array.isArray(value)) { for (const v of value) walk(v, depth + 1); return; }
+        const record = value as Record<string, unknown>;
+        if (templateItem(record)) {
+            if (typeof record.id === 'string' || typeof record.id === 'number') out.add(String(record.id));
+            return;
+        }
+        for (const v of Object.values(record)) walk(v, depth + 1);
+    };
+    for (const source of sources) walk(source, 0);
+    return out;
+}
+
 /**
  * D1c: la evidencia es todo lo que el agente vio como autoridad en el turno, no solo las herramientas que llamó. E2b
  * midió el verificador sin el catálogo del turno, las lecturas automáticas ni los hechos verificados: quitó precios
@@ -84,11 +126,13 @@ export function turnEvidence(input: {
     business?: unknown;
 }): string[] {
     const facts = (input.facts ?? []).map(f => `${f.subject.name ?? f.subject.id} · ${f.field} = ${JSON.stringify(f.value)}${f.currency ? ` ${f.currency}` : ''}`);
+    const catalog = withoutTemplateItems(input.catalog ?? []) as unknown[];
+    const services = withoutTemplateItems(input.services ?? []) as unknown[];
     return [
         ...(facts.length ? [`facts: ${clip(facts.join('; '), 2500)}`] : []),
-        ...(input.catalog?.length ? [`catalog: ${clip(JSON.stringify(input.catalog), 2500)}`] : []),
-        ...(input.services?.length ? [`services: ${clip(JSON.stringify(input.services), 1500)}`] : []),
-        ...(input.reads ?? []).map(t => `${t.name}: ${clip(JSON.stringify(t.result ?? null), 1500)}`),
+        ...(catalog.length ? [`catalog: ${clip(JSON.stringify(catalog), 2500)}`] : []),
+        ...(services.length ? [`services: ${clip(JSON.stringify(services), 1500)}`] : []),
+        ...(input.reads ?? []).map(t => `${t.name}: ${clip(JSON.stringify(withoutTemplateItems(t.result ?? null)), 1500)}`),
         ...(input.knowledge ?? []).map(k => `knowledge: ${clip(JSON.stringify(k), 800)}`),
         ...(input.business ? [`business: ${clip(JSON.stringify(input.business), 800)}`] : []),
     ];
@@ -367,30 +411,189 @@ export interface EvidenceRepair {
     readonly noticeAdded: boolean;
 }
 
+const fold = (s: string): string => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
 /**
- * Quita las frases señaladas y agrega el aviso «no consta» una sola vez. Si la respuesta queda sin contenido, es solo el
- * aviso. Una pregunta final que sobrevive se deja al final (el cliente la ve como siguiente paso).
+ * E2v: el tema por el que pregunta el cliente. La reparación decía siempre «No tengo ese dato confirmado», aunque la frase
+ * quitada fuera la respuesta a «¿tienen disponibilidad el sábado?» (quedaba solo el precio, o solo «¿le gustaría
+ * reservarla?»), y lo agregaba aunque lo preguntado constara en el contrato («¿a qué se dedican?»). Con el tema, el aviso
+ * dice qué no consta y el contrato dice si lo preguntado consta. Solo ES y EN tienen frase propia; los demás idiomas
+ * usan el aviso genérico. Las expresiones leen texto sin tildes y en minúsculas.
  */
-export function repairReply(reply: string, violations: readonly EvidenceViolation[], contract: TurnKnowledgeContract, language: string): EvidenceRepair {
+interface ReplyTopic {
+    /** El mensaje del cliente pregunta por esto. */
+    readonly asks: RegExp;
+    /** Una frase de la respuesta habla de esto (sin él, `asks`). */
+    readonly about?: RegExp;
+    /** Los requisitos del contrato que lo responden. */
+    readonly ids: RegExp;
+    readonly es: string;
+    readonly en: string;
+    /** El aviso nombra el día que pidió el cliente («para el sábado»). */
+    readonly dated?: boolean;
+    /** El valor confirmado del requisito es un texto que responde la pregunta tal cual (la descripción del negocio). */
+    readonly textual?: boolean;
+}
+
+const TOPICS: readonly ReplyTopic[] = [
+    { asks: /\b(disponib\w*|cupos?|espacios? libres?|primer espacio|hay (mesa|habitacion|lugar|cupo|turno)\w*|availab\w*|vacanc\w*)\b/,
+        about: /\b(disponib\w*|cupos?|libres?|ocupad\w*|llen[oa]s?|espacios?|availab\w*|booked|full)\b/,
+        ids: /AVAILABILITY/, es: 'No tengo confirmada la disponibilidad', en: "I don't have the availability confirmed", dated: true },
+    { asks: /\b(horarios?|a que hora|abren|abiert[oa]s?|cierran|cerrad[oa]s?|atienden|festivos?|opening hours|open|close[sd]?)\b/,
+        about: /\b(horarios?|abiert[oa]s?|cerrad[oa]s?|abre|abrimos|cierra|cerramos|atiende|atendemos|opens?|closed?)\b|\b\d{1,2}:\d{2}\b/,
+        ids: /^CORE\.HOURS\./, es: 'No tengo confirmado el horario', en: "I don't have the opening hours confirmed", dated: true },
+    { asks: /\b(precios?|cuanto (cuesta|cuestan|vale|valen|sale|salen|cobran|es|seria)|tarifas?|costos?|prices?|how much|costs?)\b/,
+        about: /\b(precios?|cuesta|cuestan|vale|valen|tarifas?|costos?|prices?|costs?)\b|\d/,
+        ids: /PRICE|FEES|CURRENCY/, es: 'No tengo confirmado el precio', en: "I don't have the price confirmed" },
+    { asks: /\b(medios? de pago|formas? de pago|metodos? de pago|pagar con|pago con|tarjetas?|efectivo|transferencias?|payment|pay with|cards?|cash)\b/,
+        ids: /^CORE\.PAYMENT\./, es: 'No tengo confirmados los medios de pago', en: "I don't have the payment methods confirmed" },
+    { asks: /\b(documentos?|requisitos?|que datos (necesitan|piden|requieren)|documents?|requirements?)\b/,
+        about: /\b(documentos?|requisitos?|cedula|identificacion|comprobantes?|codeudor|referencias|datos|documents?|requirements?)\b/,
+        ids: /CUSTOMER_REQUIREMENTS/, es: 'No tengo confirmados los requisitos', en: "I don't have the requirements confirmed" },
+    { asks: /\b(garantias?|warrant\w*|guarantee\w*)\b/,
+        ids: /WARRANTY|CONSUMER_RIGHTS/, es: 'No tengo confirmada la garantía', en: "I don't have the warranty confirmed" },
+    { asks: /\b(devoluci\w*|devolver|reembols\w*|refund\w*|returns?)\b/,
+        ids: /REFUND_RETURNS/, es: 'No tengo confirmada la política de devoluciones', en: "I don't have the returns policy confirmed" },
+    { asks: /\b(cancel\w*|reprogram\w*|no show)\b/,
+        ids: /CANCELLATION/, es: 'No tengo confirmada la política de cancelación', en: "I don't have the cancellation policy confirmed" },
+    { asks: /\b(donde (estan|queda|quedan|se ubican)|direccion|ubicacion|ubicados|sedes?|where are you|address|location)\b/,
+        ids: /^CORE\.LOCATIONS\./, es: 'No tengo confirmada la dirección', en: "I don't have the address confirmed" },
+    { asks: /\b(domicilios?|envios?|envian|entregas?|deliver\w*|shipping)\b/,
+        ids: /DELIVERY|SERVICE_AREA/, es: 'No tengo confirmadas las condiciones de entrega', en: "I don't have the delivery terms confirmed" },
+    { asks: /\b(incluye|incluyen|include[sd]?)\b/,
+        ids: /ITEM_DETAILS|\.CATALOG$/, es: 'No tengo confirmado lo que incluye', en: "I don't have what it includes confirmed" },
+    { asks: /\b(que (servicios|tratamientos|productos|platos|opciones|paquetes|planes) (hacen|ofrecen|tienen|venden|manejan|hay)|que ofrecen|que venden|what do you (offer|sell))\b/,
+        about: /\b(ofrecemos|ofrece|servicios?|tratamientos?|productos?|tenemos|offer|services?)\b/,
+        ids: /^CORE\.OFFER\.ITEMS$/, es: 'No tengo confirmado el catálogo de servicios', en: "I don't have the catalogue confirmed" },
+    { asks: /\b(a que se dedican|que (es lo que |es exactamente lo que |exactamente )?hacen|quienes son|what do you do)\b/,
+        about: /\b(somos|nos dedicamos|ofrecemos|ofrece|we are|we offer)\b/,
+        ids: /^CORE\.IDENTITY\.DESCRIPTION$/, es: 'No tengo confirmada la descripción del negocio', en: "I don't have the business description confirmed", textual: true },
+];
+
+const MONTH_NAMES = 'enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|octubre|noviembre|diciembre';
+
+/** El día que nombra el cliente, como lo dice el aviso: «para el sábado», «del 12 al 15», «para el 8 de diciembre». */
+function askedDay(message: string): string | null {
+    const range = message.match(new RegExp(`\\bdel \\d{1,2}(?: de (?:${MONTH_NAMES}))? al \\d{1,2}(?: de (?:${MONTH_NAMES}))?`, 'i'));
+    if (range) return range[0].toLowerCase();
+    const date = message.match(new RegExp(`\\b\\d{1,2} de (?:${MONTH_NAMES})\\b`, 'i'));
+    if (date) return `para el ${date[0].toLowerCase()}`;
+    const day = message.match(/(?<![\p{L}])(lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)(s?)(?![\p{L}])/iu);
+    if (day) return `${day[2] ? 'para los' : 'para el'} ${day[0].toLowerCase()}`;
+    const relative = fold(message).match(/\b(hoy|manana)\b/);
+    return relative ? (relative[1] === 'hoy' ? 'para hoy' : 'para mañana') : null;
+}
+
+const TOPIC_OFFER: Readonly<Record<'es' | 'en', { pending: string; handoff: string }>> = {
+    es: { pending: 'si quiere, lo consulto con el equipo y le aviso.', handoff: 'si quiere, le paso con una persona del equipo para confirmarlo.' },
+    en: { pending: "if you like, I'll check with the team and let you know.", handoff: 'if you like, I can connect you with someone from the team to confirm it.' },
+};
+
+const languageOf = (language: string): EvidenceLanguage =>
+    (['es', 'en', 'pt', 'fr'] as const).find(l => language?.toLowerCase().startsWith(l)) ?? 'es';
+
+/** El aviso sobre el tema preguntado, con la misma oferta que el genérico; null en un idioma sin frase propia. */
+function topicNotice(topic: ReplyTopic, contract: TurnKnowledgeContract, language: EvidenceLanguage, message: string): string | null {
+    if (language !== 'es' && language !== 'en') return null;
+    const day = topic.dated && language === 'es' ? askedDay(message) : null;
+    const head = `${topic[language]}${day ? ` ${day}` : ''}`;
+    if (contract.offers.pendingQuestion) return `${head}; ${TOPIC_OFFER[language].pending}`;
+    if (contract.offers.handoff?.available) return `${head}; ${TOPIC_OFFER[language].handoff}`;
+    return `${head}.`;
+}
+
+/** El texto confirmado de un requisito textual (la descripción: `short`, o el texto del idioma), como frase. */
+function confirmedText(value: unknown, language: EvidenceLanguage): string | null {
+    const pick = (x: unknown): string | null => typeof x === 'string' ? x
+        : x && typeof x === 'object' && typeof (x as Record<string, unknown>)[language] === 'string' ? (x as Record<string, string>)[language] : null;
+    const raw = pick(value) ?? (value && typeof value === 'object' ? pick((value as Record<string, unknown>).short) : null);
+    const text = raw?.replace(/\s+/g, ' ').trim() ?? '';
+    if (text.length < 10 || text.length > 400) return null;
+    return /[.!?…]$/.test(text) ? text : `${text}.`;
+}
+
+const isQuestion = (s: string): boolean => /[?？]\s*$/.test(s);
+/** Un saludo solo («¡Hola!», «Buenas tardes.»): no responde nada. */
+const GREETING_ONLY = /^[¡!\s]*(hola|buen[oa]s? (dias|tardes|noches)|hi|hello|hey)( [a-z]+){0,2}[\s!.,]*$/;
+/** Un cierre o una oferta de ayuda sin contenido. */
+const CLOSING = /^(si (desea|quiere|necesita|gusta)\b|con gusto\b|quedo (atent|a su |a tu )|estoy (atent|para )|no dude\b|feel free\b|let me know\b|happy to help\b)/;
+/** Una pregunta de venta o de cierre («¿le gustaría reservarla?», «¿qué tal otro día?»), no una que pide un dato. */
+const UPSELL = /\b(le gustaria|te gustaria|desea|deseas|quiere que|quieres que|puedo ayudar\w*|en que (mas )?(le |te )?puedo|algo mas|otro dia|otra fecha|otras? (fechas?|opciones|paquetes?)|would you like|anything else|another (day|date))\b/;
+/** Una frase que solo enlaza con la que se quitó («Así puedo revisar mejor el estado de su reserva.»). */
+const DANGLING = /^(asi|por eso|para eso|de esta (forma|manera)|de (este|ese) modo|this way|that way)\b/;
+const substantive = (s: string): boolean => { const f = fold(s).trim(); return !isQuestion(s) && !GREETING_ONLY.test(f) && !CLOSING.test(f); };
+/** Dónde iba la respuesta quitada. */
+const ANSWER_SLOT = '\u0000';
+
+/**
+ * Quita las frases señaladas y agrega el aviso «no consta» una sola vez. Una pregunta final que sobrevive se deja al
+ * final (el cliente la ve como siguiente paso).
+ *
+ * E2v, con el mensaje del cliente (`turn.customerMessage`), sin llamar a otro modelo:
+ * - si lo quitado respondía lo que el cliente preguntó y eso no consta, va en su lugar el aviso de ESE tema («No tengo
+ *   confirmada la disponibilidad para el sábado; …»); si consta y es un texto confirmado (la descripción), va ese texto;
+ * - si lo preguntado consta en el contrato y lo que queda tiene contenido, no se agrega ningún aviso: se quitó otra cosa;
+ * - nunca sale solo un saludo, un cierre o una pregunta de venta: sale el aviso (con la oferta del contrato), y una
+ *   pregunta de venta después de un aviso que ya ofrece averiguar o pasar con una persona se quita.
+ * Sin mensaje del cliente el aviso es el genérico, como antes.
+ */
+export function repairReply(reply: string, violations: readonly EvidenceViolation[], contract: TurnKnowledgeContract, language: string,
+    turn: { customerMessage?: string } = {}): EvidenceRepair {
     if (!violations.length) return { reply, removed: [], noticeAdded: false };
+    const message = turn.customerMessage ?? '';
+    const lang = languageOf(language);
+    const topic = message ? TOPICS.find(t => t.asks.test(fold(message))) ?? null : null;
+    const askedFact = topic && !contract.unknown.some(u => topic.ids.test(u.id)) ? contract.facts.find(f => topic.ids.test(f.id)) : undefined;
     const sentences = splitSentences(reply);
     const kept: string[] = [];
     const removed: string[] = [];
+    let answered = false;
+    let afterRemoval = false;
     for (const s of sentences) {
         const n = normalize(s);
         const hits = violations.filter(v => { const f = normalize(v.sentence); return n.includes(f) || f.includes(n); });
-        if (!hits.length) { kept.push(s); continue; }
+        if (!hits.length) {
+            if (afterRemoval && DANGLING.test(fold(s))) { removed.push(s); continue; }
+            afterRemoval = false;
+            kept.push(s);
+            continue;
+        }
         removed.push(s);
-        if (hits.every(v => v.keep)) kept.push(hits[0].keep!);
+        afterRemoval = true;
+        if (hits.every(v => v.keep)) { kept.push(hits[0].keep!); afterRemoval = false; continue; }
+        // La frase quitada respondía lo preguntado: su requisito es el del tema, o habla del tema.
+        if (topic && !answered && (hits.some(v => v.requirementId && topic.ids.test(v.requirementId)) || (topic.about ?? topic.asks).test(fold(s)))) {
+            answered = true;
+            kept.push(ANSWER_SLOT);
+        }
     }
     if (!removed.length) return { reply, removed: [], noticeAdded: false };
     // Un encabezado de lista que se quedó sin ítems («Estos son nuestros servicios: 1.») tampoco se envía.
     for (let i = kept.length - 1; i >= 0; i--) {
+        if (kept[i] === ANSWER_SLOT) continue;
         const bare = kept[i].replace(/(^|\n)\s*\d+[.)]$/, '').trim();
         if (!bare || bare.endsWith(':')) kept.splice(i, 1); else if (bare !== kept[i]) kept[i] = bare;
     }
-    const notice = unknownNotice(contract, language);
-    const question = kept.length && /[?？]\s*$/.test(kept[kept.length - 1]) ? kept.pop()! : null;
-    const body = [...kept, notice, ...(question ? [question] : [])].join(' ');
-    return { reply: body, removed, noticeAdded: true };
+    const question = kept.length && kept[kept.length - 1] !== ANSWER_SLOT && isQuestion(kept[kept.length - 1]) ? kept.pop()! : null;
+    const generic = unknownNotice(contract, language);
+    const onTopic = topic && !askedFact ? topicNotice(topic, contract, lang, message) : null;
+    const answer = askedFact && topic?.textual ? confirmedText(askedFact.value, lang) : null;
+    const offers = contract.offers.pendingQuestion || !!contract.offers.handoff?.available;
+    const closeWith = (body: string[], notice: boolean): EvidenceRepair => {
+        // Después de un aviso que ya ofrece averiguar o pasar con una persona, una pregunta de venta sobra o contradice.
+        const tail = question && !(notice && offers && UPSELL.test(fold(question))) ? [question] : [];
+        return { reply: [...body, ...tail].join(' '), removed, noticeAdded: notice };
+    };
+    if (answered) {
+        const replacement = answer ?? onTopic ?? generic;
+        return closeWith(kept.map(s => (s === ANSWER_SLOT ? replacement : s)), !answer);
+    }
+    // Lo que queda no dice nada (un saludo, un cierre, una pregunta): sale el aviso, o el texto confirmado de lo preguntado.
+    if (!kept.some(substantive)) {
+        if (answer) return closeWith([...kept, answer], false);
+        return closeWith([...kept.filter(s => !CLOSING.test(fold(s).trim())), onTopic ?? generic], true);
+    }
+    // Lo preguntado consta y lo que queda lo dice: lo quitado era otra cosa, no hay nada que avisar.
+    if (askedFact) return closeWith(kept, false);
+    return { reply: [...kept, generic, ...(question ? [question] : [])].join(' '), removed, noticeAdded: true };
 }

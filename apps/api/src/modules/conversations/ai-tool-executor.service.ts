@@ -122,7 +122,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
-import { applyUnconfirmedMarks, unconfirmedCatalogMarks, unconfirmedNotes } from './catalog-content-status';
+import { applyUnconfirmedMarks, catalogContentStatus, unconfirmedCatalogMarks, unconfirmedNotes } from './catalog-content-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import { PACKAGE_DEPARTURES_IN_SEARCH_MAX, PACKAGE_DEPARTURES_PER_PACKAGE, PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
@@ -3289,7 +3289,8 @@ export class AIToolExecutorService {
     private async listServices(schema: string): Promise<any> {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
-                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link, price_status
+                    payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link, price_status,
+                    content_status, origin, source_ref, updated_at
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
         );
@@ -3311,6 +3312,9 @@ export class AIToolExecutorService {
                 // service next to `priceStatus: 'confirmed'`.
                 const { priceStatus, price } = customerFacingPrice(s);
                 const confirmed = priceStatus === 'confirmed';
+                // E2v (dental C01, P08-1): un servicio de la plantilla del alta (sembrado o de ejemplo, con procedencia vigente)
+                // lo dice, así el verificador de evidencia no lo toma como oferta confirmada del negocio.
+                const contentStatus = catalogContentStatus(s);
                 return {
                     id: s.id,
                     name: s.name,
@@ -3328,6 +3332,7 @@ export class AIToolExecutorService {
                     paymentChoice: confirmed && policy.customerChooses ? 'deposit_or_full' : undefined,
                     paymentNote: confirmed ? describePaymentPolicy(policy) : undefined,
                     appointmentTerms: appointmentServiceTerms(s),
+                    ...(contentStatus !== 'confirmed' ? { contentStatus } : {}),
                 };
             }),
         };

@@ -13,6 +13,9 @@ export const BUSINESS_READINESS = 'BUSINESS_READINESS';
 
 export interface BusinessReadinessPort {
     getCurrent(tenantId: string): Promise<{ result: Pick<ReadinessResult, 'config' | 'blockingGaps'> }>;
-    /** El contrato del turno (caché de la última evaluación), o null. */
-    turnContract?(tenantId: string): Promise<{ offers: { pendingQuestion: boolean } } | null>;
+    /**
+     * El contrato del turno (caché de la última evaluación), o null. El motor de reservas lee `unknown` para no afirmar
+     * disponibilidad cuando `OBJ.APPOINTMENT.AVAILABILITY_SOURCE` no consta (E2v C15).
+     */
+    turnContract?(tenantId: string): Promise<{ offers: { pendingQuestion: boolean }; unknown?: ReadonlyArray<{ id: string }> } | null>;
 }

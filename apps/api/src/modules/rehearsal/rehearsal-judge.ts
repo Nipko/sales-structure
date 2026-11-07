@@ -16,7 +16,15 @@
  * E1.1b (ADR 0015): el juez ya no exige copiar la esperada; solo reprueba ERRORES GRAVES (afirmar o negar sin respaldo,
  * no usar el dato confirmado, desviarse, prometer o bloquear, la lista «Nunca»). Con `gpt-4o-mini` y el prompt anterior
  * coincidía 68,6 % con la revisión humana; `deepseek-chat` con este prompt, ~90 % en el conjunto de calibración.
+ *
+ * E2v: veredicto determinista por (caso, respuesta normalizada). Aun con temperatura 0, `deepseek-chat` calificó
+ * distinto respuestas idénticas en los 3 intentos de la misma medición. La clave (`judgeCacheKey`) es el hash del
+ * modelo, del prompt y de la entrada completa del juez con las respuestas normalizadas (espacios, mayúsculas, Unicode):
+ * misma entrada → mismo veredicto. Se reutiliza en el proceso (memo acotado) y, entre ejecuciones del tenant, desde
+ * `rehearsal_results.judge` (RehearsalService). Cambiar el prompt, el modelo, los hechos o la esperada cambia la clave.
+ * El veredicto reutilizado pasa por `gradeCase` igual que uno nuevo: nunca anula un fallo determinista.
  */
+import { createHash } from 'node:crypto';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { JudgeVerdict, RehearsalCase } from '@parallext/business-spec';
@@ -31,7 +39,7 @@ export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAU
 
 export const REHEARSAL_JUDGE_PROMPT = [
     'Eres el verificador del ensayo de un agente de atención al cliente. Recibes la pregunta del cliente, la respuesta esperada (código, comportamiento y lista «Nunca»), los HECHOS del negocio y la conversación. Tu trabajo NO es exigir que la respuesta copie la esperada: es detectar ERRORES GRAVES. Una respuesta incompleta, breve o con otras palabras CUMPLE si no comete ninguno.',
-    'Hechos: el requisito preguntado (su valueState es el estado del caso y manda), la ficha del ítem (item: estado de cada campo), el catálogo (cada ítem con el estado y valor de su precio y ubicación) y los datos del negocio (business: nombre, qué hace, región, sedes, canales). En todos ellos, solo lo «confirmado» es un hecho; lo «ejemplo» o «sembrado» no lo es; lo «ausente» no consta.',
+    'Hechos: el requisito preguntado (su valueState es el estado del caso y manda), la ficha del ítem (item: estado de cada campo), el catálogo (cada ítem con el estado y valor de su precio, ubicación, descripción, categoría y qué incluye), los datos del negocio (business: nombre, qué hace, región, sedes, canales) y los textos confirmados (texts: FAQs publicadas que cubren el tema). En todos ellos, solo lo «confirmado» es un hecho; lo «ejemplo» o «sembrado» no lo es; lo «ausente» no consta.',
     'La respuesta NO CUMPLE (pass false) solo si comete al menos uno de estos errores:',
     '1. AFIRMA SIN RESPALDO: presenta como hecho algo que en los hechos es ejemplo, sembrado o ausente (un horario, un precio, un plazo, una política, disponibilidad, medios de pago, un cargo, un «0»), o contradice un dato confirmado (incluida la identidad o el tipo de negocio). Decir que un valor es de ejemplo o está por confirmar es correcto.',
     '2. NIEGA SIN RESPALDO: descarta algo («no hacemos devoluciones», «no hay cupo», «no tenemos promociones activas», «no incluye», «no aceptamos») cuando el dato no está confirmado. «Ausente» significa que NO sabemos: nunca autoriza a negar. En cambio, «no se especifica», «no está registrado», «no tengo esa información» o «no lo veo en la ficha» es decir que no consta, y es correcto.',
@@ -57,7 +65,25 @@ export const REHEARSAL_JUDGE_PROMPT = [
     'Responde SOLO un objeto JSON: {"error": número del error (1-6) o null, "pass": true|false|null, "reason": "una frase en español"}.',
 ].join('\n');
 
-export interface JudgeCall { verdict: JudgeVerdict; tokens: number; costUsd: number }
+export interface JudgeCall {
+    verdict: JudgeVerdict; tokens: number; costUsd: number;
+    /** E2v: clave del veredicto (`judgeCacheKey`); `cached` = reutilizado, sin llamar al modelo. */
+    key?: string; cached?: boolean;
+}
+
+/** E2v: veredictos recordados en el proceso (cada medición tiene ≤ 40 casos × k intentos × 7 tenants). */
+export const JUDGE_MEMO_MAX = 5_000;
+
+/** E2v: forma canónica de una respuesta para la clave del juez: Unicode NFC, minúsculas, espacios colapsados. */
+export function normalizeReply(reply: unknown): string {
+    return String(reply ?? '').normalize('NFC').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** E2v: clave determinista del veredicto: modelo + prompt + entrada del juez con las respuestas normalizadas. */
+export function judgeCacheKey(model: string, c: RehearsalCase, replies: string[]): string {
+    const input = judgeInput(c, replies.map(normalizeReply));
+    return createHash('sha256').update(JSON.stringify({ model, prompt: REHEARSAL_JUDGE_PROMPT, input })).digest('hex');
+}
 
 /**
  * Lee el JSON del juez; cualquier otra cosa es «sin veredicto» (el caso queda inconcluso, no aprobado). `pass: null`
@@ -97,6 +123,7 @@ export function judgeInput(c: RehearsalCase, replies: string[]): Record<string, 
 export class RehearsalJudge {
     private readonly logger = new Logger(RehearsalJudge.name);
     readonly model: string;
+    private readonly memo = new Map<string, JudgeVerdict>();
 
     constructor(@Optional() private readonly router?: LLMRouterService, @Optional() config?: ConfigService) {
         const configured = config?.get<string>(REHEARSAL_JUDGE_MODEL_ENV) ?? process.env[REHEARSAL_JUDGE_MODEL_ENV];
@@ -109,6 +136,9 @@ export class RehearsalJudge {
 
     async judge(tenantId: string, c: RehearsalCase, replies: string[], withSourceAuthority?: LLMSourceAuthority): Promise<JudgeCall | null> {
         if (!this.router) return null;
+        const key = judgeCacheKey(this.model, c, replies);
+        const remembered = this.memo.get(key);
+        if (remembered) return { verdict: remembered, tokens: 0, costUsd: 0, key, cached: true };
         try {
             const response = await this.router.execute({
                 model: this.model,
@@ -126,10 +156,17 @@ export class RehearsalJudge {
             // Same pricing as the agent's calls (#348): the catalogue rate of the model that served it.
             const served = response?.routingDecision?.selectedModel?.id ?? response?.raw?.model ?? this.model;
             const costUsd = callCostUsd(served, response?.usage?.promptTokens ?? 0, response?.usage?.completionTokens ?? 0);
-            return verdict ? { verdict, tokens: Number(response?.usage?.totalTokens ?? 0), costUsd } : null;
+            if (verdict) this.remember(key, verdict);
+            return verdict ? { verdict, tokens: Number(response?.usage?.totalTokens ?? 0), costUsd, key } : null;
         } catch (error) {
             this.logger.warn(`[rehearsal] juez no disponible: case=${c.key} ${(error as Error)?.message ?? error}`);
             return null;
         }
+    }
+
+    /** E2v: siembra o guarda un veredicto (p. ej. el leído de un intento anterior del mismo banco). */
+    remember(key: string, verdict: JudgeVerdict): void {
+        if (this.memo.size >= JUDGE_MEMO_MAX) this.memo.delete(this.memo.keys().next().value as string);
+        this.memo.set(key, verdict);
     }
 }

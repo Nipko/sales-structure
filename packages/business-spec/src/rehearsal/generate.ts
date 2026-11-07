@@ -19,7 +19,7 @@ import { evaluate } from '../engine/evaluate';
 import { resolveFacts } from '../facts';
 import { hashOf } from '../hash';
 import { itemFieldState, qaTruth, type ExpectedCode, type QaTruthCase } from '../qa/truth';
-import { resolveValue } from '../status';
+import { isTextWithoutData, resolveValue } from '../status';
 import type { CompiledSpec, IntentDef, ItemRecord, TenantSnapshot, ValueState } from '../types';
 import { figuresOfValue } from './figures';
 import { answerRank } from './sources';
@@ -100,6 +100,12 @@ export interface RehearsalFacts {
      * castigaba al agente por usar datos confirmados de otro requisito («afirmó un nombre no confirmado»).
      */
     business?: Record<string, { state: ValueState | null; value?: unknown }>;
+    /**
+     * E2v: FAQs publicadas, confirmadas y con dato que cubren el requisito del caso u otro que responde la intención
+     * (p. ej. la FAQ de garantía en un C26 atado a CORE.POLICY.CONSUMER_RIGHTS). Sin esto el juez daba por inventada
+     * una garantía que el agente citaba de una FAQ confirmada.
+     */
+    texts?: { title: string; body: string; covers: string[] }[];
 }
 
 export interface RehearsalCase {
@@ -273,18 +279,27 @@ function figuresAnyOf(intentId: string, truth: QaTruthCase): { anyOf: string[]; 
     return { anyOf: figuresOfValue(affirm), priceUnknown: false };
 }
 
-/** Cifras prohibidas: lo que es de ejemplo, sembrado o está en conflicto (nunca se afirma como hecho). */
+/**
+ * Cifras prohibidas: lo que es de ejemplo, sembrado o está en conflicto (nunca se afirma como hecho). E2v (viajes
+ * C07/C08): una cifra que además sale de un campo CONFIRMADO de la misma ficha no se prohíbe; el `max_group` 10 sembrado
+ * (default de columna) chocaba con los 10 cupos confirmados de `departures[].seats_left`, y «quedan 10 cupos» se
+ * calificaba como cifra inventada. No se puede saber de qué campo salió el número: ante la duda, no es evidencia de error.
+ */
 function forbiddenFigures(spec: CompiledSpec, snap: TenantSnapshot, at: Date, truth: QaTruthCase, item: ItemRecord | null, allowed: Set<string>): string[] {
     const out: string[] = [];
+    const confirmed = new Set<string>();
     if (item && truth.fields) {
-        for (const [f, st] of Object.entries(truth.fields)) if (st === 'ejemplo' || st === 'sembrado') out.push(...figuresOfValue(item.fields[f], f));
+        for (const [f, st] of Object.entries(truth.fields)) {
+            if (st === 'ejemplo' || st === 'sembrado') out.push(...figuresOfValue(item.fields[f], f));
+            else if (st === 'confirmado') for (const fig of figuresOfValue(item.fields[f], f)) confirmed.add(fig);
+        }
     }
     if (!item || !spec.requirements[truth.requirementId]?.object) {
         const rv = resolveValue(snap.values[truth.requirementId], at);
         if (rv.state === 'ejemplo' || rv.state === 'sembrado') out.push(...figuresOfValue(rv.record?.value));
         if (rv.state === 'contradictorio') for (const c of rv.conflicts) out.push(...figuresOfValue(c.value));
     }
-    return [...new Set(out)].filter(f => !allowed.has(f) && !(f.startsWith('n:') && Number(f.slice(2)) < MIN_FORBIDDEN));
+    return [...new Set(out)].filter(f => !allowed.has(f) && !confirmed.has(f) && !(f.startsWith('n:') && Number(f.slice(2)) < MIN_FORBIDDEN));
 }
 
 function paraphraseOf(truth: QaTruthCase, focus?: RehearsalFocus, expected?: ExpectedCode, behavior?: string): string {
@@ -321,8 +336,14 @@ const clip = (v: unknown): unknown => {
 const activeItems = (snap: TenantSnapshot): ItemRecord[] => Object.keys(snap.items).sort().flatMap(o => (snap.items[o] ?? []).filter(i => i.active));
 const toValueState = (s: string): ValueState => (s === 'confirmed' ? 'confirmado' : s === 'example' ? 'ejemplo' : 'sembrado');
 
-/** E1.1b: campos de cada ítem del catálogo que el juez recibe con su valor (precio y ubicación). */
-const CATALOG_FACT_FIELDS = ['price', 'price_per_night', 'price_per_passenger_type', 'currency', 'address', 'city', 'zone'];
+/**
+ * E1.1b: campos de cada ítem del catálogo que el juez recibe con su valor (precio y ubicación). E2v (electrónica C06):
+ * también los descriptivos (descripción, categoría, qué incluye), cada uno con su estado: el agente describía el ítem
+ * con su descripción confirmada y el juez, que solo veía nombre y precio, la daba por inventada.
+ */
+const CATALOG_FACT_FIELDS = ['price', 'price_per_night', 'price_per_passenger_type', 'currency', 'address', 'city', 'zone', 'description', 'category', 'includes'];
+/** E2v: tope de caracteres de un campo descriptivo del catálogo (25 ítems × descripción larga inflan el prompt del juez). */
+const CATALOG_MAX_TEXT = 200;
 
 /** E1.1b: requisitos de identidad y contacto que el juez recibe siempre como contexto del negocio. */
 const BUSINESS_FACTS = ['CORE.IDENTITY.NAME', 'CORE.IDENTITY.DESCRIPTION', 'CORE.IDENTITY.REGION', 'CORE.LOCATIONS.LIST', 'CORE.CONTACT.CHANNELS', 'CORE.HOURS.REGULAR'];
@@ -339,7 +360,19 @@ const namedItem = (snap: TenantSnapshot, turns: string[]): ItemRecord | null => 
         .sort((a, b) => itemName(b).length - itemName(a).length)[0] ?? null;
 };
 
-function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, caseItem: ItemRecord | null, caseState: ValueState | null, turns: string[]): RehearsalFacts {
+/**
+ * E2v: FAQs confirmadas, publicadas y con dato que cubren el requisito del caso o cualquier requisito que declara la
+ * intención en `answers` (mismo criterio que `textEvidenceFor`).
+ */
+function textsOf(spec: CompiledSpec, snap: TenantSnapshot, intent: IntentDef, req: EffectiveRequirement): NonNullable<RehearsalFacts['texts']> {
+    const related = new Set([req.req.id, ...Object.values(spec.requirements).filter(r => r.answers.includes(intent.id)).map(r => r.id)]);
+    return (snap.texts ?? [])
+        .filter(t => t.published && t.status === 'confirmed' && (t.covers ?? []).some(c => related.has(c)) && !isTextWithoutData(t.body))
+        .slice(0, 5)
+        .map(t => ({ title: t.title, body: t.body.length > FACTS_MAX_VALUE ? `${t.body.slice(0, FACTS_MAX_VALUE)}…` : t.body, covers: [...(t.covers ?? [])] }));
+}
+
+function factsOf(spec: CompiledSpec, snap: TenantSnapshot, at: Date, intent: IntentDef, req: EffectiveRequirement, caseItem: ItemRecord | null, caseState: ValueState | null, turns: string[]): RehearsalFacts {
     const rv = resolveValue(snap.values[req.req.id], at, caseItem ? `item:${caseItem.id}` : undefined);
     const global = rv.state === 'ausente' && caseItem ? resolveValue(snap.values[req.req.id], at) : rv;
     const item = caseItem ?? namedItem(snap, turns);
@@ -358,7 +391,11 @@ function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: Effecti
     }
     facts.catalog = activeItems(snap).slice(0, FACTS_MAX_ITEMS).map(i => {
         const fields: Record<string, { state: ValueState; value: unknown }> = {};
-        for (const f of CATALOG_FACT_FIELDS) if (i.fields[f] !== undefined && i.fields[f] !== null) fields[f] = { state: itemFieldState(i, f), value: clip(i.fields[f]) };
+        for (const f of CATALOG_FACT_FIELDS) {
+            const v = i.fields[f];
+            if (v === undefined || v === null || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)) continue;
+            fields[f] = { state: itemFieldState(i, f), value: typeof v === 'string' && v.length > CATALOG_MAX_TEXT ? `${v.slice(0, CATALOG_MAX_TEXT)}…` : clip(v) };
+        }
         return {
             name: itemName(i), content: toValueState(i.contentStatus),
             price: i.priceStatus === 'example' ? 'ejemplo' : i.priceStatus === 'confirmed' ? 'confirmado' : null,
@@ -372,6 +409,8 @@ function factsOf(snap: TenantSnapshot, at: Date, intent: IntentDef, req: Effecti
         business[id] = { state: v.state, ...(v.record && v.state !== 'ausente' ? { value: clip(v.record.value) } : {}) };
     }
     facts.business = business;
+    const texts = textsOf(spec, snap, intent, req);
+    if (texts.length) facts.texts = texts;
     return facts;
 }
 
@@ -395,7 +434,7 @@ function buildCase(spec: CompiledSpec, snap: TenantSnapshot, at: Date, input: Ca
         key, intentId: intent.id, intentTitle: intent.title, layer: intent.layer,
         requirementIds: [req.req.id], requirementTitle: req.req.title, uiTarget: req.req.uiTarget ?? null,
         itemId: item && ownItem ? item.id : null, itemName: item ? name : null, language, turns,
-        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(snap, at, intent, req, item, valueState, turns),
+        expected, valueState, truth: tc, ...(focus ? { focus } : {}), facts: factsOf(spec, snap, at, intent, req, item, valueState, turns),
         expectation: {
             figuresAnyOf: anyOf,
             forbiddenFigures: forbiddenFigures(spec, snap, at, tc, item && ownItem ? item : null, new Set(anyOf)),

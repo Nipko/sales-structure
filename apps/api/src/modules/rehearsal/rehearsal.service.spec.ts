@@ -20,7 +20,8 @@ const RUN = '22222222-2222-4222-8222-222222222222';
 
 type Sql = { sql: string; params: unknown[] };
 
-function harness(opts: { running?: number; today?: number; bankRow?: RehearsalBank; reply?: (msg: string, turn: number) => string; testError?: unknown } = {}) {
+function harness(opts: { running?: number; today?: number; bankRow?: RehearsalBank; reply?: (msg: string, turn: number) => string; testError?: unknown;
+    storedVerdict?: { pass: boolean; reason: string; model: string } } = {}) {
     const calls: Sql[] = [];
     const stored: { outcome: string; case_key: string }[] = [];
     const prisma = {
@@ -37,6 +38,7 @@ function harness(opts: { running?: number; today?: number; bankRow?: RehearsalBa
             if (/count\(\*\)::int AS attempts/.test(sql)) return [{ attempts: 1 }];
             if (/INSERT INTO rehearsal_results/.test(sql)) { stored.push({ case_key: String(params[1]), outcome: String(params[8]) }); return []; }
             if (/SELECT outcome FROM rehearsal_results/.test(sql)) return stored.map(s => ({ outcome: s.outcome }));
+            if (/SELECT judge->'raw' AS raw FROM rehearsal_results/.test(sql)) return opts.storedVerdict ? [{ raw: opts.storedVerdict }] : [];
             return [];
         }),
     };
@@ -54,7 +56,8 @@ function harness(opts: { running?: number; today?: number; bankRow?: RehearsalBa
         }),
     };
     const readiness = { spec, readSnapshot: jest.fn(async () => snapshotOf('spark-qa-dental-03')) };
-    const judge = { available: true, judge: jest.fn(async () => ({ verdict: { pass: true, reason: 'cumple', model: 'judge' }, tokens: 50, costUsd: 0.0002 })) };
+    const judge = { available: true, model: 'judge', remember: jest.fn(),
+        judge: jest.fn(async () => ({ verdict: { pass: true, reason: 'cumple', model: 'judge' }, tokens: 50, costUsd: 0.0002, key: 'k' })) };
     const events = { emit: jest.fn() };
     const service = new RehearsalService(prisma as any, readiness as any, agentTest as any, judge as any, events as any);
     return { service, prisma, agentTest, readiness, judge, events, calls, stored, snapshot };
@@ -114,6 +117,32 @@ describe('RehearsalService: ejecución sin efectos', () => {
         await h.service.execute('t1', 'tenant_qa', RUN, AGENT, bank);
         const needing = bank.cases.filter(c => !c.expectation.figuresAnyOf.length && !c.expectation.event && !c.expectation.noMoney);
         expect(h.judge.judge.mock.calls.length).toBeLessThanOrEqual(needing.length);
+        for (const c of bank.cases.filter(x => x.expectation.figuresAnyOf.length)) {
+            expect(h.stored.find(s => s.case_key === c.key)?.outcome).toBe('wrong');
+        }
+    });
+
+    it('E2v: un veredicto ya dado para el mismo caso y la misma respuesta se reutiliza (sin llamar al juez) y no salva un fallo determinista', async () => {
+        const reply = 'Claro, con gusto te ayudo.';
+        const fresh = harness({ reply: () => reply });
+        await fresh.service.execute('t1', 'tenant_qa', RUN, AGENT, bank);
+        const judgedKeys = fresh.judge.judge.mock.calls.length;
+        expect(judgedKeys).toBeGreaterThan(0);
+        // el JSON guardado lleva la clave y el veredicto crudo, para el siguiente intento
+        const firstInsert = fresh.calls.find(c => /INSERT INTO rehearsal_results/.test(c.sql) && c.params[15]);
+        expect(JSON.parse(String(firstInsert?.params[15]))).toMatchObject({ called: true, key: expect.stringMatching(/^[0-9a-f]{64}$/), raw: { pass: true, reason: 'cumple' } });
+
+        const h = harness({ reply: () => reply, storedVerdict: { pass: true, reason: 'cumple (intento 1)', model: 'judge' } });
+        await h.service.execute('t1', 'tenant_qa', RUN, AGENT, bank);
+        expect(h.judge.judge).not.toHaveBeenCalled();
+        expect(h.judge.remember).toHaveBeenCalledTimes(judgedKeys);
+        const lookups = h.calls.filter(c => /SELECT judge->'raw' AS raw FROM rehearsal_results/.test(c.sql));
+        expect(lookups).toHaveLength(judgedKeys);
+        const reused = h.calls.filter(c => /INSERT INTO rehearsal_results/.test(c.sql) && c.params[15]).map(c => JSON.parse(String(c.params[15])));
+        for (const j of reused) expect(j).toMatchObject({ called: false, cached: true, tokens: 0, raw: { pass: true, reason: 'cumple (intento 1)' } });
+        // ninguna llamada al juez se cuenta
+        for (const u of h.calls.filter(c => /judge_calls = judge_calls \+ \$5/.test(c.sql))) expect(u.params[4]).toBe(0);
+        // los fallos deterministas siguen siendo fallos con el veredicto reutilizado
         for (const c of bank.cases.filter(x => x.expectation.figuresAnyOf.length)) {
             expect(h.stored.find(s => s.case_key === c.key)?.outcome).toBe('wrong');
         }

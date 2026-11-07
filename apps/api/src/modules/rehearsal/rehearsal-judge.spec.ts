@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fromLegacyRows, generateRehearsal, type RehearsalCase } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
-import { judgeInput, parseJudgeVerdict, RehearsalJudge, REHEARSAL_JUDGE_DEFAULT_MODEL, REHEARSAL_JUDGE_PROMPT } from './rehearsal-judge';
+import { judgeCacheKey, judgeInput, normalizeReply, parseJudgeVerdict, RehearsalJudge, REHEARSAL_JUDGE_DEFAULT_MODEL, REHEARSAL_JUDGE_PROMPT } from './rehearsal-judge';
 
 /**
  * Juez de paráfrasis (R7, calibrado en E1.1, ADR 0014): recibe los hechos del caso (estado y valor del requisito, regla
@@ -24,7 +24,7 @@ describe('RehearsalJudge', () => {
         const router = routerReturning('{"pass": true, "reason": "cumple"}');
         const judge = new RehearsalJudge(router as any);
         const call = await judge.judge('t1', c, ['respuesta']);
-        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: REHEARSAL_JUDGE_DEFAULT_MODEL }, tokens: 77, costUsd: expect.any(Number) });
+        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: REHEARSAL_JUDGE_DEFAULT_MODEL }, tokens: 77, costUsd: expect.any(Number), key: expect.stringMatching(/^[0-9a-f]{64}$/) });
         expect(call!.costUsd).toBeGreaterThan(0);
         const req = router.execute.mock.calls[0][0];
         expect(req).toMatchObject({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, jsonMode: true, tenantId: 't1', systemPrompt: REHEARSAL_JUDGE_PROMPT });
@@ -69,5 +69,31 @@ describe('RehearsalJudge', () => {
         expect(await new RehearsalJudge().judge('t1', bank.cases[0], ['x'])).toBeNull();
         const failing = { execute: jest.fn(async () => { throw new Error('cuota'); }) };
         expect(await new RehearsalJudge(failing as any).judge('t1', bank.cases[0], ['x'])).toBeNull();
+    });
+
+    it('E2v: misma respuesta (normalizada) del mismo caso → mismo veredicto, sin volver a llamar al modelo', async () => {
+        const c = bank.cases[0];
+        expect(normalizeReply('  Hola,\n  NO consta.  ')).toBe('hola, no consta.');
+        const key = judgeCacheKey('m', c, ['Hola, no consta.']);
+        expect(judgeCacheKey('m', c, ['  hola,\n NO consta. '])).toBe(key);
+        expect(judgeCacheKey('m', c, ['Hola, sí consta.'])).not.toBe(key);
+        expect(judgeCacheKey('otro', c, ['Hola, no consta.'])).not.toBe(key);
+        expect(judgeCacheKey('m', bank.cases[1], ['Hola, no consta.'])).not.toBe(key);
+
+        const router = routerReturning('{"pass": false, "reason": "niega sin dato"}');
+        const judge = new RehearsalJudge(router as any);
+        const first = await judge.judge('t1', c, ['Hola, no consta.']);
+        router.execute.mockResolvedValue({ content: '{"pass": true, "reason": "ahora sí"}', usage: { totalTokens: 1 }, finishReason: 'stop' } as any);
+        const again = await judge.judge('t1', c, ['hola,  no consta.']);
+        expect(router.execute).toHaveBeenCalledTimes(1);
+        expect(again).toEqual({ verdict: first!.verdict, tokens: 0, costUsd: 0, key: first!.key, cached: true });
+        // otra respuesta sí se juzga
+        expect((await judge.judge('t1', c, ['Otra respuesta']))?.verdict.pass).toBe(true);
+        expect(router.execute).toHaveBeenCalledTimes(2);
+    });
+
+    it('E2v: el prompt nombra la descripción del catálogo y las FAQs confirmadas como hechos', () => {
+        expect(REHEARSAL_JUDGE_PROMPT).toMatch(/descripción/);
+        expect(REHEARSAL_JUDGE_PROMPT).toMatch(/texts: FAQs publicadas/);
     });
 });

@@ -281,6 +281,7 @@ const NAVIGATION_ROUTE_DEFINITIONS = [
   { id: "platformFunnel", pattern: "/admin/funnel", titleKey: "nav.items.funnel", scope: "platform" },
   { id: "platformVerticalAnalytics", pattern: "/admin/vertical-analytics", titleKey: "nav.items.verticalAnalytics", scope: "platform" },
   { id: "platformVerticalAudit", pattern: "/admin/vertical-audit", titleKey: "nav.items.verticalAudit", scope: "platform" },
+  { id: "platformTenantBoard", pattern: "/admin/tenant-board", titleKey: "nav.items.tenantBoard", scope: "platform" },
   { id: "platformAgentTools", pattern: "/admin/tools", titleKey: "nav.items.agentTools", scope: "platform" },
   { id: "platformCoupons", pattern: "/admin/coupons", titleKey: "nav.items.coupons", scope: "platform" },
   { id: "platformDemoAllowance", pattern: "/admin/demo-allowance", titleKey: "nav.items.demoAllowance", scope: "platform" },

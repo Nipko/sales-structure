@@ -78,6 +78,8 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
     { prefix: "/admin/funnel", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/vertical-analytics", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/vertical-audit", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    // Salud de cada negocio (preparación, canales, entregas, tools): cruza todos los tenants.
+    { prefix: "/admin/tenant-board", roles: [ROLE_KEYS.SUPER_ADMIN] },
     // Catálogo, habilitación por tenant y uso de las tools del agente: cruza todos los tenants.
     { prefix: "/admin/tools", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/coupons", roles: [ROLE_KEYS.SUPER_ADMIN] },

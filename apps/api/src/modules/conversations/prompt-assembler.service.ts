@@ -92,6 +92,8 @@ function withRenderedFactsRules(rules: readonly string[]): string[] {
  * the business offers; a FAQ or document about a service the catalogue does not list is not proof that it is offered.
  * With the flag off the contract is byte-identical to the one without it.
  */
+/** E2x C01 (opción B, dueño 2026-11-06): un servicio de la plantilla del alta se puede nombrar, nunca presentar como confirmado. */
+export const SEEDED_SERVICES_NOTE = 'A service with content_status="seeded" or "example" comes from a setup template and the business has not confirmed it. When you describe what the business does or list its services, do not present it as a confirmed service: either leave it out, or name it saying it is still pending confirmation by the business, and never state its description, duration or price as fact. Services without content_status are confirmed: state them as given.';
 const RULE_20B_CATALOGUE = '  20b. THE CATALOGUE DECIDES WHAT IS OFFERED: when <turn><catalogue_authority> is present, its <offered> services are the complete list of services this business offers. A FAQ, a document, a knowledge item or a tool result that talks about a service is NOT proof that the service is offered. A service listed in <catalogue_authority><not_in_catalogue>, or named by a knowledge item or tool result marked not_in_catalogue, is not among the services: when the customer asks whether the business offers it, say plainly in <turn><language> that it is not among the services, give none of its durations, prices or details from that FAQ or document, and offer the services in <offered>. Never say "yes, we offer" (or an equivalent) for a service absent from <offered>.';
 
 function withCatalogueRule(rules: readonly string[]): string[] {
@@ -587,8 +589,11 @@ export class PromptAssemblerService {
                 if (s.priceStatus && s.priceStatus !== 'confirmed') attrs.push(`price_status="${this.attrEscape(s.priceStatus)}"`);
                 if (s.currency) attrs.push(`currency="${this.attrEscape(s.currency)}"`);
                 if (s.description) attrs.push(`description="${this.attrEscape(s.description)}"`);
+                if (s.contentStatus === 'seeded' || s.contentStatus === 'example') attrs.push(`content_status="${this.attrEscape(s.contentStatus)}"`);
                 lines.push(`    <service ${attrs.join(' ')}>${this.xmlEscape(s.name)}</service>`);
             }
+            // E2x C01 (opción B): «¿qué hacen?» listaba los servicios de la plantilla del alta como oferta real.
+            if (turn.availableServices.some(s => s.contentStatus === 'seeded' || s.contentStatus === 'example')) lines.push(`    <note>${this.xmlEscape(SEEDED_SERVICES_NOTE)}</note>`);
             lines.push('  </available_services>');
         }
 

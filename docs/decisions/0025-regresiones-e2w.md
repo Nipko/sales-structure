@@ -30,3 +30,9 @@ E2w (tras #401) bajó los fallos de 68 a 57, pero C07, C10, C03 y C17 empeoraron
 
 - **Dejar la ADR 0006 punto 4 tal cual y hacer que el runtime afirme los servicios con `price_status`.** Contradice la opción B, decidida después por el dueño.
 - **Distinguir la procedencia real de la heurística (`legacyRule === null`).** Rompía la equivalencia de la migración: el mismo ítem tendría dos verdades según la ruta de lectura.
+
+## Adenda (E2x, 2026-11-07): C01 con servicios de plantilla
+
+E2x confirmó C07, C10 y C03 (3 de 3), pero C01 bajó de 72% a 61%: ante «¿qué es lo que hacen?», salon y dental listaban la coloración, la manicura o las consultas de la plantilla como oferta real. `list_services` ya marcaba esos servicios (`contentStatus`) y la proyección la conservaba, pero `<available_services>` no la mostraba.
+
+Decisión: el servicio de plantilla lleva `content_status="seeded|example"` en `<available_services>`, y el bloque trae una sola `<note>` (`SEEDED_SERVICES_NOTE`): al describir el negocio se omite o se nombra como pendiente de confirmar, sin dar su descripción, duración ni precio como hechos. Sin servicios de plantilla, el bloque queda igual que antes.

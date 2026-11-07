@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
@@ -19,8 +19,9 @@ import { containsMissionDirective, isCollectionCancellation, isDirectedCorrectio
 import { coerceProcedureSlot } from './procedure-slot-interpolation';
 import { nearestSlots, selectSlotWindow } from './slot-window';
 import { describeTimeWindow, parseTimeWindow, sameTimeWindow, type TimeWindow } from './time-window';
-import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isPushingToBook, isServiceSwitchDirective } from './informational-detour';
+import { answerToOffer, asksDuration, bookingActKind, isAboutBooking, isInformationalDetour, isOnlyInquiry, isPushingToBook, isRequirementsQuestion, isServiceSwitchDirective } from './informational-detour';
 import { BOOKING_OFFER_TTL_MS } from './booking-offer';
+import { BUSINESS_READINESS, type BusinessReadinessPort } from './business-readiness.port';
 import { foldForSearch, productSearchTerms, stemForSearch } from '../../common/utils/product-search-terms';
 
 /**
@@ -63,6 +64,9 @@ export interface BookingTurnContext {
  *
  * Pipeline: INTERPRET → [DECIDE] → EXPRESS
  */
+
+/** Requisito del contrato del turno que dice si la agenda es una fuente de disponibilidad confirmada. */
+const APPOINTMENT_AVAILABILITY_SOURCE = 'OBJ.APPOINTMENT.AVAILABILITY_SOURCE';
 
 /** Booking engine messages in 4 languages */
 const MESSAGES: Record<string, Record<string, string | string[]>> = {
@@ -127,6 +131,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotSuggestOr: 'o',
         slotSuggestItem: 'las {t}',
         schedulingUnavailable: 'Todavía no tenemos la agenda disponible por acá. Le paso con alguien del equipo para coordinar su cita.',
+        availabilityUnconfirmed: 'No tengo la disponibilidad de la agenda confirmada en línea, así que no puedo confirmarle horarios por acá. Le paso con alguien del equipo para coordinar su cita.',
         bookingFailedHandoff: 'No pude completar la reserva por acá. Le paso con alguien del equipo para confirmarla con usted.',
         askName: '{time} seleccionado para {service}. ¿Cuál es su nombre completo?',
         askEmail: '¡Gracias {name}! Necesito su correo electrónico para la invitación del calendario.',
@@ -200,6 +205,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotSuggestOr: 'or',
         slotSuggestItem: '{t}',
         schedulingUnavailable: 'Our booking calendar is not available here yet. Let me connect you with someone from our team to arrange your appointment.',
+        availabilityUnconfirmed: 'I don\'t have the calendar availability confirmed online, so I can\'t confirm times here. Let me connect you with someone from our team to arrange your appointment.',
         bookingFailedHandoff: 'I could not complete the booking here. Let me connect you with someone from our team to confirm it with you.',
         askName: '{time} selected for {service}. What is your full name?',
         askEmail: 'Thanks {name}! I need your email for the calendar invitation.',
@@ -268,6 +274,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotSuggestOr: 'ou',
         slotSuggestItem: 'as {t}',
         schedulingUnavailable: 'Ainda não temos a agenda disponível por aqui. Vou encaminhar você para alguém da equipe para combinar seu horário.',
+        availabilityUnconfirmed: 'Não tenho a disponibilidade da agenda confirmada on-line, então não posso confirmar horários por aqui. Vou encaminhar você para alguém da equipe para combinar seu horário.',
         bookingFailedHandoff: 'Não consegui concluir o agendamento por aqui. Vou encaminhar você para alguém da equipe para confirmar com você.',
         askName: '{time} selecionado para {service}. Qual é seu nome completo?',
         askEmail: 'Obrigado {name}! Preciso do seu e-mail para o convite do calendário.',
@@ -336,6 +343,7 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         slotSuggestOr: 'ou',
         slotSuggestItem: '{t}',
         schedulingUnavailable: 'La prise de rendez-vous n\'est pas encore disponible par ici. Je vous mets en relation avec une personne de l\'équipe pour organiser votre rendez-vous.',
+        availabilityUnconfirmed: 'Je n\'ai pas les disponibilités de l\'agenda confirmées en ligne, je ne peux donc pas confirmer d\'horaires ici. Je vous mets en relation avec une personne de l\'équipe pour organiser votre rendez-vous.',
         bookingFailedHandoff: 'Je n\'ai pas pu finaliser la réservation par ici. Je vous mets en relation avec une personne de l\'équipe pour la confirmer avec vous.',
         askName: '{time} sélectionné pour {service}. Quel est votre nom complet ?',
         askEmail: 'Merci {name} ! J\'ai besoin de votre e-mail pour l\'invitation du calendrier.',
@@ -737,11 +745,34 @@ export class BookingEngineService {
         private prisma: PrismaService,
         private redis: RedisService,
         private toolExecutor: AIToolExecutorService,
+        /** El contrato del turno (R4): de dónde sale la disponibilidad. Ausente en specs a mano: no se consulta. */
+        @Optional() @Inject(BUSINESS_READINESS) private readonly businessReadiness?: BusinessReadinessPort,
     ) {}
 
     /** Reuses this engine with request-scoped boundaries; never rewires a singleton. */
     forExecution(ports: { redis: RedisService; toolExecutor: AIToolExecutorService }): BookingEngineService {
-        return new BookingEngineService(this.prisma, ports.redis, ports.toolExecutor);
+        return new BookingEngineService(this.prisma, ports.redis, ports.toolExecutor, this.businessReadiness);
+    }
+
+    /**
+     * E2v C15: la fuente de disponibilidad de las citas (`OBJ.APPOINTMENT.AVAILABILITY_SOURCE`) no consta en el
+     * contrato del turno. La agenda sembrada no es evidencia: decir «no hay horarios el sábado» (o listar huecos)
+     * afirma algo que el negocio no confirmó. Sin contrato (lectura fallida, sin evaluación) se sigue como antes.
+     */
+    private async availabilityUnconfirmed(tenantId: string): Promise<boolean> {
+        if (!this.businessReadiness?.turnContract) return false;
+        try {
+            const contract = await this.businessReadiness.turnContract(tenantId);
+            return !!contract?.unknown?.some(u => u.id === APPOINTMENT_AVAILABILITY_SOURCE);
+        } catch (err) {
+            this.logger.warn(`[Engine] Turn contract unavailable (${(err as Error)?.message}) — availability source not checked`);
+            return false;
+        }
+    }
+
+    /** Disponibilidad sin fuente confirmada: no se afirma ni se niega; se dice y se pasa con una persona. */
+    private availabilityUnconfirmedHandoff(state: BookingState, lang: string): EngineResult {
+        return this.escalateToHuman(state, lang, 'availabilityUnconfirmed', 'availability_source_unconfirmed');
     }
 
     /**
@@ -943,6 +974,13 @@ export class BookingEngineService {
                 return this.repromptCurrentStep(state, L);
             }
         }
+        // E2v P08-4: «¿Qué datos necesitan para darme cita?» sin misión abierta pregunta QUÉ se pide, no pide la
+        // cita. El motor no tiene herramienta para contestarlo y respondía con la lista de servicios; lo contesta
+        // el modelo con el contrato del turno. «Quiero una cita, ¿qué datos necesitan?» sigue entrando al motor.
+        if ((!active || !state.step) && isRequirementsQuestion(rawText, intent)) {
+            this.logger.log('[Decide] Requirements question with no open mission, letting the LLM answer');
+            return { handled: false, state };
+        }
         // Defense in depth: the orchestrator checks this before entering the
         // engine, and the engine checks again before reading cached services or
         // collecting customer data. A stale appointments toggle must not start a
@@ -1135,6 +1173,7 @@ export class BookingEngineService {
                 // FORMAT, a non-past date, and contact info. A stale/unknown service_id
                 // would otherwise reach createBooking and yield a hard "service not found".
                 if (svc && dateOk && timeOk && (state.date as string) >= todayDate && state.customerName && state.customerEmail) {
+                    if (await this.availabilityUnconfirmed(tenantId)) return this.availabilityUnconfirmedHandoff(state, L);
                     // The static Flow's date/time pickers are UNCONSTRAINED, so re-validate
                     // the chosen slot against REAL availability (business hours, blocked
                     // dates, staff schedule) — the same guard the text flow applies at
@@ -1762,6 +1801,8 @@ export class BookingEngineService {
         let offeredDate: string | undefined;
         let offeredTime: string | undefined;
         if (date) {
+            // Sin fuente de disponibilidad confirmada nada se dice del hueco: contesta el modelo, el borrador queda.
+            if (await this.availabilityUnconfirmed(tenantId)) return { handled: false, state };
             const result = await this.toolExecutor.execute(
                 schema, tenantId, contactId, 'check_availability',
                 { date, serviceId: target.id, ...(time ? { time } : {}) },
@@ -1930,6 +1971,7 @@ export class BookingEngineService {
         applied?: { window?: boolean },
     ): Promise<EngineResult | null> {
         this.logger.log(`[Decide] Checking availability: ${state.serviceName} on ${state.date}`);
+        if (await this.availabilityUnconfirmed(tenantId)) return this.availabilityUnconfirmedHandoff(state, lang);
         // The kept window (flag `agentRuntime.slotWindow`) travels only without an exact hour: an
         // hour is more precise than a part of the day and keeps its own nearest-slot rules.
         const window = !requestedTime ? state.timeWindow : undefined;

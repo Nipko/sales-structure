@@ -225,6 +225,45 @@ export function isInformationalDetour(raw: unknown, interpreted?: InterpretedHin
     return true;
 }
 
+/**
+ * E2v P08-4: qué pide el negocio para dar la cita («¿Qué datos necesitan para darme cita?», «¿qué documentos debo
+ * llevar?», «¿cuáles son los requisitos?»). Es una pregunta sobre el negocio (WRITE_MODE.required_fields,
+ * CUSTOMER_REQUIREMENTS), no un pedido de cita: el motor contestaba con la lista de servicios.
+ */
+const REQUIREMENTS_QUESTION = new RegExp([
+    // es
+    '\\b(?:que|cuales|cual) (?:datos|documentos|requisitos|papeles|documentacion|informacion) (?:me )?(?:necesit\\w*|requier\\w*|pid\\w*|debo|tengo que|hay que|hacen falta|hace falta|se necesitan?|se requieren?|se piden?|son necesarios)\\b',
+    '\\bque (?:necesito|necesitan|necesita|se necesita|requieren|requiere|se requiere|piden|pide|me piden|hace falta|debo (?:llevar|traer|presentar|enviar|tener)|tengo que (?:llevar|traer|presentar|enviar|tener))(?: \\w+){0,2} para (?:agendar|reservar|sacar|pedir|tomar|solicitar|darme|dar|hacer|separar|apartar)\\b',
+    '\\b(?:cuales|que) son (?:los|sus) requisitos\\b',
+    '\\brequisitos (?:para|de) (?:la |una |mi |el |un )?(?:cita|reserva|turno|agendar|reservar|consulta)\\b',
+    // en
+    '\\bwhat (?:information|info|details|documents|data) do you (?:need|require)\\b',
+    '\\bwhat do (?:you|i) need (?:from me )?(?:to|for) (?:book|schedule|make|get)\\b',
+    '\\bwhat are the requirements\\b',
+    // pt
+    '\\b(?:que|quais) (?:dados|documentos|informacoes) (?:voces )?(?:precisam|preciso|sao necessarios)\\b',
+    '\\bo que (?:eu )?(?:preciso|precisam) (?:para|pra) (?:agendar|marcar|reservar)\\b',
+    // fr
+    '\\bquel(?:le)?s? (?:informations|documents|donnees|renseignements) (?:vous )?(?:faut[- ]il|avez[- ]vous besoin|demandez[- ]vous)\\b',
+    '\\bde quoi avez[- ]vous besoin\\b',
+].join('|'));
+/** «… para darme cita», «… to book»: el fin de la pregunta, no un pedido aparte. */
+const PURPOSE_TAIL = /^ ?(?:\w+ )?(?:para|pra|to|for|pour)\b[^?.!]*/;
+
+/**
+ * La pregunta es qué pide el negocio para reservar, y nada más: un día u hora del intérprete, o un pedido explícito
+ * fuera de la pregunta («Quiero una cita, ¿qué datos necesitan?»), la dejan en el motor.
+ */
+export function isRequirementsQuestion(raw: unknown, interpreted: InterpretedHint = {}): boolean {
+    const text = normalizeForIntent(raw);
+    const m = REQUIREMENTS_QUESTION.exec(text);
+    if (!m) return false;
+    if (interpreted.dateMentioned || interpreted.timeMentioned) return false;
+    if (!isInformationSeekingMessage(raw) && !INFORMATION_IMPERATIVE.test(text)) return false;
+    const rest = `${text.slice(0, m.index)} ${text.slice(m.index + m[0].length).replace(PURPOSE_TAIL, ' ')}`;
+    return !hasExplicitBookingRequest(rest);
+}
+
 /** What the customer's message is about: their booking (an act, a booking noun, a booking intent). */
 const BOOKING_TOPIC = /\b(?:cita|citas|reserva|reservas|reservacion|turno|turnos|agenda|agendar|appointment|appointments|booking|bookings|rendez vous|agendamento|visita|visitas)\b/;
 export function isAboutBooking(raw: unknown, hint: BookingActHint): boolean {

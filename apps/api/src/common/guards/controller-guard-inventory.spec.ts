@@ -104,6 +104,7 @@ const PLATFORM_SCOPED: Readonly<Record<string, string>> = Object.freeze({
     'platform-status.controller.ts': 'platform mode: incident banner state, read by every signed-in dashboard',
     'system-updates.controller.ts': 'platform mode: the changelog the dashboard shows, same shape',
     'tenants.controller.ts': 'platform mode: the tenant catalogue itself, so it cannot be scoped to one',
+    'tool-observability.controller.ts': 'platform mode: the agent-tool catalogue, per-tenant enablement and usage across every tenant, super_admin only',
     'vertical-analytics.controller.ts': 'platform mode: analytics by industry across tenants, super_admin only',
     'vertical-audit.controller.ts': 'platform mode: the vertical audit, super_admin only',
     'webhook-tap.controller.ts': 'platform mode: the inbound-webhook debug tap, super_admin only',

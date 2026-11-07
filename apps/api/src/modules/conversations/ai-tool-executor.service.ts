@@ -16,6 +16,7 @@ import { shortReference, withShortReference } from './transition-engine';
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash } from 'crypto';
+import { performance } from 'perf_hooks';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { AppointmentsService } from '../appointments/appointments.service';
@@ -48,6 +49,13 @@ import { TasksService } from '../crm/services/tasks/tasks.service';
 import { EcommerceService } from '../ecommerce/ecommerce.service';
 import { VerticalIntegrationsService } from '../vertical-integrations/vertical-integrations.service';
 import { McpClientService } from '../mcp/mcp-client.service';
+import { ToolUsageRecorder } from '../tool-observability/tool-usage-recorder.service';
+import {
+    classifyToolException,
+    classifyToolResult,
+    toolUsageModeOf,
+    type ClassifiedToolOutcome,
+} from '../tool-observability/tool-usage-outcome';
 import { bindMcpArguments } from '../mcp/mcp-tool-approval';
 import {
     TOOL_READ_ERROR_CODES,
@@ -169,6 +177,93 @@ interface PreparedContactConsent {
     scope: string;
 }
 
+/** Opciones de `AIToolExecutorService.execute`; las arma siempre el servidor. */
+export type AIToolExecuteOptions = {
+    /**
+     * Quién autoriza esta ejecución y qué autoriza exactamente.
+     *
+     * Obligatoria. El ejecutor es la puerta común de todos los
+     * llamadores —loop del LLM, motor de reservas, Procedures, la
+     * confirmación server-side del "sí", Agent Test, la reanudación
+     * tras aprobación humana y el servidor MCP— y hasta acá cinco de
+     * ellos no pasaban ninguna autorización.
+     */
+    authority: ToolExecutionAuthority;
+    /** Exact served revision, exclusively from trusted runtime/approval callers. */
+    operationalScope?: ServedAgentAuthority;
+    evalMode?: boolean;
+    sandboxNamespace?: EvalNamespaceLease;
+    withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority;
+    structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
+    executionState?: { get(key: string): Promise<string | null> };
+    missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
+    /** Server-origin only: a step-up read reports an unverified chat without sending a code (see the guard). */
+    identityChallenge?: 'start' | 'none';
+    channelType?: string;
+    /**
+     * Server-origin only: the customer's message of this turn. search_products uses it to also return, under
+     * `notForSale`, the products not for sale that the message names (F4300-29), whatever query the read runs with.
+     */
+    customerText?: string;
+    readOnly?: boolean;
+    /** Trusted automatic context lookup; no views, DDL or ledger writes. */
+    automaticFaqContext?: boolean;
+    /**
+     * Server-origin only (F4300-53, corrective selection): when the lexical FAQ search finds nothing, this model call
+     * reads the message next to the published questions and names the one that answers it, or none.
+     */
+    faqSelector?: import('../faqs/faq-semantic-selector').FaqSelector;
+    executionContext?: ServiceExecutionContext;
+    draftScope?: { agentId: string; agentVersion: number };
+    /** Trusted caller key; it is always rebound to tenant/tool/args. */
+    idempotencyKey?: string;
+    /** Server-origin evidence; never populated from LLM arguments. */
+    authorityEvidence?: {
+        kind: 'booking_engine_confirmation';
+        source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
+        flowToken?: string;
+    };
+    /**
+     * Tenant discount ceiling (`upsell.maxDiscountPercent`). Comes from
+     * the persona config, never from the model: the prompt-only version
+     * was advice the model could ignore.
+     */
+    maxDiscountPercent?: number;
+    /**
+     * Operating country. Regulated knowledge of another jurisdiction is
+     * excluded rather than down-ranked — an answer about the wrong
+     * country's rules is wrong even when it is fluent and cited.
+     */
+    jurisdiction?: string | null;
+    knowledgeSearch?: {
+        evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica;
+        similarityThreshold?: number; language?: string;
+        rerank?: boolean; rerankTopN?: number;
+        agentId?: string | null; audience?: 'customer' | 'internal';
+    };
+    /**
+     * El negocio no puede comprometerse en este turno.
+     *
+     * Éste es el ÚNICO lugar por el que pasan los cuatro llamadores —el
+     * loop del LLM, el motor determinista de reservas, Procedures y la
+     * confirmación server-side del "sí"—, y hasta acá no preguntaba
+     * nunca si el perfil estaba bloqueado. El bloqueo vivía en el
+     * momento de PUBLICAR tools, así que cada llamador nuevo fuera del
+     * loop volvía a abrir la puerta: se cerró tres veces y apareció una
+     * cuarta. Verificarlo acá lo cierra para todos, incluido el que
+     * todavía no existe.
+     */
+    commitmentBlocked?: { reason: string } | null;
+    /**
+     * Lo que el dueño apagó a mano en su agente.
+     *
+     * Se verifica acá y no sólo al publicar porque publicar alcanza
+     * para el loop del LLM y no para el motor determinista, Procedures
+     * ni la confirmación server-side — los tres llaman por nombre.
+     */
+    deniedTools?: readonly string[];
+};
+
 /**
  * Executes AI tool calls against the appropriate services.
  * Called from ConversationsService when the LLM returns tool_calls.
@@ -228,6 +323,11 @@ export class AIToolExecutorService {
          * token, not the class (pending-questions.port.ts). Absent in hand-built specs: the tool answers unavailable.
          */
         @Optional() @Inject(PENDING_QUESTIONS) private readonly pendingQuestions?: PendingQuestionsPort,
+        /**
+         * Conteo de uso de todas las tools para el panel de superadmin (`admin/tools`). Ausente en los specs
+         * armados a mano: `execute` corre exactamente igual, sin medir.
+         */
+        @Optional() private readonly toolUsage?: ToolUsageRecorder,
     ) { }
 
     /**
@@ -323,8 +423,64 @@ export class AIToolExecutorService {
      * tipos: era la única forma de enterarse de cuántos llamadores no pasaban
      * ninguna autorización. Con los dos opcionales, omitir `opts` daba acceso
      * al catálogo entero, y la mayoría de los llamadores reales lo omitía.
+     *
+     * Ésta es la puerta común de todos los llamadores, así que es también el
+     * único lugar donde se puede contar el uso de TODAS las tools —las lecturas
+     * no dejan fila en `tool_execution_ledger`—. La medición envuelve la
+     * ejecución sin tocarla: el resultado y las excepciones salen idénticos, y
+     * el registro es síncrono en memoria (`ToolUsageRecorder.record`), sin I/O
+     * ni posibilidad de lanzar hacia el llamador.
      */
     async execute(
+        schemaName: string,
+        tenantId: string,
+        contactId: string,
+        toolName: string,
+        args: Record<string, any>,
+        conversationId: string | undefined,
+        opts: AIToolExecuteOptions,
+    ): Promise<any> {
+        const recorder = this.toolUsage;
+        if (!recorder) return this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts);
+        const startedAt = performance.now();
+        let result: any;
+        try {
+            result = await this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts);
+        } catch (error) {
+            this.observeToolUsage(recorder, tenantId, toolName, opts, startedAt, classifyToolException());
+            throw error;
+        }
+        this.observeToolUsage(recorder, tenantId, toolName, opts, startedAt, null, result);
+        return result;
+    }
+
+    /** Nunca lanza: una falla al medir no puede cambiar el resultado de la tool. */
+    private observeToolUsage(
+        recorder: ToolUsageRecorder,
+        tenantId: string,
+        toolName: string,
+        opts: AIToolExecuteOptions | undefined,
+        startedAt: number,
+        classified: ClassifiedToolOutcome | null,
+        result?: unknown,
+    ): void {
+        try {
+            const { outcome, errorCode } = classified ?? classifyToolResult(result);
+            recorder.record({
+                tenantId,
+                toolName,
+                mode: toolUsageModeOf(opts),
+                channel: typeof opts?.channelType === 'string' && opts.channelType ? opts.channelType : 'unknown',
+                outcome,
+                errorCode,
+                durationMs: performance.now() - startedAt,
+            });
+        } catch {
+            // La medición es best-effort; el recorder ya avisa sus propias fallas.
+        }
+    }
+
+    private async executeUnobserved(
         schemaName: string,
         tenantId: string,
         contactId: string,
@@ -335,91 +491,7 @@ export class AIToolExecutorService {
         // LLM, asi que si el canal viniera por ahi el modelo podria decir que la
         // conversacion es por email para que el codigo salga por email — o sea,
         // por el mismo canal que estamos tratando de verificar.
-        opts: {
-            /**
-             * Quién autoriza esta ejecución y qué autoriza exactamente.
-             *
-             * Obligatoria. El ejecutor es la puerta común de todos los
-             * llamadores —loop del LLM, motor de reservas, Procedures, la
-             * confirmación server-side del "sí", Agent Test, la reanudación
-             * tras aprobación humana y el servidor MCP— y hasta acá cinco de
-             * ellos no pasaban ninguna autorización.
-             */
-            authority: ToolExecutionAuthority;
-            /** Exact served revision, exclusively from trusted runtime/approval callers. */
-            operationalScope?: ServedAgentAuthority;
-            evalMode?: boolean;
-            sandboxNamespace?: EvalNamespaceLease;
-            withDataSourceAuthority?:import('../ai/interfaces/external-source-authority').ExternalSourceAuthority;
-            structuredKnowledgeInputs?:import('../evaluation-revision/evaluation-structured-knowledge').StructuredKnowledgeCapture;
-            executionState?: { get(key: string): Promise<string | null> };
-            missionScope?: import('@parallext/shared').MissionExecutionScopeV1;
-            /** Server-origin only: a step-up read reports an unverified chat without sending a code (see the guard). */
-            identityChallenge?: 'start' | 'none';
-            channelType?: string;
-            /**
-             * Server-origin only: the customer's message of this turn. search_products uses it to also return, under
-             * `notForSale`, the products not for sale that the message names (F4300-29), whatever query the read runs with.
-             */
-            customerText?: string;
-            readOnly?: boolean;
-            /** Trusted automatic context lookup; no views, DDL or ledger writes. */
-            automaticFaqContext?: boolean;
-            /**
-             * Server-origin only (F4300-53, corrective selection): when the lexical FAQ search finds nothing, this model call
-             * reads the message next to the published questions and names the one that answers it, or none.
-             */
-            faqSelector?: import('../faqs/faq-semantic-selector').FaqSelector;
-            executionContext?: ServiceExecutionContext;
-            draftScope?: { agentId: string; agentVersion: number };
-            /** Trusted caller key; it is always rebound to tenant/tool/args. */
-            idempotencyKey?: string;
-            /** Server-origin evidence; never populated from LLM arguments. */
-            authorityEvidence?: {
-                kind: 'booking_engine_confirmation';
-                source: 'confirm_yes' | 'flow_response' | 'text_confirmation';
-                flowToken?: string;
-            };
-            /**
-             * Tenant discount ceiling (`upsell.maxDiscountPercent`). Comes from
-             * the persona config, never from the model: the prompt-only version
-             * was advice the model could ignore.
-             */
-            maxDiscountPercent?: number;
-            /**
-             * Operating country. Regulated knowledge of another jurisdiction is
-             * excluded rather than down-ranked — an answer about the wrong
-             * country's rules is wrong even when it is fluent and cited.
-             */
-            jurisdiction?: string | null;
-            knowledgeSearch?: {
-                evaluationKnowledge?: import('../evaluation-revision/evaluation-knowledge-replica').EvaluationKnowledgeReplica;
-                similarityThreshold?: number; language?: string;
-                rerank?: boolean; rerankTopN?: number;
-                agentId?: string | null; audience?: 'customer' | 'internal';
-            };
-            /**
-             * El negocio no puede comprometerse en este turno.
-             *
-             * Éste es el ÚNICO lugar por el que pasan los cuatro llamadores —el
-             * loop del LLM, el motor determinista de reservas, Procedures y la
-             * confirmación server-side del "sí"—, y hasta acá no preguntaba
-             * nunca si el perfil estaba bloqueado. El bloqueo vivía en el
-             * momento de PUBLICAR tools, así que cada llamador nuevo fuera del
-             * loop volvía a abrir la puerta: se cerró tres veces y apareció una
-             * cuarta. Verificarlo acá lo cierra para todos, incluido el que
-             * todavía no existe.
-             */
-            commitmentBlocked?: { reason: string } | null;
-            /**
-             * Lo que el dueño apagó a mano en su agente.
-             *
-             * Se verifica acá y no sólo al publicar porque publicar alcanza
-             * para el loop del LLM y no para el motor determinista, Procedures
-             * ni la confirmación server-side — los tres llaman por nombre.
-             */
-            deniedTools?: readonly string[];
-        },
+        opts: AIToolExecuteOptions,
     ): Promise<any> {
         if (toolName === 'search_faqs' && opts?.automaticFaqContext) {
             opts = { ...opts, executionContext: {

@@ -1487,3 +1487,35 @@ model PlatformCommunicationRecipient {
   @@map("platform_communication_recipients")
   @@schema("public")
 }
+
+// Uso de las tools del agente, agregado por día UTC, tenant, tool, modo, canal
+// y resultado. Lo escribe sólo ToolUsageRecorder (upsert aditivo, seguro con
+// varias réplicas) y lo lee el panel de superadmin `admin/tools`. Sin FK a
+// tenants a propósito: un volcado en vuelo no puede fallar por un tenant
+// borrado; la purga del tenant borra sus filas (TENANT_PUBLIC_PURGE_ORDER).
+model PlatformToolUsageDaily {
+  day           DateTime @db.Date
+  tenantId      String   @map("tenant_id") @db.Uuid
+  toolName      String   @map("tool_name") @db.VarChar(120)
+  mode          String   @db.VarChar(16)
+  channel       String   @db.VarChar(32)
+  outcome       String   @db.VarChar(16)
+  calls         Int      @default(0)
+  totalMs       BigInt   @default(0) @map("total_ms")
+  maxMs         Int      @default(0) @map("max_ms")
+  latLt100      Int      @default(0) @map("lat_lt_100")
+  latLt300      Int      @default(0) @map("lat_lt_300")
+  latLt1000     Int      @default(0) @map("lat_lt_1000")
+  latLt3000     Int      @default(0) @map("lat_lt_3000")
+  latLt10000    Int      @default(0) @map("lat_lt_10000")
+  latGe10000    Int      @default(0) @map("lat_ge_10000")
+  lastAt        DateTime @map("last_at") @db.Timestamptz(6)
+  lastErrorCode String?  @map("last_error_code") @db.VarChar(80)
+
+  @@id([day, tenantId, toolName, mode, channel, outcome], map: "platform_tool_usage_daily_pkey")
+  @@index([day], map: "platform_tool_usage_daily_day_idx")
+  @@index([tenantId, day], map: "platform_tool_usage_daily_tenant_day_idx")
+  @@index([toolName, day], map: "platform_tool_usage_daily_tool_day_idx")
+  @@map("platform_tool_usage_daily")
+  @@schema("public")
+}

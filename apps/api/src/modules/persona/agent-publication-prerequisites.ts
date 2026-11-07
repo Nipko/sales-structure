@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
-import { buildDomainContractDraft, resolveSubtypeExperienceProfile, TOOL_GROUP_PLAN_FEATURE, VERTICAL_TOOL_GROUPS } from '@parallext/shared';
+import { buildDomainContractDraft, isPlanToolFamily, planToolFamiliesAllow, resolveSubtypeExperienceProfile, TOOL_GROUP_PLAN_FEATURE, VERTICAL_TOOL_GROUPS } from '@parallext/shared';
 import { evaluateSubscriptionAccess } from '../../common/utils/subscription-entitlement.util';
 import { applyPlanFeatureOverrides } from '../throttle/plan-feature-overrides';
 import { validateConfigurationBody, type AgentConfigurationBody, type RevisionQuery } from './agent-configuration-revision';
@@ -40,6 +40,8 @@ export async function assertPublicationPrerequisites(query:RevisionQuery,input:{
         if(scoped.has(family)&&!manifest.has(family))throw new BadRequestException({error:'configuration_capability_blocked',family,reasons:['not_in_subtype']});
         const feature=TOOL_GROUP_PLAN_FEATURE[family];
         if(feature&&features[feature]!==true)throw new ForbiddenException({error:'configuration_capability_blocked',family,reasons:['plan_missing_feature']});
+        // La lista de familias del plan (toolFamilies): ausente = todas.
+        if(isPlanToolFamily(family)&&!planToolFamiliesAllow(features,family))throw new ForbiddenException({error:'configuration_capability_blocked',family,reasons:['plan_missing_feature']});
     }
     const config=input.body.configJson;
     if((config.editorMode??config._mode)==='prompt'&&features.customPrompt!==true)throw new ForbiddenException({error:'configuration_custom_prompt_unavailable'});

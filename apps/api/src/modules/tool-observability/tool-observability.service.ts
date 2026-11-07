@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable, Logger, Optional } from '@nestjs/common';
 import {
+    PLAN_TOOL_FAMILIES_FEATURE,
     TOOL_GROUP_PLAN_FEATURE,
+    isPlanToolFamily,
+    planAllowsToolFamily,
     TOOL_GROUP_READINESS,
     TOOL_READINESS,
     VERTICAL_TOOL_GROUPS,
@@ -11,6 +14,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { buildToolControlCatalog } from '../verticals/vertical-operation-contract';
 import {
+    PLAN_GATE_EXEMPT_TOOLS,
     TOOL_FAMILIES,
     TOOL_SUBPERMISSION_RULES,
     enabledToolFamilies,
@@ -74,6 +78,16 @@ export interface ToolFamilySummary {
     profiles: number;
     planFeature: string | null;
     readiness: string | null;
+    /** El plan puede incluirla o no (`toolFamilies`). `false` = núcleo, siempre presente. */
+    planGated: boolean;
+}
+
+/** Qué planes incluyen cada familia: la lista `toolFamilies` y, para pagos, `customerPayments`. */
+export interface PlanToolCoverage {
+    available: boolean;
+    plans: Array<{ slug: string; name: string; isActive: boolean; toolFamilies: string[] | null }>;
+    /** Familia → slugs de los planes activos que la incluyen. Sólo familias que el plan gobierna. */
+    byFamily: Record<string, string[]>;
 }
 
 export interface TenantAgentTools {
@@ -106,11 +120,13 @@ export interface TenantToolRow {
     agentsError: string | null;
     agents: TenantAgentTools[];
     planFeatures: Record<string, boolean | null>;
+    /** `toolFamilies` del plan: `null` = sin límite (o desconocido si `planFeatures` viene en `null`). */
+    planToolFamilies: string[] | null;
     enabledTools: string[];
     usedTools: string[];
     enabledButUnused: string[];
     usedButNotEnabled: string[];
-    /** Tools autorizadas por la configuración pero retiradas por el plan (p. ej. pagos sin `customerPayments`). */
+    /** Tools autorizadas por la configuración pero retiradas por el plan (pagos sin `customerPayments` o una familia fuera de `toolFamilies`). */
     blockedByPlan: string[];
     usage: TenantToolUsage[];
     nonLiveCalls: number;
@@ -251,6 +267,7 @@ export function buildToolCatalog(): { entries: ToolCatalogEntry[]; families: Too
             profiles: entry.profiles.length,
             planFeature: entry.planFeature,
             readiness: TOOL_GROUP_READINESS[entry.family as VerticalToolGroup] ?? null,
+            planGated: isPlanToolFamily(entry.family),
         };
         summary.tools += 1;
         if (entry.access === 'read') summary.reads += 1; else summary.writes += 1;
@@ -294,10 +311,13 @@ export function buildTenantToolRow(input: {
     agents: Array<{ meta: Record<string, unknown>; tools: unknown }> | null;
     agentsError?: string | null;
     planFeatures: Record<string, boolean | null>;
+    /** `toolFamilies` del plan; ausente o `null` = sin límite. */
+    planToolFamilies?: readonly string[] | null;
     usage: UsageAggregateRow[];
     familyByTool: ReadonlyMap<string, string>;
 }): TenantToolRow {
     const { tenant, planFeatures, familyByTool } = input;
+    const planToolFamilies = Array.isArray(input.planToolFamilies) ? [...input.planToolFamilies] : null;
     const settings = tenant.settings && typeof tenant.settings === 'object' ? tenant.settings as Record<string, unknown> : {};
     const activeAgents = (input.agents ?? []).filter(agent => agent.meta?.is_active !== false);
     const agents = activeAgents.map(agent => describeAgentTools(agent.meta ?? {}, agent.tools));
@@ -306,8 +326,13 @@ export function buildTenantToolRow(input: {
     const blockedByPlan = new Set<string>();
     for (const agent of activeAgents) {
         for (const name of procedureAuthorizedToolNames(agent.tools)) {
-            const feature = TOOL_GROUP_PLAN_FEATURE[familyByTool.get(name) ?? ''];
-            if (feature && planFeatures[feature] === false) blockedByPlan.add(name);
+            const family = familyByTool.get(name) ?? '';
+            const feature = TOOL_GROUP_PLAN_FEATURE[family];
+            // Misma regla que la ejecución: la lista del plan alcanza a toda
+            // familia gobernada salvo las tools exentas (estado de un pago ya emitido).
+            const outsideList = !!planToolFamilies && isPlanToolFamily(family)
+                && !PLAN_GATE_EXEMPT_TOOLS.has(name) && !planToolFamilies.includes(family);
+            if ((feature && planFeatures[feature] === false) || outsideList) blockedByPlan.add(name);
             else enabled.add(name);
         }
     }
@@ -343,6 +368,7 @@ export function buildTenantToolRow(input: {
         agentsError: input.agentsError ?? null,
         agents,
         planFeatures,
+        planToolFamilies,
         enabledTools: [...enabled].sort(),
         usedTools: [...used].sort(),
         enabledButUnused: [...enabled].filter(name => !used.has(name)).sort(),
@@ -435,7 +461,7 @@ export class ToolObservabilityService {
         }
 
         const rows = await mapWithConcurrency(live, SCHEMA_CONCURRENCY, async tenant => {
-            const [agentsResult, planFeatures] = await Promise.all([
+            const [agentsResult, plan] = await Promise.all([
                 this.readAgents(tenant.schemaName),
                 this.resolvePlanFeatures(tenant.id, planFeatureKeys),
             ]);
@@ -443,7 +469,8 @@ export class ToolObservabilityService {
                 tenant,
                 agents: agentsResult.agents,
                 agentsError: agentsResult.error,
-                planFeatures,
+                planFeatures: plan.flags,
+                planToolFamilies: plan.toolFamilies,
                 usage: usageByTenant.get(tenant.id) ?? usageByTenant.get(tenant.id.toLowerCase()) ?? [],
                 familyByTool,
             });
@@ -567,17 +594,51 @@ export class ToolObservabilityService {
     }
 
     /** `null` = no se pudo resolver; la UI lo muestra como desconocido, no como apagado. */
-    private async resolvePlanFeatures(tenantId: string, keys: string[]): Promise<Record<string, boolean | null>> {
-        const result: Record<string, boolean | null> = {};
-        if (!keys.length) return result;
+    private async resolvePlanFeatures(tenantId: string, keys: string[]): Promise<{ flags: Record<string, boolean | null>; toolFamilies: string[] | null }> {
+        const flags: Record<string, boolean | null> = {};
         try {
             if (!this.throttle) throw new Error('throttle_unavailable');
             const features = await this.throttle.getPlanFeatures(tenantId);
-            for (const key of keys) result[key] = features?.[key] === true;
+            for (const key of keys) flags[key] = features?.[key] === true;
+            const list = features?.[PLAN_TOOL_FAMILIES_FEATURE];
+            return { flags, toolFamilies: Array.isArray(list) ? list.filter((item: unknown): item is string => typeof item === 'string') : null };
         } catch {
-            for (const key of keys) result[key] = null;
+            for (const key of keys) flags[key] = null;
+            return { flags, toolFamilies: null };
         }
-        return result;
+    }
+
+    /**
+     * Qué planes incluyen cada familia gobernada por el plan. Se lee de
+     * `billing_plans` (no de la caché por tenant) porque responde por el plan,
+     * no por un negocio. Si la tabla no se puede leer, el catálogo sigue.
+     */
+    async getPlanCoverage(): Promise<PlanToolCoverage> {
+        this.catalogCache ??= buildToolCatalog();
+        const families = this.catalogCache.families.filter(family => family.planGated).map(family => family.family);
+        try {
+            const rows = await this.prisma.billingPlan.findMany({
+                select: { slug: true, name: true, isActive: true, features: true },
+                orderBy: { sortOrder: 'asc' },
+            }) as Array<{ slug: string; name: string; isActive: boolean; features: unknown }>;
+            const byFamily: Record<string, string[]> = {};
+            for (const family of families) {
+                byFamily[family] = rows
+                    .filter(row => row.isActive && planAllowsToolFamily(row.features as Record<string, unknown>, family))
+                    .map(row => row.slug);
+            }
+            return {
+                available: true,
+                plans: rows.map(row => {
+                    const list = (row.features as Record<string, unknown> | null)?.[PLAN_TOOL_FAMILIES_FEATURE];
+                    return { slug: row.slug, name: row.name, isActive: row.isActive, toolFamilies: Array.isArray(list) ? list.map(String) : null };
+                }),
+                byFamily,
+            };
+        } catch (error) {
+            this.logger.warn(`[ToolUsage] plan coverage unavailable: ${error instanceof Error ? error.message : String(error)}`);
+            return { available: false, plans: [], byFamily: {} };
+        }
     }
 }
 

@@ -189,6 +189,61 @@ export const TOOL_GROUP_PLAN_FEATURE: Readonly<Record<string, string>> = Object.
     payments: 'customerPayments',
 });
 
+/** Clave de `billing_plans.features` con las familias de tools que el plan incluye. */
+export const PLAN_TOOL_FAMILIES_FEATURE = 'toolFamilies' as const;
+
+/**
+ * Las familias de tools del agente que un plan puede incluir o no.
+ *
+ * Es el espejo de `TOOL_FAMILIES` (apps/api agent-tool-registry) más `payments`,
+ * que se registra aparte contra la salud del proveedor. Vive acá y no en la API
+ * porque el editor de planes del dashboard necesita la misma lista; un spec de
+ * la API compara las dos para que no se separen.
+ */
+export const PLAN_TOOL_FAMILIES: readonly string[] = Object.freeze([
+    'appointments', 'catalog', 'offers', 'faqs', 'policies', 'knowledge', 'orders', 'crm', 'ecommerce',
+    'properties', 'tours', 'treatments', 'realEstate', 'vehicles', 'pets', 'restaurants', 'gyms',
+    'education', 'insurance', 'homeServices', 'petServices', 'vehicleRentals', 'petBoarding',
+    'photography', 'professionalServices', 'repairOrders', 'payments',
+]);
+
+const PLAN_TOOL_FAMILY_SET: ReadonlySet<string> = new Set(PLAN_TOOL_FAMILIES);
+
+export function isPlanToolFamily(family: string): boolean {
+    return PLAN_TOOL_FAMILY_SET.has(family);
+}
+
+/**
+ * Sólo la parte `toolFamilies` del plan.
+ *
+ * Ausente o `null` = todas las familias, a propósito: los planes que existían
+ * antes de la clave no pueden perder nada por un cambio de contrato. Un arreglo
+ * es una lista explícita: lo que no está, no entra. Cualquier otro valor lo
+ * rechaza la validación del panel; si llegara igual, se lee como sin límite
+ * (no hay forma segura de interpretar basura como una lista).
+ */
+export function planToolFamiliesAllow(features: Readonly<Record<string, unknown>> | null | undefined, family: string): boolean {
+    const allowed = features?.[PLAN_TOOL_FAMILIES_FEATURE];
+    if (!Array.isArray(allowed)) return true;
+    return allowed.includes(family);
+}
+
+/**
+ * ¿El plan incluye esta familia? Las dos puertas tienen que pasar: la lista
+ * `toolFamilies` y, para `payments`, además `customerPayments`.
+ */
+export function planAllowsToolFamily(features: Readonly<Record<string, unknown>> | null | undefined, family: string): boolean {
+    if (!planToolFamiliesAllow(features, family)) return false;
+    const feature = TOOL_GROUP_PLAN_FEATURE[family];
+    return feature ? features?.[feature] === true : true;
+}
+
+/** Claves de un `toolFamilies` que no son familias conocidas (se ignoran en runtime, la validación las reporta). */
+export function unknownPlanToolFamilies(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.filter(item => typeof item !== 'string' || !PLAN_TOOL_FAMILY_SET.has(item)).map(String);
+}
+
 /**
  * Readiness key each tool family depends on.
  *

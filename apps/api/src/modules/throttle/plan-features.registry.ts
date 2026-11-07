@@ -13,12 +13,14 @@
  * populates the rows; this registry is what guards edits to them.
  */
 
+import { PLAN_TOOL_FAMILIES_FEATURE, unknownPlanToolFamilies } from '@parallext/shared';
+
 export type PlanFeatureType = 'boolean' | 'number' | 'string' | 'array' | 'object';
 
 export interface PlanFeatureDef {
     key: string;
     type: PlanFeatureType;
-    category: 'resource' | 'channel' | 'ai' | 'operational' | 'enterprise' | 'module' | 'rate' | 'media';
+    category: 'resource' | 'channel' | 'ai' | 'tools' | 'operational' | 'enterprise' | 'module' | 'rate' | 'media';
 }
 
 /** Inner numeric keys of features.rateLimits */
@@ -78,6 +80,12 @@ export const PLAN_FEATURE_REGISTRY: PlanFeatureDef[] = [
     { key: 'customTemplates', type: 'boolean', category: 'ai' },
     { key: 'aiInsights', type: 'boolean', category: 'ai' },
     { key: 'recall', type: 'boolean', category: 'ai' },
+
+    // ── Agent tool families ──
+    // Familias de tools del agente que el plan incluye. Ausente o `null` = todas
+    // (ningún plan existente pierde nada); un arreglo = sólo esas. `payments`
+    // además sigue pidiendo `customerPayments`. Ver `planAllowsToolFamily`.
+    { key: PLAN_TOOL_FAMILIES_FEATURE, type: 'array', category: 'tools' },
 
     // ── Operational ──
     { key: 'scheduledReports', type: 'boolean', category: 'operational' },
@@ -181,6 +189,8 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
             unknownKeys.push(key);
             continue;
         }
+        // `toolFamilies: null` es un valor legítimo: "sin límite", igual que ausente.
+        if (key === PLAN_TOOL_FAMILIES_FEATURE && value === null) continue;
         if (!typeMatches(def, value)) {
             typeErrors.push(`${key} expected ${def.type}`);
             continue;
@@ -195,6 +205,10 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
             || value.some((channel: unknown) => typeof channel !== 'string'
                 || !['whatsapp', 'instagram', 'messenger', 'telegram', 'sms', 'web_widget'].includes(channel)))) {
             typeErrors.push('channels expected unique supported channels');
+        }
+        if (key === PLAN_TOOL_FAMILIES_FEATURE) {
+            if (new Set(value).size !== value.length) typeErrors.push(`${PLAN_TOOL_FAMILIES_FEATURE} expected unique families`);
+            for (const family of unknownPlanToolFamilies(value)) unknownKeys.push(`${PLAN_TOOL_FAMILIES_FEATURE}.${family}`);
         }
         if (key === 'rateLimits') {
             for (const [rk, rv] of Object.entries(value as Record<string, any>)) {
@@ -226,5 +240,10 @@ export function validatePlanFeatures(features: Record<string, any> | undefined |
 /** Keys present in a stored features object that are NOT in the registry (dead keys / typos). */
 export function unknownFeatureKeys(features: Record<string, any> | undefined | null): string[] {
     if (!features || typeof features !== 'object') return [];
-    return Object.keys(features).filter(k => !REGISTRY_BY_KEY.has(k));
+    return [
+        ...Object.keys(features).filter(k => !REGISTRY_BY_KEY.has(k)),
+        // Una familia desconocida dentro de `toolFamilies` se ignora en runtime;
+        // el panel la muestra como clave muerta para que alguien la limpie.
+        ...unknownPlanToolFamilies(features[PLAN_TOOL_FAMILIES_FEATURE]).map(f => `${PLAN_TOOL_FAMILIES_FEATURE}.${f}`),
+    ];
 }

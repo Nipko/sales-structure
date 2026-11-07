@@ -658,6 +658,8 @@ Technical inventory for 101 API module declaration files, 163 dashboard pages
   - `GET /billing-admin/plans/:slug` — Detalle de plan
   - `PUT /billing-admin/plans/:slug` — Editar plan (features validadas + merge, precio, overrides país/anual; con auditoría before→after)
   - `POST /billing-admin/plans/:slug/invalidate-cache` — Invalidar caché de plan/features
+  - `POST /billing-admin/plans` — Crear plan (opcional `copyFrom`; slug validado y único; auditado)
+  - `POST /billing-admin/plans/:slug/archive` / `unarchive` — Archivar sin mover tenants (reporta cuántos lo conservan); un plan archivado no se asigna
   - `GET /billing-admin/llm-spend` — Gasto de LLM del mes por tenant frente a su techo
   - `GET /billing-admin/provider-status` — Estado de cada proveedor de pago (habilitado, capacidades, sandbox/producción)
   - `GET /billing-admin/providers` · `PUT /billing-admin/providers` — Enrutamiento global de proveedores de pago (solo altas nuevas)

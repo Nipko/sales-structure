@@ -81,6 +81,7 @@ import { ExternalCrmModule } from './modules/external-crm/external-crm.module';
 import { MetaComplianceModule } from './modules/meta-compliance/meta-compliance.module';
 import { VerticalsModule } from './modules/verticals/verticals.module';
 import { ToolObservabilityModule } from './modules/tool-observability/tool-observability.module';
+import { TenantBoardModule } from './modules/tenant-board/tenant-board.module';
 import { VacationRentalModule } from './modules/vacation-rental/vacation-rental.module';
 import { ToursModule } from './modules/tours/tours.module';
 import { TreatmentPlansModule } from './modules/treatment-plans/treatment-plans.module';
@@ -272,6 +273,7 @@ import { TenantPaymentsModule } from './modules/tenant-payments/tenant-payments.
         MetaComplianceModule,
         VerticalsModule,
         ToolObservabilityModule,
+        TenantBoardModule,
         VacationRentalModule,
         ToursModule,
         TreatmentPlansModule,

@@ -11657,6 +11657,34 @@
     "next": "Suivant"
   },
   "plansPage": {
+    "newPlan": "Nouvelle offre",
+    "newPlanTitle": "Créer une offre",
+    "newPlanHint": "La nouvelle offre copie les fonctionnalités, limites et prix de l’offre d’origine. Ajustez-la ensuite dans la matrice.",
+    "slugLabel": "Slug",
+    "slugHint": "Minuscules, chiffres et tirets (2 à 41). Il est enregistré sur chaque tenant et ne peut pas être modifié.",
+    "nameLabel": "Nom",
+    "copyFromLabel": "Copier depuis",
+    "createActive": "Active dès la création (attribuable et visible en libre-service)",
+    "create": "Créer l’offre",
+    "created": "Offre « {name} » créée",
+    "slugInvalid": "Slug invalide : minuscules, chiffres et tirets (2 à 41 caractères).",
+    "slugTaken": "Une offre avec ce slug existe déjà.",
+    "archive": "Archiver",
+    "unarchive": "Désarchiver",
+    "archiveConfirm": "Archiver l’offre « {name} » ? Ses {count} tenants actifs la conservent avec toutes ses fonctionnalités, mais elle ne pourra plus être attribuée ni choisie en libre-service.",
+    "unarchiveConfirm": "Désarchiver l’offre « {name} » ? Elle peut de nouveau être attribuée et apparaît en libre-service.",
+    "archived": "Offre archivée. {count} tenants la conservent.",
+    "unarchived": "Offre désarchivée.",
+    "defaultNotArchivable": "C’est l’offre de repli de la plateforme : elle ne peut pas être archivée.",
+    "activeHint": "Modifiez-le avec Archiver / Désarchiver dans l’en-tête de l’offre.",
+    "toolFamiliesAll": "Toutes (sans limite)",
+    "toolFamiliesCount": "{count} sur {total} familles",
+    "toolFamiliesHint": "Sans limite = l’offre inclut toutes les familles, y compris les futures. Les paiements exigent aussi « Encaissements clients ».",
+    "toolFamilyGroups": {
+      "core": "Socle et CRM",
+      "vertical": "Verticales",
+      "money": "Encaissements"
+    },
     "tabs": {
       "plans": "Plans",
       "providers": "Fournisseurs"
@@ -11767,6 +11795,7 @@
     "reconcileHint": "Interroge le processeur et le moteur de facturation pour corriger les abonnements désynchronisés, sans attendre le cron",
     "reconcileDone": "Réconciliation : {scanned} vérifiés, {drift} corrigés",
     "categories": {
+      "tools": "Outils de l’agent",
       "planInfo": "Informations du plan",
       "resources": "Limites de ressources",
       "channels": "Canaux",
@@ -11778,6 +11807,7 @@
       "media": "Traitement multimédia"
     },
     "features": {
+      "toolFamilies": "Familles d’outils de l’agent",
       "seats": "Utilisateurs",
       "maxAgents": "Agents IA",
       "maxAiMessages": "Messages IA/mois",
@@ -16138,6 +16168,9 @@
       "usage": "Usage et santé"
     },
     "catalog": {
+      "allPlans": "Toutes les offres",
+      "noPlans": "Aucune offre active",
+      "planCoverageUnavailable": "Impossible de lire quelles offres incluent chaque famille.",
       "totals": "{tools} outils · {reads} lectures · {writes} écritures · {families} familles · {withGaps} avec lacunes de contrôle",
       "search": "Rechercher un outil, une famille, une description…",
       "allFamilies": "Toutes les familles",
@@ -16165,6 +16198,9 @@
       "noResults": "Aucun outil ne correspond aux filtres."
     },
     "tenants": {
+      "planFamilies": "Familles de l’offre : {families}",
+      "planAllFamilies": "L’offre ne limite pas les familles d’outils",
+      "planFamiliesCount": "{count} familles dans l’offre",
       "windowHint": "Usage réel (live) des {days} derniers jours. Agent Test et les évaluations ne comptent pas comme usage.",
       "search": "Rechercher un tenant, une offre ou un vertical…",
       "onlyAnomalies": "Seulement avec usage non activé",

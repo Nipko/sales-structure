@@ -21,9 +21,11 @@ export class ToolObservabilityController {
     constructor(private readonly tools: ToolObservabilityService) { }
 
     @Get('catalog')
-    @ApiOperation({ summary: 'Every agent tool with its policy, family, profiles and plan/readiness gates' })
-    getCatalog() {
-        return { success: true, data: this.tools.getCatalog() };
+    @ApiOperation({ summary: 'Every agent tool with its policy, family, profiles, plan/readiness gates and which plans include each family' })
+    async getCatalog() {
+        // Qué planes incluyen cada familia viaja con el catálogo: es la misma pregunta
+        // ("¿quién puede usar esta tool?") vista desde el plan.
+        return { success: true, data: { ...this.tools.getCatalog(), planCoverage: await this.tools.getPlanCoverage() } };
     }
 
     @Get('tenants')

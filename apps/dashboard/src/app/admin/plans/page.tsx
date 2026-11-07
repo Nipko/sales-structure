@@ -5,8 +5,9 @@ import { useLocale, useTranslations } from "next-intl";
 import { api } from "@/lib/api";
 import {
     Layers, Save, CheckCircle, AlertCircle, Loader2, Pencil, X,
-    RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard,
+    RefreshCw, Users, ToggleLeft, ToggleRight, CreditCard, Plus, Archive, ArchiveRestore,
 } from "lucide-react";
+import { PLAN_TOOL_FAMILIES, VERTICAL_TOOL_GROUPS } from "@parallext/shared";
 import { HelpPanel } from "@/components/ui/help-panel";
 import { TabNav } from "@/components/ui/tab-nav";
 import { PlanSpendOverview } from "./_components/PlanSpendOverview";
@@ -127,11 +128,12 @@ type FeatureType = "boolean" | "number" | "string" | "array" | "object";
 type FeatureDef = { key: string; type: FeatureType; category: string };
 
 // Order + i18n label key (plansPage.categories.*) for each registry category.
-const CATEGORY_ORDER = ["resource", "channel", "ai", "operational", "enterprise", "module", "rate", "media"] as const;
+const CATEGORY_ORDER = ["resource", "channel", "ai", "tools", "operational", "enterprise", "module", "rate", "media"] as const;
 const CATEGORY_I18N: Record<string, string> = {
     resource: "resources",
     channel: "channels",
     ai: "ai",
+    tools: "tools",
     operational: "operational",
     enterprise: "enterprise",
     module: "modules",
@@ -175,6 +177,18 @@ const CHANNEL_OPTIONS = ["whatsapp", "instagram", "messenger", "telegram", "sms"
 
 const LLM_TIERS = ["tier_1", "tier_2", "tier_3", "tier_4"];
 
+// Mismo patrón que valida la API al crear (`PLAN_SLUG_PATTERN`).
+const PLAN_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,40}$/;
+
+// Familias de tools del agente que un plan puede incluir (`features.toolFamilies`),
+// agrupadas para el editor. `null` = todas, también las que se agreguen.
+const VERTICAL_FAMILY_SET = new Set<string>(VERTICAL_TOOL_GROUPS);
+const TOOL_FAMILY_GROUPS: { key: "core" | "vertical" | "money"; families: string[] }[] = [
+    { key: "core", families: PLAN_TOOL_FAMILIES.filter(f => f !== "payments" && !VERTICAL_FAMILY_SET.has(f)) },
+    { key: "vertical", families: PLAN_TOOL_FAMILIES.filter(f => VERTICAL_FAMILY_SET.has(f)) },
+    { key: "money", families: PLAN_TOOL_FAMILIES.filter(f => f === "payments") },
+];
+
 export default function PlansPage() {
     const t = useTranslations("plansPage");
     const tf = useTranslations("plansPage.features");
@@ -201,6 +215,10 @@ export default function PlansPage() {
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
     const [reconciling, setReconciling] = useState(false);
+    const [showCreate, setShowCreate] = useState(false);
+    const [createForm, setCreateForm] = useState({ slug: "", name: "", copyFrom: "", isActive: true });
+    const [creating, setCreating] = useState(false);
+    const [archiving, setArchiving] = useState<string | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -281,6 +299,64 @@ export default function PlansPage() {
         setSaving(false);
     };
 
+    const handleCreate = async () => {
+        const slug = createForm.slug.trim();
+        const name = createForm.name.trim();
+        const copyFrom = createForm.copyFrom || plans[0]?.slug;
+        if (!PLAN_SLUG_PATTERN.test(slug)) { setToast({ type: "error", msg: t("slugInvalid") }); return; }
+        if (!name || !copyFrom) { setToast({ type: "error", msg: t("saveError") }); return; }
+        setCreating(true);
+        try {
+            const res = await api.createAdminPlan({ slug, name, copyFrom, isActive: createForm.isActive });
+            if (res.success) {
+                setToast({ type: (res as any).cacheInvalidationPending ? "error" : "success", msg: (res as any).cacheInvalidationPending ? t("cachePending") : t("created", { name }) });
+                setShowCreate(false);
+                setCreateForm({ slug: "", name: "", copyFrom: "", isActive: true });
+                load();
+            } else if (res.errorCode === "plan_slug_taken") {
+                setToast({ type: "error", msg: t("slugTaken") });
+            } else if (res.errorCode === "invalid_plan_slug") {
+                setToast({ type: "error", msg: t("slugInvalid") });
+            } else {
+                setToast({ type: "error", msg: res.error || t("saveError") });
+            }
+        } catch {
+            setToast({ type: "error", msg: t("saveError") });
+        }
+        setCreating(false);
+    };
+
+    // Archivar no mueve a nadie: los tenants del plan lo conservan. Por eso la
+    // confirmación dice cuántos son, para que nadie lo confunda con migrarlos.
+    const handleArchiveToggle = async (plan: Plan) => {
+        const toArchive = plan.isActive;
+        const question = toArchive
+            ? t("archiveConfirm", { name: plan.name, count: String(plan.tenantCount) })
+            : t("unarchiveConfirm", { name: plan.name });
+        if (!window.confirm(question)) return;
+        setArchiving(plan.slug);
+        try {
+            const res = toArchive ? await api.archiveAdminPlan(plan.slug) : await api.unarchiveAdminPlan(plan.slug);
+            if (res.success) {
+                const pending = (res as any).cacheInvalidationPending;
+                setToast({
+                    type: pending ? "error" : "success",
+                    msg: pending ? t("cachePending") : toArchive
+                        ? t("archived", { count: String((res as any).tenantsOnPlan ?? plan.tenantCount) })
+                        : t("unarchived"),
+                });
+                load();
+            } else if (res.errorCode === "default_plan_not_archivable") {
+                setToast({ type: "error", msg: t("defaultNotArchivable") });
+            } else {
+                setToast({ type: "error", msg: res.error || t("saveError") });
+            }
+        } catch {
+            setToast({ type: "error", msg: t("saveError") });
+        }
+        setArchiving(null);
+    };
+
     const handleReconcile = async () => {
         setReconciling(true);
         try {
@@ -334,7 +410,8 @@ export default function PlansPage() {
 
     const fmtNum = (v: number) => v === -1 ? t("unlimited") : v.toLocaleString();
 
-    const cellTypeFor = (def: FeatureDef): "number" | "boolean" | "select" | "channels" | "text" => {
+    const cellTypeFor = (def: FeatureDef): "number" | "boolean" | "select" | "channels" | "text" | "toolFamilies" => {
+        if (def.key === "toolFamilies") return "toolFamilies";
         if (def.type === "boolean") return "boolean";
         if (def.type === "array") return "channels";
         if (def.type === "string") return def.key === "llmTier" ? "select" : "text";
@@ -355,9 +432,44 @@ export default function PlansPage() {
         );
     }
 
-    const renderCell = (plan: Plan, key: string, type: "number" | "boolean" | "select" | "channels" | "text") => {
+    const renderCell = (plan: Plan, key: string, type: "number" | "boolean" | "select" | "channels" | "text" | "toolFamilies") => {
         const isEditing = editSlug === plan.slug && editBuffer;
         const val = isEditing ? editBuffer.features[key] : plan.features[key];
+
+        if (type === "toolFamilies") {
+            // `null`/ausente = todas (sin límite). Un arreglo = sólo esas.
+            const families: string[] | null = Array.isArray(val) ? val : null;
+            if (!isEditing) {
+                return families === null
+                    ? <span className="text-xs text-neutral-500">{t("toolFamiliesAll")}</span>
+                    : <span className="text-xs font-mono" title={families.join(", ")}>{t("toolFamiliesCount", { count: String(families.length), total: String(PLAN_TOOL_FAMILIES.length) })}</span>;
+            }
+            const toggleFamily = (family: string) => {
+                const current = families ?? [...PLAN_TOOL_FAMILIES];
+                updateFeature(key, current.includes(family) ? current.filter(f => f !== family) : [...current, family]);
+            };
+            return (
+                <div className="space-y-1.5 min-w-[180px]">
+                    <label className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-700 dark:text-neutral-300">
+                        <input type="checkbox" checked={families === null}
+                            onChange={e => updateFeature(key, e.target.checked ? null : [...PLAN_TOOL_FAMILIES])} />
+                        {t("toolFamiliesAll")}
+                    </label>
+                    {families !== null && TOOL_FAMILY_GROUPS.map(group => (
+                        <fieldset key={group.key} className="border-t border-neutral-100 dark:border-neutral-800 pt-1">
+                            <legend className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{t(`toolFamilyGroups.${group.key}`)}</legend>
+                            {group.families.map(family => (
+                                <label key={family} className="flex items-center gap-1.5 text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
+                                    <input type="checkbox" checked={families.includes(family)} onChange={() => toggleFamily(family)} />
+                                    {family}
+                                </label>
+                            ))}
+                        </fieldset>
+                    ))}
+                    <p className="text-[10px] text-neutral-400">{t("toolFamiliesHint")}</p>
+                </div>
+            );
+        }
 
         if (type === "boolean") {
             const checked = !!val;
@@ -510,6 +622,16 @@ export default function PlansPage() {
                     </h1>
                     <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("subtitle")}</p>
                 </div>
+                <div className="flex items-center gap-2">
+                {activeTab === "plans" && (
+                    <button
+                        type="button"
+                        onClick={() => setShowCreate(open => !open)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-medium text-white hover:bg-indigo-700 transition-colors"
+                    >
+                        <Plus size={14} /> {t("newPlan")}
+                    </button>
+                )}
                 <button
                     onClick={handleReconcile}
                     disabled={reconciling}
@@ -519,6 +641,7 @@ export default function PlansPage() {
                     {reconciling ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     {t("reconcile")}
                 </button>
+                </div>
             </div>
 
             <TabNav
@@ -545,6 +668,54 @@ export default function PlansPage() {
             {activeTab === "providers" && <ProvidersTab onToast={setToast} />}
 
             {activeTab === "plans" && (<>
+
+            {showCreate && (
+                <form
+                    className={`${sectionCls} p-4 space-y-3`}
+                    onSubmit={event => { event.preventDefault(); void handleCreate(); }}
+                >
+                    <div>
+                        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{t("newPlanTitle")}</h2>
+                        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">{t("newPlanHint")}</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                        <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 space-y-1">
+                            <span>{t("slugLabel")}</span>
+                            <input className={inputCls} value={createForm.slug} required pattern={PLAN_SLUG_PATTERN.source}
+                                aria-describedby="new-plan-slug-hint"
+                                onChange={e => setCreateForm(form => ({ ...form, slug: e.target.value.toLowerCase() }))} />
+                            <span id="new-plan-slug-hint" className="block text-[10px] font-normal text-neutral-400">{t("slugHint")}</span>
+                        </label>
+                        <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 space-y-1">
+                            <span>{t("nameLabel")}</span>
+                            <input className={inputCls} value={createForm.name} required maxLength={80}
+                                onChange={e => setCreateForm(form => ({ ...form, name: e.target.value }))} />
+                        </label>
+                        <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300 space-y-1">
+                            <span>{t("copyFromLabel")}</span>
+                            <select className={inputCls} value={createForm.copyFrom || plans[0]?.slug || ""}
+                                onChange={e => setCreateForm(form => ({ ...form, copyFrom: e.target.value }))}>
+                                {plans.map(plan => <option key={plan.slug} value={plan.slug}>{plan.name} ({plan.slug})</option>)}
+                            </select>
+                        </label>
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-neutral-700 dark:text-neutral-300">
+                        <input type="checkbox" checked={createForm.isActive}
+                            onChange={e => setCreateForm(form => ({ ...form, isActive: e.target.checked }))} />
+                        {t("createActive")}
+                    </label>
+                    <div className="flex gap-2">
+                        <button type="submit" disabled={creating || !plans.length}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+                            {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} {t("create")}
+                        </button>
+                        <button type="button" onClick={() => setShowCreate(false)}
+                            className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-xs font-medium text-neutral-600 dark:text-neutral-300">
+                            {t("cancel")}
+                        </button>
+                    </div>
+                </form>
+            )}
 
             {activeTab === "plans" && <PlanSpendOverview key={plans.map(p => p.updatedAt).join(":")} />}
             <HelpPanel
@@ -598,9 +769,23 @@ export default function PlansPage() {
                                                 </button>
                                             </div>
                                         ) : (
-                                            <button onClick={() => startEdit(p)} className="p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-500 transition-colors">
-                                                <Pencil size={14} />
-                                            </button>
+                                            <div className="flex gap-1">
+                                                <button onClick={() => startEdit(p)} aria-label={t("edit")} title={t("edit")} className="p-1 rounded hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-500 transition-colors">
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleArchiveToggle(p)}
+                                                    disabled={archiving === p.slug}
+                                                    aria-label={p.isActive ? t("archive") : t("unarchive")}
+                                                    title={p.isActive ? t("archive") : t("unarchive")}
+                                                    className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 transition-colors disabled:opacity-50"
+                                                >
+                                                    {archiving === p.slug
+                                                        ? <Loader2 size={14} className="animate-spin" />
+                                                        : p.isActive ? <Archive size={14} /> : <ArchiveRestore size={14} />}
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </th>
@@ -657,22 +842,14 @@ export default function PlansPage() {
                             })}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
-                            <td className={`${tdCls} font-medium`}>{t("active")}</td>
-                            {plans.map(p => {
-                                const isEditing = editSlug === p.slug && editBuffer;
-                                const val = isEditing ? editBuffer.isActive : p.isActive;
-                                return (
-                                    <td key={p.slug} className={tdCls}>
-                                        {isEditing ? (
-                                            <button type="button" onClick={() => updateTopLevel("isActive", !val)} className="text-neutral-500 hover:text-indigo-500 transition-colors">
-                                                {val ? <ToggleRight size={20} className="text-green-500" /> : <ToggleLeft size={20} />}
-                                            </button>
-                                        ) : (
-                                            <span className={`inline-block w-2 h-2 rounded-full ${val ? "bg-green-500" : "bg-neutral-300 dark:bg-neutral-600"}`} />
-                                        )}
-                                    </td>
-                                );
-                            })}
+                            <td className={`${tdCls} font-medium`} title={t("activeHint")}>{t("active")}</td>
+                            {/* Sólo lectura: archivar se hace con la acción confirmada de la
+                                cabecera, que avisa cuántos tenants conservan el plan. */}
+                            {plans.map(p => (
+                                <td key={p.slug} className={tdCls}>
+                                    <span className={`inline-block w-2 h-2 rounded-full ${p.isActive ? "bg-green-500" : "bg-neutral-300 dark:bg-neutral-600"}`} />
+                                </td>
+                            ))}
                         </tr>
                         <tr className="border-b border-neutral-100 dark:border-neutral-800">
                             <td className={`${tdCls} font-medium`}>{t("maxAgents")}</td>

@@ -11657,6 +11657,34 @@
     "next": "Next"
   },
   "plansPage": {
+    "newPlan": "New plan",
+    "newPlanTitle": "Create a plan",
+    "newPlanHint": "The new plan copies features, limits and prices from the source plan. Adjust it in the matrix afterwards.",
+    "slugLabel": "Slug",
+    "slugHint": "Lowercase letters, digits and hyphens (2 to 41). It is stored on every tenant and cannot be changed.",
+    "nameLabel": "Name",
+    "copyFromLabel": "Copy from",
+    "createActive": "Active on creation (assignable and shown in self-service)",
+    "create": "Create plan",
+    "created": "Plan “{name}” created",
+    "slugInvalid": "Invalid slug: lowercase letters, digits and hyphens (2 to 41 characters).",
+    "slugTaken": "A plan with that slug already exists.",
+    "archive": "Archive",
+    "unarchive": "Unarchive",
+    "archiveConfirm": "Archive the plan “{name}”? Its {count} active tenants keep it with all its features, but it can no longer be assigned or chosen in self-service.",
+    "unarchiveConfirm": "Unarchive the plan “{name}”? It can be assigned again and shows up in self-service.",
+    "archived": "Plan archived. {count} tenants keep it.",
+    "unarchived": "Plan unarchived.",
+    "defaultNotArchivable": "This is the platform fallback plan and cannot be archived.",
+    "activeHint": "Change it with Archive / Unarchive in the plan header.",
+    "toolFamiliesAll": "All (no limit)",
+    "toolFamiliesCount": "{count} of {total} families",
+    "toolFamiliesHint": "No limit = the plan includes every family, including future ones. Payments also requires “Customer payments”.",
+    "toolFamilyGroups": {
+      "core": "Core and CRM",
+      "vertical": "Verticals",
+      "money": "Payments"
+    },
     "tabs": {
       "plans": "Plans",
       "providers": "Providers"
@@ -11767,6 +11795,7 @@
     "reconcileHint": "Checks the processor and billing engine and fixes out-of-sync subscriptions without waiting for the cron",
     "reconcileDone": "Reconciliation: {scanned} checked, {drift} fixed",
     "categories": {
+      "tools": "Agent tools",
       "planInfo": "Plan info",
       "resources": "Resource limits",
       "channels": "Channels",
@@ -11778,6 +11807,7 @@
       "media": "Media processing"
     },
     "features": {
+      "toolFamilies": "Agent tool families",
       "seats": "Users",
       "maxAgents": "AI agents",
       "maxAiMessages": "AI messages/mo",
@@ -16138,6 +16168,9 @@
       "usage": "Usage & health"
     },
     "catalog": {
+      "allPlans": "Every plan",
+      "noPlans": "No active plan",
+      "planCoverageUnavailable": "Could not read which plans include each family.",
       "totals": "{tools} tools · {reads} reads · {writes} writes · {families} families · {withGaps} with control gaps",
       "search": "Search tool, family, description…",
       "allFamilies": "All families",
@@ -16165,6 +16198,9 @@
       "noResults": "No tool matches the filters."
     },
     "tenants": {
+      "planFamilies": "Plan families: {families}",
+      "planAllFamilies": "The plan does not limit tool families",
+      "planFamiliesCount": "{count} families in the plan",
       "windowHint": "Real (live) usage over the last {days} days. Agent Test and evaluations do not count as usage.",
       "search": "Search tenant, plan or vertical…",
       "onlyAnomalies": "Only with usage not enabled",

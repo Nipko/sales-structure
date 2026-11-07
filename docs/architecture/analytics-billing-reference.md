@@ -276,6 +276,8 @@ Traslada las consultas psql-por-SSH del runbook al panel. Auditadas con actor re
 | `GET plans/:slug` | Un plan |
 | `PUT plans/:slug` | Editar plan (merge de `features` validado contra el registro, invalida cache) |
 | `POST plans/:slug/invalidate-cache` | Refrescar entitlements sin editar |
+| `POST plans` | Crear plan (`slug` ^[a-z0-9][a-z0-9-]{1,40}$ único, `copyFrom` opcional que copia features/límites/montos sin ids del proveedor; features validadas; auditado) |
+| `POST plans/:slug/archive` · `unarchive` | Archivar/desarchivar (`isActive`). Los tenants del plan lo conservan (se informa cuántos); no se puede asignar ni elegir en autoservicio. `starter` (plan de respaldo) no se archiva |
 | `GET provider-status` | Estado de cada proveedor de pago (habilitado, capacidades, sandbox/producción). Mercado Pago ya no es proveedor de plataforma y `sync-mp` no existe |
 | `POST reconcile` | Reconciliación on-demand (`scope` full/past_due) |
 | `POST tenants/:tenantId/reconcile` | Reconciliar un tenant contra el proveedor |

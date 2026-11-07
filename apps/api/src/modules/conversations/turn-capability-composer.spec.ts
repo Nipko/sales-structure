@@ -122,6 +122,29 @@ describe('TurnCapabilityComposerService', () => {
         expect(result.authority.allowedTools).toEqual(result.contract?.publishedTools);
     });
 
+    it('un plan cuya lista de familias excluye pagos no publica el link de cobro, pero sí el estado', async () => {
+        const { service } = build({ plan: { toolFamilies: ['faqs'] } });
+
+        const result = await service.resolve({
+            tenantId,
+            schemaName,
+            config: config('retail', { payments: { enabled: true, canCreateLinks: true } }),
+            industry: 'retail',
+            subType: 'moda',
+            role: 'tenant_agent',
+            channelType: 'whatsapp',
+        });
+
+        const names = result.tools.map(tool => tool.name);
+        expect(names).not.toContain('create_payment_link');
+        expect(names).toContain('get_payment_status');
+        expect(decideToolAuthority(result.authority, 'create_payment_link', { isNonCommittal: false }).allowed).toBe(false);
+        // Una sola exclusión de pagos, la del plan: no se suma la de proveedor.
+        expect(result.contract?.excluded.filter(item => item.subject === 'payments')).toEqual([
+            expect.objectContaining({ reason: 'plan_missing_feature' }),
+        ]);
+    });
+
     it('composes live payment tools into the same contract and authority used by confirmations', async () => {
         const { service } = build();
 

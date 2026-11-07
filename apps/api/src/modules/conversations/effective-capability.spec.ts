@@ -664,3 +664,60 @@ describe('leer del proveedor y escribir local es vender la misma noche dos veces
         }));
     });
 });
+
+describe('el plan decide qué familias de tools recibe el tenant (toolFamilies)', () => {
+    const input = {
+        tenantId, schemaName, industry: 'restaurantes', subType: 'comida_rapida',
+        toolsConfig: { restaurants: { enabled: true }, faqs: { enabled: true }, crm: { enabled: true } },
+    };
+
+    it('una familia del subtipo fuera de la lista del plan se excluye con motivo de plan', async () => {
+        const { service } = build({ planFeatures: { toolFamilies: ['faqs', 'crm'] } });
+
+        const contract = await service.resolve(input);
+
+        expect(contract.publishedGroups).not.toContain('restaurants');
+        expect(contract.excluded).toContainEqual(expect.objectContaining({
+            subject: 'restaurants', reason: 'plan_missing_feature', repairRoute: '/admin/settings/billing',
+        }));
+        expect(contract.publishedTools).toContain('search_faqs');
+        expect(contract.publishedTools).toContain('get_customer_context');
+    });
+
+    it('el plan también alcanza a las familias horizontales (CRM)', async () => {
+        const { service } = build({ planFeatures: { toolFamilies: ['faqs', 'restaurants'] } });
+
+        const contract = await service.resolve(input);
+
+        expect(contract.excluded).toContainEqual(expect.objectContaining({ subject: 'crm', reason: 'plan_missing_feature' }));
+        expect(contract.publishedTools).not.toContain('get_customer_context');
+        expect(contract.publishedTools).toContain('search_faqs');
+    });
+
+    it('pagos fuera de la lista se reporta para que el compositor retire el cobro', async () => {
+        const { service } = build({ planFeatures: { customerPayments: true, toolFamilies: ['faqs'] } });
+
+        const contract = await service.resolve({ ...input, toolsConfig: { faqs: { enabled: true }, payments: { enabled: true } } });
+
+        expect(contract.excluded).toContainEqual(expect.objectContaining({ subject: 'payments', reason: 'plan_missing_feature' }));
+    });
+
+    it('sin lista en el plan no se recorta nada (los planes existentes no pierden familias)', async () => {
+        const { service } = build({ planFeatures: { plan: 'pro' } });
+
+        const contract = await service.resolve(input);
+
+        expect(contract.excluded.some(item => item.reason === 'plan_missing_feature')).toBe(false);
+        expect(contract.publishedTools).toContain('get_customer_context');
+    });
+
+    it('si el plan no se puede leer, el contrato queda degradado pero no deja mudas las familias', async () => {
+        const { service } = build({ planFeatures: new Error('redis down') });
+
+        const contract = await service.resolve(input);
+
+        expect(contract.degraded).toBe(true);
+        expect(contract.excluded.some(item => item.reason === 'plan_missing_feature')).toBe(false);
+        expect(contract.publishedTools).toContain('search_faqs');
+    });
+});

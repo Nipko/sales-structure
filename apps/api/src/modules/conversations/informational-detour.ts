@@ -30,7 +30,11 @@ const HOURS_TOPIC = /\b(?:horarios? (?:de|del) (?:atencion|apertura|cierre|funci
 const ATTEND_DAY = /\batienden? (?:los |el |la |las )?(?:hoy|manana|domingos?|sabados?|lunes|martes|miercoles|jueves|viernes|festivos?|feriados?)\b/;
 const CLOCK_OR_ME = /\d|\bme\b|\ba las?\b/;
 
-const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
+/**
+ * E2w C10: «Si pido 3 de X, ¿cuánto sería en total?» pregunta un total, no pide la cita: sin «sería» ni «en total» el
+ * motor la tomaba por un pedido («Perfecto, agendaremos X»).
+ */
+const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es|seria|serian|saldria|saldrian|quedaria|quedarian|me sale|me saldria|me quedaria)|en total|el total|how much would|total (?:cost|price)|quanto (?:seria|ficaria|fica|sai)|combien (?:ca|cela) (?:ferait|coute|couterait)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
 /** How long a service lasts is a fact about the business, not a request to book it. */
 const DURATION_TOPIC = /\b(?:cuanto (?:dura|duran|demora|demoran|tarda|tardan|tiempo)|duracion|how long|combien de temps|quanto tempo)\b/;
 const SERVICES_TOPIC = /\b(?:que servicios|cuales servicios|servicios (?:ofrecen|tienen|ofrece|tiene|disponibles)|que (?:ofrecen|tratamientos tienen|hacen|manejan)|catalogo|what services|which services|services do you|quels services|que servicos|quais servicos)\b/;
@@ -48,6 +52,20 @@ const PREPOSITIONAL_QUESTION = /^(?:a|hasta|desde|de|en|para|por) (?:que|cual|cu
 const BOOKING_COMMITMENT = /\b(?:agend\w*|reserv\w*|apartar|aparta|programar|programame|book|booking|schedule|confirm\w*|cancelar|cancela|cancelalo|cancel|quiero (?!saber|conocer|preguntar|consultar|averiguar|entender|decidir|ver\b)\w+|lo quiero|la quiero|necesito (?!saber|conocer|preguntar|consultar|decidir|ver\b|la direccion|el horario|los precios|informacion)\w+|me gustaria (?!saber|conocer|preguntar|consultar|ver\b)\w+|i want (?!to know|to ask|to see)\w+|i would like (?!to know|to ask|to see)\w+)\b/;
 /** A leading yes accepts the previous prompt: the rest is a datum, even if phrased as a question. */
 const AFFIRMATIVE_LEAD = /^(?:si|dale|claro|listo|vale|perfecto|yes|yeah|sim|oui)\b/;
+/**
+ * E2w C10: «Si pido 3 de X, ¿cuánto sería en total?» empieza por un «si» condicional, no por un «sí»: sin tilde, el «si»
+ * seguido de su condición y de una pregunta (cuánto, qué, cómo…) es la hipótesis de la pregunta. Tomarlo por un sí volvía
+ * real la misión tentativa y el motor contestaba «Perfecto, agendaremos X».
+ */
+const CONDITIONAL_SI = /^si (?!por favor|porfa|por fa|claro|dale|gracias|perfecto|listo|vale|ok|okay|de una|exacto|correcto|confirmo|acepto|quiero|me interesa|esta bien|seria|ese|esa|eso|el |la |los |las |a las|para)\w+(?: \S+){0,8}? ¿?(?:cuanto|cuanta|cuantos|cuantas|que|como|cual|cuales|cuando|donde)\b/;
+
+/** The message opens with a conditional «si» (if), not with a «sí» (yes): «Si pido 3, ¿cuánto sería?». */
+export function isConditionalSi(raw: unknown): boolean {
+    const original = String(raw ?? '').trim().replace(/^[¿¡"'\s]+/, '');
+    // «Sí, …» / «si, …»: the accent or the pause after it make it a yes.
+    if (/^s[íÍ]/.test(original) || /^si\s*[,.!;:]/i.test(original)) return false;
+    return CONDITIONAL_SI.test(normalizeForIntent(raw).replace(GREETING_LEAD, ''));
+}
 /** "no" / "ok" answer too, but only a question after them is still a question. */
 const WEAK_LEAD = /^(?:ok|okay|no)\b/;
 
@@ -63,7 +81,7 @@ function informationalTopic(raw: unknown): 'hours' | 'other' | null {
     if (!text) return null;
     if (BOOKING_COMMITMENT.test(text)) return null;
     const unGreeted = text.replace(GREETING_LEAD, '');
-    if (AFFIRMATIVE_LEAD.test(unGreeted)) return null;
+    if (AFFIRMATIVE_LEAD.test(unGreeted) && !isConditionalSi(raw)) return null;
     const asks = (value: string) => isInformationSeekingMessage(value) || PREPOSITIONAL_QUESTION.test(value);
     if (WEAK_LEAD.test(unGreeted)) {
         const rest = unGreeted.replace(WEAK_LEAD, '').replace(/^[\s,.!;]+(?:y\s+)?/, '');
@@ -151,7 +169,7 @@ export function isPushingToBook(raw: unknown, hint: BookingActHint): boolean {
     if (hasExplicitBookingRequest(raw)) return true;
     if (isInformationSeekingMessage(original)) return false;
     if (hint.dateMentioned || hint.timeMentioned) return true;
-    return STRONG_YES.test(normalizeForIntent(raw));
+    return STRONG_YES.test(normalizeForIntent(raw)) && !isConditionalSi(raw);
 }
 
 /**
@@ -165,7 +183,7 @@ export function bookingActKind(raw: unknown, hint: BookingActHint, step?: string
     if (ONLY_INQUIRY.test(text)) return 'none';
     if (hint.dateMentioned || hint.timeMentioned || hint.nameProvided || hint.emailProvided) return 'act';
     if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? ''))) return 'act';
-    if (STRONG_YES.test(text)) return 'act';
+    if (STRONG_YES.test(text) && !isConditionalSi(raw)) return 'act';
     if (opts.offerLive && BARE_ACK.test(text)) return 'act';
     if (hasExplicitBookingRequest(raw)) return 'act';
     const informational = isInformationalDetour(raw, hint, step);
@@ -202,7 +220,7 @@ export function answerToOffer(raw: unknown, hint: BookingActHint): 'yes' | 'no' 
     if (/^(?:svc_|slot_|confirm_|__flow)/.test(String(raw ?? '')) || !text) return null;
     if (isInformationSeekingMessage(String(raw ?? ''))) return null;
     if (REFUSAL.test(text) || (hint.isNegation && /^(?:no|nao|non|nope)\b/.test(text))) return 'no';
-    if (STRONG_YES.test(text) || BARE_ACK.test(text) || hint.isConfirmation) return 'yes';
+    if ((STRONG_YES.test(text) && !isConditionalSi(raw)) || BARE_ACK.test(text) || hint.isConfirmation) return 'yes';
     return null;
 }
 

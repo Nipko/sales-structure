@@ -117,16 +117,26 @@ describe('F5 · campos que pide la reserva (services.required_fields)', () => {
 });
 
 describe('F6 + F7 · estado por campo del ítem', () => {
-    it('F6: servicio sembrado con price_status=example → solo el precio queda por confirmar; la duración se afirma', () => {
+    it('F6 acotado por la opción B (ADR 0025): servicio sembrado con price_status=example → el ítem entero queda por confirmar', () => {
         const dental = fixtureSnapshot('spark-qa-dental-03');
         const general = dental.items.appointment.find(i => i.fields.name === 'Consulta general');
         expect(general).toMatchObject({ contentStatus: 'seeded', priceStatus: 'example', priceMarker: true });
         const c = qaTruth(spec, dental, { requirementId: 'OBJ.APPOINTMENT.CATALOG', itemId: general?.id }).cases[0];
-        expect(c).toMatchObject({ expected: 'AFIRMA', affirm: { duration: { min: 30, unit: 'min' } } });
-        expect(c.fields).toMatchObject({ price: 'ejemplo', currency: 'ejemplo', duration: 'confirmado' });
+        // E2w: la plantilla escribió también el `price_status = example`; no prueba que alguien revisara la ficha
+        expect(c).toMatchObject({ expected: 'NC+AV', valueState: 'ejemplo' });
+        expect(c.affirm).toBeUndefined();
+        expect(c.fields).toMatchObject({ price: 'ejemplo', currency: 'ejemplo', duration: 'sembrado' });
         expect(c.behavior).toMatch(/por confirmar/);
         // la preparación no cambia: el servicio sigue siendo de la plantilla del alta
         expect(evaluate(spec, dental).requirements.find(r => r.id === 'OBJ.APPOINTMENT.CATALOG')?.result).toBe('no_cumple');
+    });
+
+    it('F6: un precio CONFIRMADO en la fila sí prueba que la ficha se revisó: el resto se afirma', () => {
+        const s = base('salud/dental');
+        item(s, 'appointment', { name: 'Limpieza', duration: { min: 40, unit: 'min' }, price: 90000 },
+            { contentStatus: 'seeded', legacyRule: 'L3', priceStatus: 'confirmed', priceMarker: true });
+        expect(qaTruth(spec, s, { requirementId: 'OBJ.APPOINTMENT.CATALOG', itemId: 'appointment-1' }, NOW).cases[0])
+            .toMatchObject({ expected: 'AFIRMA', affirm: { duration: { min: 40, unit: 'min' }, price: 90000 } });
     });
 
     it('F6: sin marcador explícito, un ítem sembrado sigue entero «por confirmar»', () => {

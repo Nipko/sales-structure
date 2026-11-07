@@ -32,6 +32,11 @@ describe('isInformationalDetour', () => {
         'Vous ouvrez à quelle heure ?',
         '¿atienden los domingos?',
         '¿a qué hora atienden?',
+        // E2w C10: a total for a quantity is a price question, not a booking request.
+        'Si pido 3 de Manicure y pedicure, ¿cuánto sería en total?',
+        'Si pido 3 de Consulta general, ¿cuánto sería en total?',
+        '¿Cuánto me saldría si son dos?',
+        'If I get 3 haircuts, how much would it be in total?',
     ])('treats %s as a question about the business', text => {
         expect(isInformationalDetour(text)).toBe(true);
     });

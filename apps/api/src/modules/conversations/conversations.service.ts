@@ -5736,6 +5736,9 @@ export class ConversationsService {
         // confirm CORE.HOURS.REGULAR (seeded or absent hours) the status is `unknown` too.
         turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
             hasConfiguredHours(bizHours, config.hours), promptHours, turnContext.timezone, new Date(), regularHoursConfirmed(knowledgeContract));
+        // E2w (salon C03): with the status `unknown` the prompt still listed the template schedule, and the model answered
+        // «No tengo confirmado el horario… Los domingos está cerrado». A schedule the contract does not confirm is not shown.
+        const hoursForPrompt = regularHoursConfirmed(knowledgeContract) === false ? UNKNOWN_INFORMATIONAL_HOURS : promptHours;
         const knowledgeStatus = knowledgeContract ? knowledgeStatusFrom(knowledgeContract, { writesEnforced }) : null;
         if (knowledgeStatus) {
             turnContext.knowledgeStatus = knowledgeStatus;
@@ -5744,7 +5747,7 @@ export class ConversationsService {
                 unknown: knowledgeStatus.unknownIds.length, sealed: !!evaluationContext,
             });
         }
-        let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours);
+        let { systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, hoursForPrompt);
         if (session) { session.trace.systemPrompt = systemPrompt; session.trace.turnContext = turnContext; }
 
         // Hoisted (also used inside the tool loop): the agent's reply-token cap, if pinned.
@@ -5902,7 +5905,7 @@ export class ConversationsService {
                     if(!(error instanceof LLMSourceAuthorityUnavailable)||session||replyProvenance)throw error;
                     learningSuppressed=true;learningFootprint.clear();turnContext.learningExamples=[];
                     currentMessages.splice(0,currentMessages.length,...learningRecoveryMessages(messages,executedToolsThisTurn,userLanguage));
-                    ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,promptHours));
+                    ({systemPrompt,cachePrefixChars}=this.promptAssembler.assembleWithCacheBoundary(config,turnContext,hoursForPrompt));
                     turnTrace.add('decision','learning_source_unavailable',{recoveredWithoutLearning:true});
                     // A replacement answer may explain already committed results;
                     // it cannot request another effect or repeat a previous one.
@@ -6000,7 +6003,7 @@ export class ConversationsService {
                 if (styleOperation && styleOperation !== lastStyleOperation) {
                     await refreshLearningExamples({ toolName: styleOperation.name, status: 'succeeded' });
                     lastStyleOperation = styleOperation;
-                    ({ systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, promptHours));
+                    ({ systemPrompt, cachePrefixChars } = this.promptAssembler.assembleWithCacheBoundary(config, turnContext, hoursForPrompt));
                     if (session) session.trace.systemPrompt = systemPrompt;
                 }
 

@@ -79,13 +79,22 @@ export function itemFieldState(item: ItemRecord, field: string): ValueState {
     if (blank(v)) return 'ausente';
     const own = item.fieldStatus?.[field];
     if (Array.isArray(v) && v.length === 0 && isInheritedItem(item) && own !== 'confirmed') return 'ausente';
+    const marker = markerOverridesContent(item);
     if (PRICE_FIELDS.has(field)) {
         if (item.priceStatus === 'example') return 'ejemplo';
-        if (item.priceStatus === 'confirmed' && item.priceMarker) return 'confirmado';
+        if (item.priceStatus === 'confirmed' && marker) return 'confirmado';
     }
     if (own && own !== item.contentStatus) return toState(own);
-    return item.priceMarker ? 'confirmado' : toState(item.contentStatus);
+    return marker ? 'confirmado' : toState(item.contentStatus);
 }
+
+/**
+ * ADR 0006 punto 4, acotado por la opción B (dueño, 06-nov; ADR 0025): el marcador de precio dice que alguien revisó la
+ * ficha solo si confirma el precio. Un `price_status = example` lo escribe la propia plantilla del alta junto con el
+ * ítem: no prueba nada, y el ítem sembrado sigue entero «por confirmar», como lo lee el runtime (`catalogContentStatus`).
+ * E2w (salon, dental C07/C10): el banco pedía AFIRMA de «¿Tienen Color y tratamiento?», un servicio de plantilla.
+ */
+const markerOverridesContent = (item: ItemRecord): boolean => item.priceMarker === true && item.priceStatus !== 'example';
 
 function itemCase(e: EffectiveRequirement, item: ItemRecord): Omit<QaTruthCase, 'requirementId' | 'applies' | 'rule'> {
     const wm = e.req.whenMissing;
@@ -103,7 +112,7 @@ function itemCase(e: EffectiveRequirement, item: ItemRecord): Omit<QaTruthCase, 
     const privacyNote = withheld.length ? ` Dirección con address_privacy=${privacy}: da la zona y dice que la dirección se comparte al confirmar.` : '';
     const detail = { fields, ...(unknown.length ? { unknown } : {}) };
 
-    const contentOk = item.priceMarker === true || item.contentStatus === 'confirmed';
+    const contentOk = markerOverridesContent(item) || item.contentStatus === 'confirmed';
     if (contentOk && item.priceType === 'a_cotizar') {
         return { valueState: 'confirmado', expected: 'COTIZA', affirm, ...detail, never: ['cualquier cifra'], behavior: `Sin cifra + procedimiento de cotización (PREG de sus campos).${noConsta}` };
     }

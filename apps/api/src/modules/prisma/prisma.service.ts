@@ -10,6 +10,9 @@ const TENANT_PUBLIC_PURGE_ORDER = [
     // What the day-0 funnel measured (Ola 8). Pure analytics about this tenant:
     // it goes with the tenant, before `users` (its user_id references it).
     'onboarding_events',
+    // Conteo diario de uso de tools del agente (panel `admin/tools`). Analítica
+    // pura del tenant, sin FK: se va con él.
+    'platform_tool_usage_daily',
     'llm_spend_reservations', 'evaluation_knowledge_usages',
     'chat_identity_challenges', 'customer_portal_access_challenges', 'platform_notification_outbox', 'push_subscriptions',
     'feature_request_subscribers', 'feature_request_comments',

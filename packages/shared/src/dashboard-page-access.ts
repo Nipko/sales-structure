@@ -78,6 +78,8 @@ export const DASHBOARD_PAGE_RULES: readonly DashboardPageRule[] = [
     { prefix: "/admin/funnel", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/vertical-analytics", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/vertical-audit", roles: [ROLE_KEYS.SUPER_ADMIN] },
+    // Catálogo, habilitación por tenant y uso de las tools del agente: cruza todos los tenants.
+    { prefix: "/admin/tools", roles: [ROLE_KEYS.SUPER_ADMIN] },
     { prefix: "/admin/coupons", roles: [ROLE_KEYS.SUPER_ADMIN] },
     // The platform-paid allowance of every account's public link (D19). A cost
     // of the platform, not of any tenant: never reachable by impersonating.

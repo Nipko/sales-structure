@@ -423,6 +423,7 @@ const platformSections: NavSectionDef[] = [
       { labelKey: "complianceAdmin", href: "/admin/compliance-admin", icon: Scale },
       { labelKey: "platformAudit", href: "/admin/audit", icon: ShieldCheck },
       { labelKey: "verticalAudit", href: "/admin/vertical-audit", icon: ClipboardList },
+      { labelKey: "agentTools", href: "/admin/tools", icon: Wrench, accent: "text-indigo-500 dark:text-indigo-400" },
     ],
   },
   {

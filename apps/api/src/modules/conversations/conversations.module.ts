@@ -83,9 +83,12 @@ import { TurnCapabilityComposerService } from './turn-capability-composer.servic
 import { PendingKnowledgeModule } from '../pending-knowledge/pending-knowledge.module';
 import { PendingQuestionsService } from '../pending-knowledge/pending-questions.service';
 import { PENDING_QUESTIONS } from './pending-questions.port';
+import { ToolObservabilityModule } from '../tool-observability/tool-observability.module';
 
 @Module({
     imports: [
+        // El ejecutor de tools cuenta cada llamada en el recorder de este módulo (panel `admin/tools`).
+        ToolObservabilityModule,
         WidgetDeliveryModule,
         PersonaModule,
         LearningModule,

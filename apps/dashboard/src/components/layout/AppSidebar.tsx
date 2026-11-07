@@ -71,6 +71,7 @@ import {
   Gauge,
   GraduationCap,
   HardDrive,
+  HeartPulse,
   Home,
   Inbox,
   KeyRound,
@@ -375,6 +376,7 @@ const platformSections: NavSectionDef[] = [
     items: [
       { labelKey: "home", href: "/admin", icon: LayoutDashboard },
       { labelKey: "tenants", href: "/admin/tenants", icon: Building2, accent: "text-blue-500 dark:text-blue-400" },
+      { labelKey: "tenantBoard", href: "/admin/tenant-board", icon: HeartPulse, accent: "text-emerald-500 dark:text-emerald-400" },
       { labelKey: "incidents", href: "/admin/incidents", icon: Siren, accent: "text-rose-500 dark:text-rose-400" },
     ],
   },

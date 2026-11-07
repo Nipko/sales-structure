@@ -288,6 +288,18 @@ export function isWithinOpeningHours(
 
 export type HoursStatus = 'open' | 'closed' | 'unknown';
 
+/** El requisito del horario habitual en el contrato de conocimiento del turno (@parallext/business-spec). */
+export const REGULAR_HOURS_REQUIREMENT = 'CORE.HOURS.REGULAR';
+
+/**
+ * Si el contrato del turno confirma el horario habitual: `undefined` sin contrato (se decide como siempre); `false` si
+ * CORE.HOURS.REGULAR no está entre sus hechos (sembrado, ausente, en conflicto o colgado de otro hueco).
+ */
+export function regularHoursConfirmed(contract: { facts: ReadonlyArray<{ id: string }> } | null | undefined): boolean | undefined {
+    if (!contract) return undefined;
+    return contract.facts.some(fact => fact.id === REGULAR_HOURS_REQUIREMENT);
+}
+
 /** Are the hours of this tenant/agent configured by a person (not derived)? */
 export function hasConfiguredHours(tenantHours: any, agentHours: any): boolean {
     return businessHoursConfigured(tenantHours) || hasEntries(agentHours?.schedule);
@@ -315,10 +327,16 @@ export function informationalStatus(hours: InformationalHours, timezone: string,
  * Without them `isWithinBusinessHours` answers `open` for lack of data, and the
  * agent then claimed "estamos abiertos" with no hours at all: the status comes
  * from the agenda when there is one, and is `unknown` otherwise.
+ *
+ * E2v (viajes C04, dental C04, citas P11-2/P11-4): con el horario habitual sembrado o ausente en el contrato del turno, la
+ * agenda o el horario de la plantilla decían «está cerrada ahora» como hecho. `regularHoursConfirmed === false` (el
+ * contrato no confirma CORE.HOURS.REGULAR) es `unknown`; sin contrato (`undefined`) se decide como siempre.
  */
 export function promptHoursStatus(
     configuredStatus: 'open' | 'closed', configured: boolean, promptHours: any, fallbackTimezone: string, now: Date = new Date(),
+    regularHoursConfirmed?: boolean,
 ): HoursStatus {
+    if (regularHoursConfirmed === false) return 'unknown';
     if (configured) return configuredStatus;
     if (promptHours?.informational === true && promptHours.unknown !== true) {
         return informationalStatus(promptHours as InformationalHours, promptHours.timezone || fallbackTimezone, now);

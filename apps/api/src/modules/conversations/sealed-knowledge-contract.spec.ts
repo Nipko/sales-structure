@@ -72,7 +72,8 @@ describe('D1a · contrato de conocimiento sellado en la foto de evaluación', ()
                 const evidence = JSON.parse(verifierCalls[0][0].messages[0].content).evidence as string;
                 expect(typeof evidence).toBe('string');
                 expect(response.reply).not.toContain('lunes a viernes de 8 a 18');
-                expect(response.reply).toContain('No tengo ese dato confirmado');
+                // E2v: el aviso dice qué no consta de lo preguntado (el horario), no un «ese dato» genérico.
+                expect(response.reply).toContain('No tengo confirmado el horario');
             } else {
                 expect(verifierCalls).toHaveLength(0);
                 expect(response.reply).toContain('lunes a viernes de 8 a 18');

@@ -3,7 +3,7 @@ import { isCanonicalConsentRecovery, canonicalConsentRecoveryDirective } from '.
 import { DemoAllowanceService } from '../throttle/demo-allowance.service';
 import { CATALOG_OVER_FAQ_FLAG, EVIDENCE_VERIFIER_FLAG, FACTS_LEDGER_FLAG, FeatureFlagsService, OPERATION_CLASSIFIER_FLAG, RENDERED_FACTS_FLAG, REQUIRED_READS_APPOINTMENTS_FLAG, REQUIRED_READS_CATALOG_FLAG, REQUIRED_READS_LISTINGS_FLAG, REQUIRED_READS_PROPERTIES_FLAG, REQUIRED_READS_RESTAURANTS_FLAG, REQUIRED_READS_TOURS_FLAG, SAFETY_TRIAGE_FLAG, SLOT_WINDOW_FLAG, resolveFeatureFlag } from '../throttle/feature-flags.service';
 import { runSafetyTriage, type SafetyTriageTurnOutcome } from './runtime/safety-triage';
-import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, explicitUnavailable, parseEvidenceVerdict, readDepartures, repairReply, turnEvidence } from './runtime/evidence-verifier';
+import { authoritativeNumbers, dropBackedViolations, evidenceVerifierRequest, explicitUnavailable, parseEvidenceVerdict, readDepartures, repairReply, templateItemIds, turnEvidence } from './runtime/evidence-verifier';
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import { buildOperationShadowTrace, OperationClassifierService, type OperationShadowVerdict } from './runtime/operation-classifier.service';
 import { buildRequiredReadsTrace, REQUIRED_READ_TIMEOUT_MS, requiredReadDefaultArgs, requiredReadsGate, requiredReadsPilotForProfile, runRequiredReads,
@@ -108,7 +108,7 @@ import { sessionCanExecute, sessionLlmRouter, sessionToolExecutor } from './agen
 import { containsBookingOffer } from './booking-offer';
 import { projectEcommerceCatalogRow, projectOwnCatalogRow } from './catalog-turn-projection';
 import { projectBookingStateForPrompt, TENTATIVE_BOOKING_BLOCKED_TOOLS, restoreBookingMission } from './booking-state-continuity';
-import { deriveInformationalHours, isWithinOpeningHours, hasConfiguredHours, promptHoursStatus, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
+import { deriveInformationalHours, isWithinOpeningHours, hasConfiguredHours, promptHoursStatus, regularHoursConfirmed, resolvePromptBusinessHours, UNKNOWN_INFORMATIONAL_HOURS, type InformationalHours } from './informational-hours';
 import { resolveEvaluationSnapshot } from './agent-evaluation-snapshot';
 import { AGENT_TEST_EXECUTION_CONTEXT, DRAFT_EXECUTION_CONTEXT, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { EVALUATION_CONTEXT_LANGUAGES, evaluationContextLanguage, projectBusinessTurnContext,
@@ -5701,11 +5701,6 @@ export class ConversationsService {
         // open/closed; this only adds an informational schedule when the tenant
         // configured none, so the agent can answer "¿a qué hora abren?".
         const promptHours = await this.resolvePromptBusinessHours(tenantId, config, bizHours, evaluationContext, turnContext.timezone);
-        // `isWithinBusinessHours` answers `open` when no hours exist; the prompt must not
-        // repeat that as a fact. Configured hours keep their verdict; otherwise the agenda
-        // decides, and without one the status is `unknown`.
-        turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
-            hasConfiguredHours(bizHours, config.hours), promptHours, turnContext.timezone);
         // Assemble with a cache boundary: the contract+persona prefix is stable
         // across turns and can be cached by the provider (90% off on Anthropic;
         // better OpenAI auto-cache hit-rate). Only the <turn> block changes.
@@ -5735,6 +5730,12 @@ export class ConversationsService {
         const knowledgeContract: TurnKnowledgeContract | null = evaluationContext
             ? evaluationContext.knowledgeContract ?? null
             : this.readinessContext ? await this.readinessContext.contract(tenantId) : null;
+        // `isWithinBusinessHours` answers `open` when no hours exist; the prompt must not
+        // repeat that as a fact. Configured hours keep their verdict; otherwise the agenda
+        // decides, and without one the status is `unknown`. E2v: with a contract that does not
+        // confirm CORE.HOURS.REGULAR (seeded or absent hours) the status is `unknown` too.
+        turnContext.businessHoursStatus = promptHoursStatus(turnContext.businessHoursStatus as 'open' | 'closed',
+            hasConfiguredHours(bizHours, config.hours), promptHours, turnContext.timezone, new Date(), regularHoursConfirmed(knowledgeContract));
         const knowledgeStatus = knowledgeContract ? knowledgeStatusFrom(knowledgeContract, { writesEnforced }) : null;
         if (knowledgeStatus) {
             turnContext.knowledgeStatus = knowledgeStatus;
@@ -7149,7 +7150,11 @@ export class ConversationsService {
         router: { execute: (request: any) => Promise<any> }; tenantId: string; executionContext?: ServiceExecutionContext;
         conversationId: string; turnTrace: { add: (...args: any[]) => void }; session?: AgentTurnSession;
     }): Promise<string> {
-        const evidence = turnEvidence({ facts: input.facts, catalog: input.turnContext.catalog, services: input.turnContext.availableServices,
+        // E2v: a template item (seeded or example service, product or package) backs nothing: neither the item nor the facts
+        // projected from it are evidence (`turnEvidence` drops the items themselves).
+        const templateIds = templateItemIds(input.turnContext.catalog, input.turnContext.availableServices, input.reads.map(read => read.result));
+        const facts = templateIds.size ? input.facts.filter(fact => !templateIds.has(String(fact.subject.id))) : input.facts;
+        const evidence = turnEvidence({ facts, catalog: input.turnContext.catalog, services: input.turnContext.availableServices,
             reads: input.reads, knowledge: input.turnContext.retrievedKnowledge, business: input.turnContext.business });
         try {
             const request = evidenceVerifierRequest({ customerMessage: input.customerMessage, reply: input.reply, contract: input.contract, evidence });
@@ -7163,10 +7168,11 @@ export class ConversationsService {
             // D1d: what the classifier flagged but the turn's own data backs (a confirmed price, a total from it) or that
             // only says something is not confirmed stays; D1j: a 0 or false never backs a denial (L4 column default).
             const sources = { catalog: input.turnContext.catalog, services: input.turnContext.availableServices, reads: input.reads };
-            const { kept, dropped } = dropBackedViolations(verdict.violations, authoritativeNumbers({ ...sources, facts: input.facts }),
+            const { kept, dropped } = dropBackedViolations(verdict.violations, authoritativeNumbers({ ...sources, facts }),
                 { reply: input.reply, customerMessage: input.customerMessage, explicitUnavailable: explicitUnavailable(input.reads),
                     departures: readDepartures(input.reads) });
-            const repair = repairReply(input.reply, kept, input.contract, input.language);
+            // E2v: con el mensaje del cliente el aviso dice qué no consta de lo preguntado, o no se agrega si lo preguntado consta.
+            const repair = repairReply(input.reply, kept, input.contract, input.language, { customerMessage: input.customerMessage });
             input.turnTrace.add('guardrail', 'evidence_verifier', { status: repair.removed.length ? 'repaired' : 'clean',
                 violations: kept.map(v => ({ kind: v.kind, requirementId: v.requirementId })), dropped: dropped.length, removed: repair.removed.length });
             if (repair.removed.length) this.recordAgentSignal(input.tenantId, 'evidence_verifier_repaired', input.session);

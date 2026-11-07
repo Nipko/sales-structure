@@ -63,7 +63,8 @@ export function servicePriceNote(status: ServicePriceStatus): string | undefined
  */
 export function projectAvailableService(service: {
     id: string; name: string; description?: string | null; durationMinutes?: number | null; price?: number | null; currency?: string | null; priceStatus?: ServicePriceStatus | null;
-}): { id: string; name: string; description?: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string } {
+    contentStatus?: string | null;
+}): { id: string; name: string; description?: string; durationMinutes?: number; price?: number; priceStatus?: ServicePriceStatus; currency?: string; contentStatus?: 'seeded' | 'example' } {
     // What the service includes, as the owner wrote it: without it "¿qué incluye X?" has no answer in the
     // prompt and the model falls back to a "let me check" it can never keep.
     const description = typeof service.description === 'string' ? service.description.replace(/\s+/g, ' ').trim().slice(0, 280) : '';
@@ -80,6 +81,9 @@ export function projectAvailableService(service: {
         price: status !== 'confirmed' ? undefined : (service.price ?? undefined),
         priceStatus: status,
         currency: service.currency ?? undefined,
+        // E2v: un servicio de la plantilla del alta lo sigue diciendo (list_services lo marca), así el verificador de evidencia
+        // no lo toma como oferta confirmada. Solo viaja la marca, nunca `confirmed`: la proyección de siempre no cambia.
+        ...(service.contentStatus === 'seeded' || service.contentStatus === 'example' ? { contentStatus: service.contentStatus } : {}),
     };
 }
 

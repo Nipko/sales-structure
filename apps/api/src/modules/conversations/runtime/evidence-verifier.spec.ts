@@ -43,7 +43,8 @@ describe('EvidenceVerifier (D1b)', () => {
         ];
         const r = repairReply(reply, violations, contract({ pendingQuestion: true }), 'es');
         expect(r.removed).toHaveLength(2);
-        expect(r.reply).toBe('No tengo ese dato confirmado; si quiere, lo consulto con el equipo y le aviso. ¿Le gustaría otra fecha?');
+        // E2v: una pregunta de venta no queda sola tras un aviso que ya ofrece averiguar (y «¿otra fecha?» repetía la negación quitada).
+        expect(r.reply).toBe('No tengo ese dato confirmado; si quiere, lo consulto con el equipo y le aviso.');
     });
 
     it('sin violaciones o sin coincidencias, la respuesta sale igual', () => {

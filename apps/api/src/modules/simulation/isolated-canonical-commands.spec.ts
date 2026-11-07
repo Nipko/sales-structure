@@ -561,6 +561,14 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         const created=await confirmed('create_appointment',{serviceId,staffId:staff,date,time:'10:00',customerName:'Eval'});
         expect(created).toMatchObject({success:true,appointment:{status:'confirmed'}});
         const appointmentId=created.appointment.id;
+        // Moving or cancelling one's own appointment is the same identity
+        // decision as reading it (1c904cc9). A namespace does not read the
+        // vertical, so it is A2: refused without the synthetic assurance, and
+        // covered by the one EvalService writes for every sandbox conversation.
+        await inbound('Quiero mover mi cita');
+        expect(await invoke('reschedule_appointment',{appointmentId,newDate:date,newTime:'11:00'}))
+            .toMatchObject({error:'eval_identity_fixture_required',persisted:false});
+        await q("INSERT INTO __eval_identity_assurance(conversation_id,contact_id,assurance,expires_at) SELECT $1::uuid,$2::uuid,'synthetic_A2',expires_at FROM __eval_namespace",[conversationId,contactId]);
         const moved=await confirmed('reschedule_appointment',{appointmentId,newDate:date,newTime:'11:00'});
         expect(moved).toMatchObject({success:true,appointment:{time:'11:00'}});
         const cancelled=await confirmed('cancel_appointment',{appointmentId});

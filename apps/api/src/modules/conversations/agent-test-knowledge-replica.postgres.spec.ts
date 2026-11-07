@@ -27,7 +27,8 @@ import { AgentTestService } from './agent-test.service';
 import { AIToolExecutorService } from './ai-tool-executor.service';
 import { ToolExecutionControlService } from './tool-execution-control.service';
 import { sealEvaluationSnapshot, type AgentEvaluationSnapshot } from './agent-evaluation-snapshot';
-import { agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
+import { RUNTIME_FLAGS_OFF, agentTurnFixture, publishTools } from './__fixtures__/agent-turn.fixture';
+import { EVIDENCE_VERIFIER_FLAG } from '../throttle/feature-flags.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
 import { DISPOSABLE_KNOWLEDGE_DATABASE, isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
@@ -82,7 +83,11 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
             await client.$executeRawUnsafe(`ALTER TABLE public.tenants ADD COLUMN IF NOT EXISTS ${column} ${type}`);
         await sql(`INSERT INTO public.tenants(id,schema_name,is_active,industry,language,operating_country,operating_currency,settings)
             VALUES($1::uuid,$2,true,'retail','es','CO','COP',$3::jsonb)`, tenantId, schema,
-            JSON.stringify({ businessHours: { enabled: false, timezone: 'America/Bogota' }, verticalConfig: { industry: 'retail', subType: 'moda' } }));
+            JSON.stringify({ businessHours: { enabled: false, timezone: 'America/Bogota' }, verticalConfig: { industry: 'retail', subType: 'moda' },
+                // This suite counts every provider call, so the runtime classifiers that default on since #359 / #373 stay off,
+                // as in every turn spec (RUNTIME_FLAGS_OFF): with the store's required reads on, the operation classifier
+                // runs before the model and takes the first scripted response. They have their own specs.
+                featureFlags: { ...RUNTIME_FLAGS_OFF, [EVIDENCE_VERIFIER_FLAG]: false } }));
         await client.$executeRawUnsafe(`CREATE SCHEMA "${schema}"`);
         const ddl = readFileSync(resolve(__dirname, '../../../prisma/tenant-schema.sql'), 'utf8').replaceAll('{{SCHEMA_NAME}}', schema);
         for (const statement of (prisma as any).splitSqlStatements(ddl))

@@ -496,6 +496,46 @@ export function resolveVerticalAgendaSeedContract(
     };
 }
 
+/**
+ * Los tres planes de muestra que siembra `seedMembershipPlans` (ver allí).
+ * `price` es la REFERENCIA en COP: desde R3 la semilla escribe 0 con
+ * `price_status = 'example'`, pero es el monto que escribía la semilla previa
+ * y el que repara el backfill generado de `seeded-price-backfill.ts`.
+ */
+export const GYM_MEMBERSHIP_PLAN_SEED = Object.freeze([
+    {
+        name: { es: 'Mensual', en: 'Monthly', pt: 'Mensal', fr: 'Mensuel' },
+        description: {
+            es: 'Acceso ilimitado al gimnasio + 8 clases grupales al mes',
+            en: 'Unlimited gym access + 8 group classes per month',
+            pt: 'Acesso ilimitado + 8 aulas em grupo por mês',
+            fr: 'Accès illimité + 8 cours collectifs par mois',
+        },
+        durationDays: 30, price: 150000, credits: 8, pt: 0, guests: 1, freeze: 0, order: 1,
+    },
+    {
+        name: { es: 'Trimestral', en: 'Quarterly', pt: 'Trimestral', fr: 'Trimestriel' },
+        description: {
+            es: 'Tres meses con clases ilimitadas y 15 días de congelamiento',
+            en: 'Three months with unlimited classes and 15 freeze days',
+            pt: 'Três meses com aulas ilimitadas e 15 dias de congelamento',
+            fr: 'Trois mois avec cours illimités et 15 jours de gel',
+        },
+        // class_credits_per_period NULL = ilimitado (así lo lee bookClass).
+        durationDays: 90, price: 390000, credits: null, pt: 1, guests: 3, freeze: 15, order: 2,
+    },
+    {
+        name: { es: 'Anual', en: 'Annual', pt: 'Anual', fr: 'Annuel' },
+        description: {
+            es: 'Un año con clases ilimitadas, 4 sesiones de entrenamiento personal y 30 días de congelamiento',
+            en: 'One year with unlimited classes, 4 personal training sessions and 30 freeze days',
+            pt: 'Um ano com aulas ilimitadas, 4 sessões de personal e 30 dias de congelamento',
+            fr: 'Un an avec cours illimités, 4 séances de coaching et 30 jours de gel',
+        },
+        durationDays: 365, price: 1320000, credits: null, pt: 4, guests: 10, freeze: 30, order: 3,
+    },
+]);
+
 @Injectable()
 export class VerticalsService {
     private readonly logger = new Logger(VerticalsService.name);
@@ -2510,39 +2550,7 @@ export class VerticalsService {
     ): Promise<void> {
         try {
             const L = (loc: Record<string, string>) => loc[lang] || loc.es;
-            const PLANS = [
-                {
-                    name: { es: 'Mensual', en: 'Monthly', pt: 'Mensal', fr: 'Mensuel' },
-                    description: {
-                        es: 'Acceso ilimitado al gimnasio + 8 clases grupales al mes',
-                        en: 'Unlimited gym access + 8 group classes per month',
-                        pt: 'Acesso ilimitado + 8 aulas em grupo por mês',
-                        fr: 'Accès illimité + 8 cours collectifs par mois',
-                    },
-                    durationDays: 30, price: 150000, credits: 8, pt: 0, guests: 1, freeze: 0, order: 1,
-                },
-                {
-                    name: { es: 'Trimestral', en: 'Quarterly', pt: 'Trimestral', fr: 'Trimestriel' },
-                    description: {
-                        es: 'Tres meses con clases ilimitadas y 15 días de congelamiento',
-                        en: 'Three months with unlimited classes and 15 freeze days',
-                        pt: 'Três meses com aulas ilimitadas e 15 dias de congelamento',
-                        fr: 'Trois mois avec cours illimités et 15 jours de gel',
-                    },
-                    // class_credits_per_period NULL = ilimitado (así lo lee bookClass).
-                    durationDays: 90, price: 390000, credits: null, pt: 1, guests: 3, freeze: 15, order: 2,
-                },
-                {
-                    name: { es: 'Anual', en: 'Annual', pt: 'Anual', fr: 'Annuel' },
-                    description: {
-                        es: 'Un año con clases ilimitadas, 4 sesiones de entrenamiento personal y 30 días de congelamiento',
-                        en: 'One year with unlimited classes, 4 personal training sessions and 30 freeze days',
-                        pt: 'Um ano com aulas ilimitadas, 4 sessões de personal e 30 dias de congelamento',
-                        fr: 'Un an avec cours illimités, 4 séances de coaching et 30 jours de gel',
-                    },
-                    durationDays: 365, price: 1320000, credits: null, pt: 4, guests: 10, freeze: 30, order: 3,
-                },
-            ];
+            const PLANS = GYM_MEMBERSHIP_PLAN_SEED;
 
             let inserted = 0;
             await this.withTenantQuery(schemaName, executor, async (query) => {

@@ -2649,11 +2649,13 @@ export class ConversationsService {
         scope: ServedAgentAuthority | undefined, defaultLanguage?: string): Promise<void> {
         const saved = await this.saveMessage(tenantId, conversation.id, msg);
         const language = this.languageDetector.detect(msg.content?.text || '', defaultLanguage || 'es');
+        // The inbound this notice answers: the saved row, else the provider's id for it. One notice per inbound.
+        const dedupeId = saved.id ?? providerMessageId(msg) ?? msg.id;
         try {
             await this.replyOnceThroughOutbox({
                 tenantId, conversation, msg, operationalScope: scope, inboundMessageId: saved.id,
                 item: { kind: 'text', payload: { text: notLiveNotice(language) } },
-                originKey: `go-live-off:${conversation.id}:${saved.id ?? providerMessageId(msg) ?? msg.id}`,
+                originKey: `go-live-off:${conversation.id}:${dedupeId}`,
             });
         } catch (error: any) {
             this.logger.warn(`[GoLive] Not-live notice not sent for ${conversation?.id}: ${error?.message}`);

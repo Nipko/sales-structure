@@ -144,7 +144,11 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         expect(await seatsLeft(inv)).toBe(10);
     });
 
-    it('VVIA-12: list_my_tour_bookings returns only own, non-cancelled bookings', async () => {
+    it('VVIA-12: list_my_tour_bookings returns only own bookings; a cancelled one is reported as cancelled and is not payable', async () => {
+        // Since e89bf128 the tool reports the bounded history INCLUDING
+        // cancellations (ordered by departure, newest first), so the agent can
+        // answer "¿qué pasó con mi reserva?". What must not leak is another
+        // customer's booking or a payable reference for a cancelled one.
         // Both departures are scheduled: a package with inventory only sells its loaded dates.
         const id = await pkg('Isla Grande'); await seats(id, date, 20); await seats(id, today, 20);
         const a = await seedCustomer(h.q, 'A'), b = await seedCustomer(h.q, 'B');
@@ -153,7 +157,10 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         await confirmed(b, 'create_tour_booking', { packageId: id, departureDate: date, partySize: 1, guestName: 'B' });
         await confirmed(a, 'cancel_tour_booking', { bookingId: gone.booking.id });
         const list = await h.call(a.contactId, a.conversationId, 'list_my_tour_bookings', {}, scope);
-        expect(list.bookings.map((x: any) => x.id)).toEqual([keep.booking.id]);
+        expect(list.bookings.map((x: any) => x.id)).toEqual([keep.booking.id, gone.booking.id]);
+        expect(list.bookings[1].status).toBe('cancelled');
+        expect(list.bookings[1].payableReference ?? null).toBeNull();
+        expect(list.historyMayBeTruncated).toBe(false);
         expect(JSON.stringify(list.bookings[0].payableReference ?? '')).not.toMatch(/100000|price|amount/i);
     });
 
@@ -353,7 +360,7 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
     });
 
     // ── Empty catalogue and accents (diagnosis 2026-10-09, F1 / F5) ───────────
-    it('F1: search_listings over a catalogue with no available listing answers catalog_empty; with listings it is a plain no-match', async () => {
+    it('F1: search_listings over a catalogue with no available listing answers catalog_empty; with listings a no-match offers the nearest listing', async () => {
         const C = await seedCustomer(h.q, 'Comprador');
         const empty = await h.call(C.contactId, C.conversationId, 'search_listings', { transactionType: 'sale', neighborhood: 'Usaquén', minBedrooms: 3 }, scope);
         expect(empty.listings).toEqual([]);
@@ -364,7 +371,14 @@ import { CRM_BASE_TABLES, N3_DATABASE_URL, openLive, seedCustomer } from './__fi
         const noMatch = await h.call(C.contactId, C.conversationId, 'search_listings', { neighborhood: 'Medellín' }, scope);
         expect(noMatch.listings).toEqual([]);
         expect(noMatch.catalog_empty).toBeUndefined();
-        expect(noMatch.message).toContain('No hay inmuebles con esos criterios');
+        // Since da6f5901 a no-match over a non-empty catalogue offers the
+        // nearest miss instead of a bare «no hay»; the plain no-match message is
+        // left for when not even a near miss exists (unit-covered in
+        // ai-tool-executor.listing-closest-matches.spec.ts).
+        expect(noMatch.closestMatches.map((m: any) => m.name)).toEqual(['Casa Aurora']);
+        expect(noMatch.closestMatches[0].unmetCriteria).toEqual(['neighborhood']);
+        expect(noMatch.matchNote).toEqual(expect.any(String));
+        expect(noMatch.message).toBeUndefined();
     });
 
     it('F5: a neighborhood typed with or without the accent finds the listing the owner typed either way', async () => {

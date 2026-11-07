@@ -39,8 +39,18 @@ export const EVAL_IDENTITY_READERS = new Set(['get_appointment_details', 'list_c
  * `identity_challenge`: in an evaluation it exists only to prove the step-up
  * DENIAL, so it never reaches a writer and there is nothing for an assurance to
  * unlock.
+ *
+ * `cancel_appointment` and `reschedule_appointment` came in with 1c904cc9. That
+ * change made the four appointment record tools ONE identity decision, taken
+ * from the tenant's business type, failing closed to A2 when the type is not
+ * known — and a leased namespace never reads it (`verticalPolicyContext`). The
+ * two readers were already covered here; the two writers were not, so every
+ * canonical cancel or reschedule in an evaluation stopped at
+ * `eval_identity_fixture_required` even though the eval session writes the
+ * synthetic assurance for its conversation. Both belong to the `canonicalOnly`
+ * `appointment_transitions` family, so the same confinement check applies.
  */
-export const EVAL_IDENTITY_STEP_UP_WRITERS = new Set(['create_vehicle_rental']);
+export const EVAL_IDENTITY_STEP_UP_WRITERS = new Set(['create_vehicle_rental', 'cancel_appointment', 'reschedule_appointment']);
 
 /** Every tool a synthetic assurance may cover, readers and writers alike. */
 export const EVAL_IDENTITY_FIXTURE_TOOLS: ReadonlySet<string> =

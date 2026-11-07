@@ -1,12 +1,12 @@
 {
   "version": 1,
-  "revision": "8f884792cb105f4b49deadb13809051972cce222",
-  "generatedAt": "2026-11-06T23:20:27.796Z",
+  "revision": "c5caf37b5521bd0ae3317eaf87b38777043e0fb0",
+  "generatedAt": "2026-11-07T01:01:52.092Z",
   "finished": false,
   "counts": {
-    "aceptada": 25,
+    "aceptada": 26,
     "bloqueada": 27,
-    "abierta": 1,
+    "abierta": 0,
     "diferida": 1
   },
   "provenance": {
@@ -722,10 +722,10 @@
     },
     {
       "id": "T7",
-      "open": 1,
-      "openLabel": "deploy no llama al verificador compartido",
+      "open": 0,
+      "openLabel": "",
       "gates": [],
-      "status": "abierta",
+      "status": "aceptada",
       "provenance": "derived",
       "artefact": null,
       "evidence": "El programa de herramientas entra al gate oficial por UNA autoridad compartida: `verify-artifacts.cjs` ejecuta `generate-tool-profile-audit --check` junto con los otros generadores, y `candidate`, `deploy` y `vertical-quality` llaman a ese verificador en vez de llevar cada uno su propia lista. El artefacto de herramientas quedó stale sin impedir un cierre precisamente porque no estaba ahí. Que el gate se pone rojo ante una fuente modificada lo demuestra una prueba que cambia una fuente auditada y captura la transición, no la afirmación de que el árbol está al día. Las seis filas T1–T6 y T8 se derivan de lecturas del código, nunca de prosa ni de la existencia de un test.",

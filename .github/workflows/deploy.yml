@@ -334,8 +334,10 @@ jobs:
       # tool-profile audit could describe a tree two commits behind the one
       # being shipped, and the artefacts are what the programme is read from.
       # `--check` regenerates in memory and compares; it writes nothing.
+      # Called by path, as the other two workflows do: tools-programme-rows (T7)
+      # and artifact-gate-authority.spec read each workflow for this file name.
       - name: Generated artefacts match their sources
-        run: npm run verify:artifacts
+        run: node apps/api/scripts/artifacts/verify-artifacts.cjs
 
       - name: Business spec suite
         run: |

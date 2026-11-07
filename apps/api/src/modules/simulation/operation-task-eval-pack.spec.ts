@@ -202,7 +202,8 @@ describe('service, lodging and food operation competence pack', () => {
         // puede quedarse sin aviso por parecerse a una prueba.
         for (const file of ['../home-services/home-services.service.ts', '../photography/photography.service.ts',
             '../restaurants/restaurants.service.ts', '../tours/tours.service.ts', '../vacation-rental/properties.service.ts']) {
-            expect(source(file)).toContain('execution: { sandboxNamespace?: EvalNamespaceLease }');
+            // The lease is the first field of `execution`; place_order also carries commitmentKey since #202.
+            expect(source(file)).toMatch(/execution: \{\s*sandboxNamespace\?: EvalNamespaceLease\b/);
         }
         // La reserva de recurso no tiene efecto externo que apagar: escribe SQL
         // y su propia bitácora, sin eventos, correos ni proveedores.

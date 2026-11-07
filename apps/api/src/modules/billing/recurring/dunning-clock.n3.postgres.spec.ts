@@ -37,7 +37,10 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         'billing_country TEXT', 'subscription_status TEXT', 'trial_ends_at TIMESTAMPTZ', 'current_period_end TIMESTAMPTZ',
         'payment_provider TEXT', 'payment_provider_customer_id TEXT', 'payment_provider_override TEXT',
         'onboarding_completed_at TIMESTAMPTZ', 'first_channel_connected_at TIMESTAMPTZ', 'first_message_at TIMESTAMPTZ',
-        'signup_source TEXT', 'created_at TIMESTAMPTZ DEFAULT NOW()', 'updated_at TIMESTAMPTZ DEFAULT NOW()'];
+        'signup_source TEXT', 'created_at TIMESTAMPTZ DEFAULT NOW()', 'updated_at TIMESTAMPTZ DEFAULT NOW()',
+        // R4 go-live gate (#330, 20261030160000_add_go_live_gate): Prisma's tenant.update returns every model column.
+        "go_live_state VARCHAR(8) NOT NULL DEFAULT 'off'", 'go_live_at TIMESTAMPTZ', 'go_live_by TEXT',
+        'go_live_spec_version TEXT', 'go_live_ack JSONB'];
 
     beforeAll(async () => {
         const parsed = new URL(url!);

@@ -6,7 +6,7 @@ import {
     VERTICAL_MANIFEST_INDUSTRIES,
 } from '@parallext/shared';
 import { VERTICAL_REGISTRY, getVerticalDefinition } from './vertical-definitions';
-import { VerticalsService, resolveVerticalAgendaSeedContract } from './verticals.service';
+import { GYM_MEMBERSHIP_PLAN_SEED, VerticalsService, resolveVerticalAgendaSeedContract } from './verticals.service';
 
 /**
  * ═══ THE PRICES THE SEED WROTE BEFORE ANYONE ASKED WHERE A PRICE CAME FROM ═══
@@ -201,9 +201,16 @@ export function registrySeededServicePairs(): SeededPricePair[] {
 }
 
 /**
- * Every (name, price) the membership-plan seed writes, captured from the seed
- * itself rather than copied: `seedMembershipPlans` keeps its plans private, so
- * this runs it against a query stub for each language and records the INSERTs.
+ * Every (name, price) the membership-plan seed wrote before R3, captured from
+ * the seed itself rather than copied: this runs `seedMembershipPlans` against a
+ * query stub for each language and records the INSERTs, so the names (and the
+ * language fallback) are exactly the ones the seed writes.
+ *
+ * Since R3 (#326) the seed inserts 0 with `price_status = 'example'`, so the
+ * amount it writes TODAY is never the one to repair: the rows this backfill
+ * exists for were written by the pre-R3 seed, with the plan's COP reference
+ * (`GYM_MEMBERSHIP_PLAN_SEED[].price`). The INSERT's sort_order names the plan,
+ * and the price recorded is that reference.
  *
  * Captured for Colombia because there the D17 amount is the reference itself
  * (factor 1, and the three references are already round), which is exactly
@@ -219,7 +226,9 @@ export async function registrySeededMembershipPlanPairs(): Promise<SeededPricePa
                 if (params[9] !== SEEDED_REFERENCE_CURRENCY) {
                     throw new Error(`seeded_price_backfill_plan_currency:${String(params[9])}`);
                 }
-                pairs.push({ name: String(params[0]), price: Number(params[3]), status: 'example' });
+                const plan = GYM_MEMBERSHIP_PLAN_SEED.find((candidate) => candidate.order === params[8]);
+                if (!plan) throw new Error(`seeded_price_backfill_unknown_plan:${String(params[0])}`);
+                pairs.push({ name: String(params[0]), price: Number(plan.price), status: 'example' });
             }
             return [];
         };

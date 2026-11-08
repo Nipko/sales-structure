@@ -122,6 +122,7 @@ import { foldedSql, foldQueryText } from '../../common/utils/sql-accent-fold.uti
 import { foldForSearch, likePatternForTerm, productSearchTerms } from '../../common/utils/product-search-terms';
 import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
+import { LISTING_SUBJECT_NOTE } from './runtime/service-not-listing';
 import { applyUnconfirmedMarks, catalogContentStatus, unconfirmedCatalogMarks, unconfirmedNotes } from './catalog-content-status';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
@@ -5365,7 +5366,7 @@ export class AIToolExecutorService {
                     message: 'No hay inmuebles con esos criterios. La búsqueda se hizo correctamente: dilo así y ofrece ajustar zona, presupuesto o tipo de inmueble.',
                 } : {}),
                 // Production 24-oct: «Je n'ai pas la surface confirmée» / «price not confirmed» for a listing with 80 m² and 250.000 EUR.
-                ...(found.length || closest.length ? { fieldAuthority: LISTING_FIELD_AUTHORITY } : {}),
+                ...(found.length || closest.length ? { fieldAuthority: LISTING_FIELD_AUTHORITY, subjectNote: LISTING_SUBJECT_NOTE } : {}),
             };
         } catch (e: any) {
             return this.safeToolFailure('search_listings', e, 'read');

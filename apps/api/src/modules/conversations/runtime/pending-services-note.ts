@@ -44,6 +44,26 @@ function list(names: string[], code: string): string {
     return `${names.slice(0, -1).join(', ')} ${AND[code] ?? AND.es} ${names[names.length - 1]}`;
 }
 
+/**
+ * E2ab: los servicios de plantilla del turno salen de tres fuentes, no solo de `<available_services>`. Sin reserva autorizada
+ * (dental, C16 «modo ausente») ese bloque queda vacío y el modelo los toma de `<catalogue_authority>` (`pending`) o de una lectura
+ * `list_services` del turno.
+ */
+export function templateServicesOfTurn(
+    context: { availableServices?: readonly MaybeSeededService[]; catalogueAuthority?: { pending?: readonly string[] } } | undefined,
+    reads?: ReadonlyArray<{ name?: string; result?: any }>,
+): MaybeSeededService[] {
+    const out = new Map<string, MaybeSeededService>();
+    const add = (service: MaybeSeededService) => { if (service?.name && isTemplate(service) && !out.has(service.name)) out.set(service.name, service); };
+    for (const service of context?.availableServices ?? []) add(service);
+    for (const name of context?.catalogueAuthority?.pending ?? []) add({ name, contentStatus: 'seeded' });
+    for (const read of reads ?? []) {
+        if (!/service/i.test(String(read?.name || '')) || !Array.isArray(read?.result?.services)) continue;
+        for (const service of read.result.services) add({ name: String(service?.name || ''), contentStatus: service?.contentStatus });
+    }
+    return [...out.values()];
+}
+
 /** La respuesta con los servicios de plantilla marcados como pendientes; null si no hace falta. */
 export function pendingServicesNote(reply: string, services: readonly MaybeSeededService[] | undefined, lang?: string): string | null {
     const text = String(reply || '').trim();

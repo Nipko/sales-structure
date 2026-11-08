@@ -12,7 +12,7 @@ import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperat
 import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
-import { pendingServicesNote } from './runtime/pending-services-note';
+import { pendingServicesNote, templateServicesOfTurn } from './runtime/pending-services-note';
 import { unbackedExclusionCorrection } from './unbacked-exclusion';
 import { unbackedPaymentCorrection } from './unbacked-payment';
 import { quantityTotalNote } from './quantity-total';
@@ -7968,7 +7968,8 @@ export class ConversationsService {
         }
         // E2aa C01 (dental): «¿qué hacen?» listed the setup template's services as confirmed; they are said as pending (option B).
         const pendingServices = !(trustedContext as any)?.directive && !isSystemFixedText(response)
-            ? pendingServicesNote(response, trustedContext?.availableServices as any, lang) : null;
+            ? pendingServicesNote(response, templateServicesOfTurn(trustedContext as any,
+                [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)]), lang) : null;
         if (pendingServices) {
             this.logger.log(`[Guardrail] Template services listed as confirmed: said as pending: "${response.slice(0, 100)}"`);
             response = pendingServices;

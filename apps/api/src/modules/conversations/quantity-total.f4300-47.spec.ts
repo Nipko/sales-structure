@@ -61,3 +61,25 @@ describe('F4300-47 · a quantity of the catalogue product gets its total', () =>
             .toContain('Por 2 unidades serían 250 EUR (2 × 125 EUR).');
     });
 });
+
+describe('E2aa C10 · a price asked for more units than the stock still gets its total', () => {
+    it.each([
+        ['es', 'Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?',
+            'El Audífono QA Aurora cuesta 119.900 COP cada uno y actualmente tenemos 2 en stock. Pero solo hay 2 unidades disponibles, por lo que no puedo confirmar un pedido de 3. ¿Le gustaría pedir 2 unidades o prefiere que le sugiera otra opción?',
+            'no puedo confirmar un pedido de 3. Por 3 unidades serían 359.700 COP (3 × 119.900 COP). ¿Le gustaría pedir 2 unidades'],
+        ['es', 'Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?',
+            'El Audífono QA Aurora tiene un precio de 119.900 COP cada uno, pero actualmente solo quedan 2 en stock. ¿Le gustaría que le ayude a pedir las 2 unidades disponibles?',
+            'Por 3 unidades serían 359.700 COP (3 × 119.900 COP).'],
+        ['en', 'how much would 3 Audífono QA Aurora be in total?', 'Only 2 Audífono QA Aurora are left. Would you like 2?',
+            'For 3 units it would be 359,700 COP (3 × 119,900 COP).'],
+    ])('[%s] %s', (lang, ask, reply, expected) => {
+        expect(spaced(quantityTotalNote(reply, ask, CATALOG, lang))).toContain(spaced(expected));
+    });
+
+    it.each([
+        ['the total is said already', 'Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?', 'Serían 359.700 COP, pero solo quedan 2.'],
+        ['no price asked', 'quiero 3 Audífono QA Aurora', 'Solo quedan 2 unidades del Audífono QA Aurora.'],
+    ])('stays: %s', (_why, ask, reply) => {
+        expect(quantityTotalNote(reply, ask, CATALOG, 'es')).toBeNull();
+    });
+});

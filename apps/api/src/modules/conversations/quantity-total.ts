@@ -7,6 +7,8 @@
  * and the stock covers it, the total is said before the closing question.
  */
 import { formatPriceWithCurrency } from './booking-engine.service';
+import { normalizeForIntent } from '@parallext/shared';
+import { PRICE_TOPIC } from './informational-detour';
 import { moneyMentionsIn, quantitiesIn } from './response-validator.service';
 
 export interface PricedProduct {
@@ -84,10 +86,20 @@ export function quantityTotalNote(reply: string, customerText: string, catalog: 
     const [n] = asked;
     const code0 = String(lang || 'es').slice(0, 2);
     const mentions = moneyMentionsIn(text);
+    const overStock = typeof product.stock === 'number' && Number.isFinite(product.stock) && n > product.stock;
+    // E2aa C10 (store): «Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?» with 2 left got the unit price and the stock, never
+    // the total. A price asked for more units than the stock still gets its total; the stock is said next to it (stock-shortfall).
+    if (overStock && PRICE_TOPIC.test(normalizeForIntent(String(customerText || '')))) {
+        if (!mentions.every(m => Math.abs(m.amount - product.price!) < 0.005)) return null;
+        return (mentions.length ? unitSaidAsTotal(text, mentions, product, n, code0) : null) ?? withNote(text, n, product, code0);
+    }
     if (mentions.length) return unitSaidAsTotal(text, mentions, product, n, code0);
-    // More than the stock is the stock note's to say (F4300-37).
-    if (typeof product.stock === 'number' && Number.isFinite(product.stock) && n > product.stock) return null;
-    const code = String(lang || 'es').slice(0, 2);
+    // More units than the stock, with no price asked, is the stock note's to say (F4300-37).
+    if (overStock) return null;
+    return withNote(text, n, product, code0);
+}
+
+function withNote(text: string, n: number, product: PricedProduct, code: string): string | null {
     const total = formatPriceWithCurrency(code, product.price! * n, product.currency);
     const unit = formatPriceWithCurrency(code, product.price!, product.currency);
     if (!total || !unit) return null;

@@ -22,6 +22,7 @@ import { demoAllowanceExhaustedText } from '../widget/widget-demo-link';
 import { recordFirstReply } from '../../common/utils/first-reply.util';
 import { stripInternalMarkers } from '../../common/utils/internal-markers.util';
 import { projectAvailableServices } from '../appointments/service-price-status';
+import { LISTING_READ_OPERATIONS, namedCatalogService } from './runtime/service-not-listing';
 import { AbsentSubjects, absentServicesIn, annotateKnowledgeItems, annotateKnowledgeToolResult, notOfferedReply, offerClaimForAbsent, type CatalogueEntry } from './runtime/catalog-over-faq';
 import { catalogNamesOfTurn, closerToTurnLanguage, languageDenialOf, languageMismatch, rewriteRejection, type ReplyLang, type RewriteRejectionReason, verbatimTermsOf, wholeReplyMismatch, withoutSentencesIn } from './reply-language';
 import { localeForReply, normalizeReplyAmounts } from './reply-price-format';
@@ -5534,7 +5535,10 @@ export class ConversationsService {
             const slots = requiredReadsPilot === 'properties' || requiredReadsPilot === 'tours'
                 ? requiredReadSlotsIn(userText, new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(now))
                 : requiredReadsPilot === 'listings' ? listingSearchSlotsIn(userText) : undefined;
-            if (gate.run) {
+            // E2z P07-4: «¿cuántos metros tiene Avalúo comercial?» nombra un servicio, no un inmueble: no se fuerza search_listings.
+            const serviceNotListing = requiredReadsPilot === 'listings' && gate.run && LISTING_READ_OPERATIONS.has(gate.operation.key)
+                && namedCatalogService(userText, turnContext.availableServices) !== null;
+            if (gate.run && !serviceNotListing) {
                 const context: ServiceExecutionContext = {
                     ...executionContext, mode: executionContext?.mode ?? 'live', persistence: 'disabled',
                 };

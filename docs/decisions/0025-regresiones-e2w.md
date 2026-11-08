@@ -43,3 +43,13 @@ Con #403, C01 subió a 81% y salon dejó de fallar. Dental siguió recitando «c
 
 1. `projectedCatalogFacts` convertía la duración de cada servicio de `<available_services>` en un hecho citable (`<fact_tokens>`) sin mirar `contentStatus`. Ahora un servicio de plantilla no genera hechos: su duración y su precio no constan.
 2. `<catalogue_authority>` listaba los servicios como `<offered>` («la lista completa de lo que ofrece el negocio»). Ahora el ofrecido de plantilla lleva `content_status="seeded"` y el bloque trae la misma nota (`SEEDED_SERVICES_NOTE`), una sola vez por prompt.
+
+## Adenda 3 (E2z, 2026-11-07): P07-4, un servicio no es un inmueble
+
+Con #404, C01 subió a 90% y dental pasó los 3 intentos. Apareció un caso nuevo en inmobiliaria: «¿Cuántos metros y habitaciones tiene Avalúo comercial?» (un servicio de plantilla) fallaba 3 de 3. El agente respondía «corresponde a un apartamento de 80 m² con 2 habitaciones», los datos del único inmueble del tenant.
+
+Las palabras de inmueble («metros», «habitaciones») hacían que `listingQuestionOperation` forzara `search_listings` sin filtros, y el modelo atribuía el resultado al servicio.
+
+Decisión:
+1. Si el mensaje nombra un servicio de `<available_services>` (`namedCatalogService`), no se fuerzan las lecturas `listing_info` ni `find_listing`.
+2. Todo resultado de `search_listings` con inmuebles trae `subjectNote` (`LISTING_SUBJECT_NOTE`): un servicio no es un inmueble, y sus metros, habitaciones o precio nunca se atribuyen a un servicio.

@@ -5,7 +5,7 @@ Generado por `apps/api/scripts/artifacts/generate-closure-state.cjs`. **Ningún 
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `0e9ac243761370f9fa0f1375e0696a90149f130a`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `7505df5b8ebc0de2fb02b8c3e148a5444c01d22e`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 

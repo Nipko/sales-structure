@@ -34,7 +34,7 @@ const CLOCK_OR_ME = /\d|\bme\b|\ba las?\b/;
  * E2w C10: «Si pido 3 de X, ¿cuánto sería en total?» pregunta un total, no pide la cita: sin «sería» ni «en total» el
  * motor la tomaba por un pedido («Perfecto, agendaremos X»).
  */
-const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es|seria|serian|saldria|saldrian|quedaria|quedarian|me sale|me saldria|me quedaria)|en total|el total|how much would|total (?:cost|price)|quanto (?:seria|ficaria|fica|sai)|combien (?:ca|cela) (?:ferait|coute|couterait)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
+export const PRICE_TOPIC =/\b(?:cuanto (?:cuesta|cuestan|vale|valen|cobran|cobra|sale|salen|es|seria|serian|saldria|saldrian|quedaria|quedarian|me sale|me saldria|me quedaria)|en total|el total|how much would|total (?:cost|price)|quanto (?:seria|ficaria|fica|sai)|combien (?:ca|cela) (?:ferait|coute|couterait)|precios?|tarifas?|costos?|cuanto me (?:cobran|saldria)|how much|prices?|pricing|cost|quanto (?:custa|custam|cobram)|precos?|combien|prix|tarifs?|coute)\b/;
 /** How long a service lasts is a fact about the business, not a request to book it. */
 const DURATION_TOPIC = /\b(?:cuanto (?:dura|duran|demora|demoran|tarda|tardan|tiempo)|duracion|how long|combien de temps|quanto tempo)\b/;
 const SERVICES_TOPIC = /\b(?:que servicios|cuales servicios|servicios (?:ofrecen|tienen|ofrece|tiene|disponibles)|que (?:ofrecen|tratamientos tienen|hacen|manejan)|catalogo|what services|which services|services do you|quels services|que servicos|quais servicos)\b/;

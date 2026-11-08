@@ -53,3 +53,10 @@ Las palabras de inmueble («metros», «habitaciones») hacían que `listingQues
 Decisión:
 1. Si el mensaje nombra un servicio de `<available_services>` (`namedCatalogService`), no se fuerzan las lecturas `listing_info` ni `find_listing`.
 2. Todo resultado de `search_listings` con inmuebles trae `subjectNote` (`LISTING_SUBJECT_NOTE`): un servicio no es un inmueble, y sus metros, habitaciones o precio nunca se atribuyen a un servicio.
+
+## Adenda 4 (E2aa, 2026-11-07): C10 con stock corto y C01 en dental
+
+Con #405, P07-4 pasó 3 de 3 y los fallos bajaron de 40 a 30. Quedaron dos casos de producto:
+
+1. **C10 en electrónica (3 de 3)**: «Si pido 3 de Audífono QA Aurora, ¿cuánto sería en total?» con 2 en stock recibía el precio por unidad y el stock, pero nunca el total. `quantityTotalNote` callaba a propósito cuando la cantidad superaba el stock (F4300-37 le dejaba ese caso a `stockShortfallNote`). Decisión: si el cliente pregunta el precio o el total (`PRICE_TOPIC`), el total se dice igual, «Por 3 unidades serían 359.700 COP (3 × 119.900 COP)», y el stock va al lado, como pide la regla 22a. Sin pregunta de precio, el caso sigue siendo de la nota de stock.
+2. **C01 en dental (5 de 6 respuestas entre E2z y E2aa)**: con la marca y la nota de las adendas 1 y 2, el modelo seguía listando «consultas generales, consultas especializadas y controles» como oferta confirmada. Decisión: un guard de salida (`pendingServicesNote`) agrega que están pendientes de confirmar por el negocio cuando la respuesta nombra dos o más servicios de plantilla y ninguna de sus frases lo dice. Con un solo servicio (una cita o una pregunta por nombre) no actúa, para no tocar las confirmaciones de reserva.

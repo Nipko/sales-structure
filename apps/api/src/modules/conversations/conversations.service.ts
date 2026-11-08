@@ -12,6 +12,7 @@ import { isOwnBookingsQuestion, isPastOrdersQuestion, lexicalRequiredReadsOperat
 import { allCancelledCountCorrection, cancelledPurchaseCorrection, firstOrderCorrection, pastOrdersReportText, unpaidOrderCorrection } from './past-orders-report';
 import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
+import { pendingServicesNote } from './runtime/pending-services-note';
 import { unbackedExclusionCorrection } from './unbacked-exclusion';
 import { unbackedPaymentCorrection } from './unbacked-payment';
 import { quantityTotalNote } from './quantity-total';
@@ -7964,6 +7965,13 @@ export class ConversationsService {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] The reply priced another service than the one asked — answered from its entry: "${response.slice(0, 100)}"`);
             response = wrongService;
+        }
+        // E2aa C01 (dental): «¿qué hacen?» listed the setup template's services as confirmed; they are said as pending (option B).
+        const pendingServices = !(trustedContext as any)?.directive && !isSystemFixedText(response)
+            ? pendingServicesNote(response, trustedContext?.availableServices as any, lang) : null;
+        if (pendingServices) {
+            this.logger.log(`[Guardrail] Template services listed as confirmed: said as pending: "${response.slice(0, 100)}"`);
+            response = pendingServices;
         }
         // F4300-47: «para dos personas sería el doble de ese valor» after «40.000 COP» is said as the total the customer asked for.
         const spelledTotal = spelledTotalCorrection(response, customerText, lang);

@@ -36,3 +36,10 @@ E2w (tras #401) bajó los fallos de 68 a 57, pero C07, C10, C03 y C17 empeoraron
 E2x confirmó C07, C10 y C03 (3 de 3), pero C01 bajó de 72% a 61%: ante «¿qué es lo que hacen?», salon y dental listaban la coloración, la manicura o las consultas de la plantilla como oferta real. `list_services` ya marcaba esos servicios (`contentStatus`) y la proyección la conservaba, pero `<available_services>` no la mostraba.
 
 Decisión: el servicio de plantilla lleva `content_status="seeded|example"` en `<available_services>`, y el bloque trae una sola `<note>` (`SEEDED_SERVICES_NOTE`): al describir el negocio se omite o se nombra como pendiente de confirmar, sin dar su descripción, duración ni precio como hechos. Sin servicios de plantilla, el bloque queda igual que antes.
+
+## Adenda 2 (E2y, 2026-11-07): C01 en dental
+
+Con #403, C01 subió a 81% y salon dejó de fallar. Dental siguió recitando «consulta general, especializada y control»: su descripción confirmada (`companies.about`) no nombra servicios, y los tres del catálogo son de plantilla. Seguían entrando al prompt por dos vías sin marca:
+
+1. `projectedCatalogFacts` convertía la duración de cada servicio de `<available_services>` en un hecho citable (`<fact_tokens>`) sin mirar `contentStatus`. Ahora un servicio de plantilla no genera hechos: su duración y su precio no constan.
+2. `<catalogue_authority>` listaba los servicios como `<offered>` («la lista completa de lo que ofrece el negocio»). Ahora el ofrecido de plantilla lleva `content_status="seeded"` y el bloque trae la misma nota (`SEEDED_SERVICES_NOTE`), una sola vez por prompt.

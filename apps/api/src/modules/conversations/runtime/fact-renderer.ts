@@ -82,6 +82,8 @@ export function projectedCatalogFacts(turn: Partial<TurnContext>, at: Date): Ver
     }
     for (const service of turn.availableServices || []) {
         if (!service?.id) continue;
+        // E2y C01 (opción B): un servicio de la plantilla del alta no es un hecho citable; su duración y su precio no constan.
+        if (service.contentStatus === 'seeded' || service.contentStatus === 'example') continue;
         const subject = { type: 'service', id: String(service.id), ...(service.name ? { name: String(service.name).slice(0, 80) } : {}) };
         if (typeof service.price === 'number' && Number.isFinite(service.price)) {
             // Rule 22a: an <available_services> entry with a price and no price_status is confirmed.

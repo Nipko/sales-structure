@@ -25,3 +25,24 @@ describe('<available_services> con servicios de plantilla', () => {
         expect(turn).not.toContain('<note>');
     });
 });
+
+describe('<catalogue_authority> con servicios de plantilla (E2y C01)', () => {
+    const assembler = new PromptAssemblerService({} as any);
+    const render = (turn: any): string => (assembler as any).buildTurnLayer(turn);
+
+    it('marca el ofrecido pendiente y añade la nota si <available_services> no la trae', () => {
+        const turn = render({ catalogueAuthority: { offered: ['Consulta general', 'Limpieza'], notInCatalogue: [], pending: ['Consulta general'] } });
+        expect(turn).toContain('<offered content_status="seeded">Consulta general</offered>');
+        expect(turn).toContain('<offered>Limpieza</offered>');
+        expect(turn.split('<note>').length - 1).toBe(1);
+    });
+
+    it('sin pendientes el bloque no cambia; con <available_services> marcado la nota no se repite', () => {
+        expect(render({ catalogueAuthority: { offered: ['Limpieza'], notInCatalogue: [] } })).not.toContain('content_status');
+        const both = render({
+            availableServices: [{ id: 's1', name: 'Consulta general', contentStatus: 'seeded' }],
+            catalogueAuthority: { offered: ['Consulta general'], notInCatalogue: [], pending: ['Consulta general'] },
+        });
+        expect(both.split('<note>').length - 1).toBe(1);
+    });
+});

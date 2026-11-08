@@ -1107,7 +1107,8 @@ export interface TurnContext {
      * turn (empty when the agent reads no service catalogue); `notInCatalogue` the services this turn's message or
      * knowledge named that the catalogue does not list.
      */
-    catalogueAuthority?: { offered: string[]; notInCatalogue: string[] };
+    /** `pending`: the offered names that are template services (seeded/example, opción B), rendered with content_status. */
+    catalogueAuthority?: { offered: string[]; notInCatalogue: string[]; pending?: string[] };
     /**
      * R4 (C0 §1.2, ADR 0010): the turn knowledge contract of @parallext/business-spec, rendered by the API as the
      * <knowledge_status> block (already escaped). Present = the contract rule 20 replaces the not-offered rule; absent

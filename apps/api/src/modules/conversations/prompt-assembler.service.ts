@@ -686,7 +686,10 @@ export class PromptAssemblerService {
         // catalogue: without one there is nothing to decide against.
         if (turn.catalogueAuthority && turn.catalogueAuthority.offered.length > 0) {
             lines.push('  <catalogue_authority kind="services">');
-            for (const name of turn.catalogueAuthority.offered) lines.push(`    <offered>${this.xmlEscape(name)}</offered>`);
+            const pending = new Set(turn.catalogueAuthority.pending ?? []);
+            for (const name of turn.catalogueAuthority.offered) lines.push(`    <offered${pending.has(name) ? ' content_status="seeded"' : ''}>${this.xmlEscape(name)}</offered>`);
+            // La nota va una sola vez por prompt: <available_services> ya la trae cuando lista servicios de plantilla.
+            if (pending.size && !(turn.availableServices ?? []).some(s => s.contentStatus === 'seeded' || s.contentStatus === 'example')) lines.push(`    <note>${this.xmlEscape(SEEDED_SERVICES_NOTE)}</note>`);
             for (const name of turn.catalogueAuthority.notInCatalogue) lines.push(`    <not_in_catalogue>${this.xmlEscape(name)}</not_in_catalogue>`);
             lines.push('  </catalogue_authority>');
         }

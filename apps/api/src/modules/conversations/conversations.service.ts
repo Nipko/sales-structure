@@ -5004,7 +5004,10 @@ export class ConversationsService {
                 });
                 serviceCatalogue = services
                     .filter((service: any) => typeof service?.name === 'string' && service.name.trim())
-                    .map((service: any) => ({ name: service.name.trim(), description: typeof service.description === 'string' ? service.description : null }));
+                    .map((service: any) => ({
+                        name: service.name.trim(), description: typeof service.description === 'string' ? service.description : null,
+                        ...(service.contentStatus === 'seeded' || service.contentStatus === 'example' ? { contentStatus: service.contentStatus } : {}),
+                    }));
             }
             absentServices.add(absentServicesIn(userText, serviceCatalogue));
         }
@@ -5716,6 +5719,8 @@ export class ConversationsService {
             turnContext.catalogueAuthority = {
                 offered: [...new Set(serviceCatalogue.map(service => service.name))].slice(0, 30),
                 notInCatalogue: absentServices.list().map(subject => subject.phrase),
+                // E2y C01 (opción B): un servicio de la plantilla del alta está en el catálogo, pero sin confirmar.
+                ...(serviceCatalogue.some(service => service.contentStatus) ? { pending: [...new Set(serviceCatalogue.filter(service => service.contentStatus).map(service => service.name))] } : {}),
             };
         }
         const turnFactBase: VerifiedFact[] = renderedFacts

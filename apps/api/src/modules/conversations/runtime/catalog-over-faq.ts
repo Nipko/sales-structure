@@ -22,7 +22,7 @@ import type { AddressForm } from '../transition-engine';
  * in a catalogue service name or description (accent- and plural-insensitive). When unsure, the item is left as it was.
  */
 
-export interface CatalogueEntry { name: string; description?: string | null }
+export interface CatalogueEntry { name: string; description?: string | null; contentStatus?: 'seeded' | 'example' }
 
 export interface AbsentSubject {
     /** The phrase as written, lower-cased: «tratamiento de ortodoncia». */

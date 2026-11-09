@@ -1,6 +1,7 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { randomUUID } from 'crypto';
 import { LLM_MODEL_CATALOGUE } from '../ai/router/llm-router.service';
+import { usageCostUsd } from '../ai/router/llm-cost';
 import type { TestAgentToolCall, TurnContext } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
 import type { AgentEvaluationSnapshot } from './agent-evaluation-snapshot';
@@ -88,16 +89,19 @@ export class AgentTurnTrace {
         if (reportedModel) this.model = reportedModel.trim();
         // The router prices each call for its own counters but does not return the figure, so a response
         // without `cost` is priced here from the same catalogue and the model that served it.
-        this.cost += typeof response?.cost === 'number' ? response.cost : callCostUsd(reportedModel, input, output);
+        const cached = Number(response?.usage?.cachedPromptTokens) || 0;
+        const cacheWrite = Number(response?.usage?.cacheWritePromptTokens) || 0;
+        this.cost += typeof response?.cost === 'number' ? response.cost : callCostUsd(reportedModel, input, output, cached, cacheWrite);
     }
 }
 
 /** USD of one call at catalogue rates; a dated snapshot («gpt-4o-mini-2024-07-18») is priced as its base model. */
-export function callCostUsd(model: string | undefined, inputTokens: number, outputTokens: number): number {
+export function callCostUsd(model: string | undefined, inputTokens: number, outputTokens: number, cachedInputTokens = 0, cacheWriteInputTokens = 0): number {
     const id = String(model ?? '').trim().toLowerCase();
     const rate = [...LLM_MODEL_CATALOGUE].sort((a, b) => b.id.length - a.id.length)
         .find(m => id === m.id || id.startsWith(`${m.id}-`) || id.endsWith(`/${m.id}`));
-    return rate ? (inputTokens / 1000) * rate.costInPer1k + (outputTokens / 1000) * rate.costOutPer1k : 0;
+    return rate ? usageCostUsd(rate, { promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: 0,
+        cachedPromptTokens: cachedInputTokens, cacheWritePromptTokens: cacheWriteInputTokens }) : 0;
 }
 
 interface StoredSession { session: AgentTurnSession; expires: number }

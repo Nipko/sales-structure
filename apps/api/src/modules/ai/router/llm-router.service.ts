@@ -11,6 +11,7 @@ import {
     ACCOUNT_FAILURE_BREAKER_SEC, LlmProviderHealthService, llmBreakerOpenKey,
 } from '../health/llm-provider-health.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { splitPromptTokens, usageCostUsd } from './llm-cost';
 import type { ServiceExecutionContext } from '../../../common/types/execution-context';
 import {
     operationalUsageAccountingEnabled,
@@ -36,6 +37,14 @@ export interface ModelConfig {
     /** Real input/output rates (USD per 1k tokens) — used for accurate cost tracking. */
     costInPer1k: number;
     costOutPer1k: number;
+    /**
+     * Entrada leída de la caché de prompts del proveedor (ADR-0027). Sin este
+     * dato la caché se cobra a precio completo: el 52 % de la entrada de
+     * sep–nov 2026 era caché y la estimación quedó 71 % por encima de la factura.
+     */
+    costCachedInPer1k?: number;
+    /** Entrada escrita en caché; sólo Anthropic la cobra aparte (1,25× la entrada). */
+    costCacheWritePer1k?: number;
     maxContextTokens: number;
     supportsTools: boolean;
 }
@@ -51,16 +60,19 @@ export interface ModelConfig {
  */
 const MODEL_REGISTRY: ModelConfig[] = [
     // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
-    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, maxContextTokens: 1000000, supportsTools: true },
-    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, maxContextTokens: 128000, supportsTools: true },
+    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, costCachedInPer1k: 0.0003, costCacheWritePer1k: 0.00375, maxContextTokens: 1000000, supportsTools: true },
+    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, costCachedInPer1k: 0.00125, maxContextTokens: 128000, supportsTools: true },
     // Tier 2 — Standard (good quality, good value — pro plans)
-    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.00035, costInPer1k: 0.0002, costOutPer1k: 0.0005, maxContextTokens: 131072, supportsTools: true },
-    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, maxContextTokens: 1000000, supportsTools: true },
-    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.000375, costInPer1k: 0.00015, costOutPer1k: 0.0006, maxContextTokens: 128000, supportsTools: true },
+    // xAI retiró este slug el 15-may-2026 y lo sirve con grok-4.3 (reasoning `none`) a tarifa de
+    // grok-4.3: $1,25 / $0,20 caché / $2,50 por M (docs.x.ai/developers/migration/may-15-retirement,
+    // verificado el 9-nov-2026). El catálogo seguía en $0,20/$0,50 y subestimaba ~5× (ADR-0027).
+    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0019, costInPer1k: 0.00125, costOutPer1k: 0.0025, costCachedInPer1k: 0.0002, maxContextTokens: 131072, supportsTools: true },
+    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, costCachedInPer1k: 0.0001, maxContextTokens: 1000000, supportsTools: true },
+    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.000375, costInPer1k: 0.00015, costOutPer1k: 0.0006, costCachedInPer1k: 0.000075, maxContextTokens: 128000, supportsTools: true },
     // Tier 3 — Efficient (fast, cheap — starter plans)
-    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, maxContextTokens: 1000000, supportsTools: false },
+    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, costCachedInPer1k: 0.000075, maxContextTokens: 1000000, supportsTools: false },
     // Tier 4 — Budget (cheapest available)
-    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, maxContextTokens: 64000, supportsTools: true },
+    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, costCachedInPer1k: 0.00007, maxContextTokens: 64000, supportsTools: true },
 ];
 
 /** Read-only view of the catalogue for callers outside the router. */
@@ -754,11 +766,11 @@ export class LLMRouterService {
         const baseKey = `llm:stats:${tenantId}:${date}:${modelConfig.provider}`;
         const tokensIn = usage?.promptTokens || 0;
         const tokensOut = usage?.completionTokens || 0;
+        const tokensCached = usage ? splitPromptTokens(usage).cached : 0;
         // Cost in centi-USD (USD * 10000) so we can use integer INCRBY.
-        // Input and output are priced separately (output is 3-5× input), so a
-        // single blended rate on total tokens was materially wrong.
-        const costUsd = (tokensIn / 1000) * modelConfig.costInPer1k
-            + (tokensOut / 1000) * modelConfig.costOutPer1k;
+        // Fresh input, cached input and output each have their own rate
+        // (ADR-0027): the cached share used to be billed at full price.
+        const costUsd = usageCostUsd(modelConfig, usage);
         const costCentiUsd = Math.round(costUsd * 10000);
 
         const ttl = 90 * 24 * 3600;
@@ -776,6 +788,7 @@ export class LLMRouterService {
             .incrby(`${baseKey}:calls`, 1)
             .incrby(`${baseKey}:tokens_in`, tokensIn)
             .incrby(`${baseKey}:tokens_out`, tokensOut)
+            .incrby(`${baseKey}:tokens_cached`, tokensCached)
             .incrby(`${baseKey}:cost_centi_usd`, costCentiUsd)
             .incrby(monthlyCostKey, costCentiUsd)
             .incrby(`${baseKey}:latency_sum_ms`, latencyMs)
@@ -784,7 +797,7 @@ export class LLMRouterService {
             .sadd(providersForDateKey, modelConfig.provider);
         if (errored) transaction.incrby(`${baseKey}:errors`, 1);
 
-        const dayKeys = ['calls', 'tokens_in', 'tokens_out', 'cost_centi_usd', 'latency_sum_ms'];
+        const dayKeys = ['calls', 'tokens_in', 'tokens_out', 'tokens_cached', 'cost_centi_usd', 'latency_sum_ms'];
         if (errored) dayKeys.push('errors');
         for (const suffix of dayKeys) transaction.expire(`${baseKey}:${suffix}`, ttl);
         transaction.expire(tenantsForDateKey, ttl);

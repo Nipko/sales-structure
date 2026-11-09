@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "4c0d2b6c85fe23b762c88cf694e4a5acdabca53a",
+  "revision": "11d54f2c034b48840d5c0a84cf1bee1951bf3146",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",
@@ -26,8 +26,8 @@
   },
   "requiredEnvironmentVariables": [
     "OPENAI_API_KEY",
-    "XAI_API_KEY",
     "DEEPSEEK_API_KEY",
+    "XAI_API_KEY",
     "ANTHROPIC_API_KEY"
   ],
   "perModel": [
@@ -41,17 +41,6 @@
       "maxCostUsdCents": 44260,
       "maxHours": 427,
       "planHash": "1ac8380d3120e97080bfc26542212bd3bfcc9680f3fe11a933f61400da110186"
-    },
-    {
-      "model": "grok-4-1-fast-non-reasoning",
-      "provider": "xai",
-      "tier": "tier_2_standard",
-      "envVar": "XAI_API_KEY",
-      "requiredCases": 88720,
-      "modelCalls": 255980,
-      "maxCostUsdCents": 49340,
-      "maxHours": 427,
-      "planHash": "78d7d8193fb75fcd8391fd0c2941c7b9272726c0beb4c7796c7489910cb7f12c"
     },
     {
       "model": "deepseek-chat",
@@ -74,6 +63,17 @@
       "maxCostUsdCents": 94480,
       "maxHours": 427,
       "planHash": "06cef18d53d4dfcc1f37f66366b934ac79cdeb24004c68f63dfc74b30439cf7f"
+    },
+    {
+      "model": "grok-4-1-fast-non-reasoning",
+      "provider": "xai",
+      "tier": "tier_2_standard",
+      "envVar": "XAI_API_KEY",
+      "requiredCases": 88720,
+      "modelCalls": 255980,
+      "maxCostUsdCents": 223220,
+      "maxHours": 427,
+      "planHash": "f9d6a72941cd891567fe3ec50f4784df5c569702c542526ce86aa442bad9e8fa"
     },
     {
       "model": "gpt-4o",

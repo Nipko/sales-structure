@@ -50,7 +50,7 @@ const TENANT_ADMIN = { id: '22222222-2222-4222-8222-222222222222', role: 'tenant
     const planBody = (over: Record<string, unknown> = {}) => ({
         requestKey: `run-${randomUUID().replace(/-/g, '').slice(0, 20)}`,
         mode: 'dry_run' as const,
-        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
         agentId: randomUUID(), configHash: 'config-1', dependencyRevision: 'dependency-1',
         ...over,
     });

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { openAIChatParams } from './model-request-params';
 import { usageFromOpenAICompatible } from '../router/llm-cost';
 
 @Injectable()
@@ -32,8 +33,7 @@ export class OpenAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                temperature: Number(options.temperature ?? 0.7),
-                max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
+                ...openAIChatParams(options.model, options),
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -82,8 +82,7 @@ export class OpenAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                temperature: Number(options.temperature ?? 0.7),
-                max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
+                ...openAIChatParams(options.model, options),
                 stream: true,
             };
 

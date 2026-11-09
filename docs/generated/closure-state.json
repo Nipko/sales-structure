@@ -1,5 +1,5 @@
 {
-  "revision": "4c0d2b6c85fe23b762c88cf694e4a5acdabca53a",
+  "revision": "e9622db93530a5217b8378ac8e00c3120cad2ebf",
   "generatedFrom": [
     "modules/simulation/task-competence-matrix.ts",
     "modules/simulation/certification-plan.ts",
@@ -32,7 +32,7 @@
       "whatsapp"
     ],
     "models": [
-      "gpt-4.1-mini"
+      "gpt-6-luna"
     ],
     "k": 1,
     "tokenBound": {
@@ -41,7 +41,7 @@
     },
     "requiredCases": 88720,
     "modelCalls": 255980,
-    "maxCostUsdCents": 94480,
+    "maxCostUsdCents": 31620,
     "maxSeconds": 1535880,
     "refusals": []
   },

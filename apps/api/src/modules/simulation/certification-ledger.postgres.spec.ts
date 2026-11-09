@@ -37,7 +37,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const agentId = randomUUID();
     const planInput = {
         agentId, configHash: 'config-1', dependencyRevision: 'dependency-1',
-        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
     };
 
     // Every statement runs inside a transaction, because `SET LOCAL` outside one
@@ -58,7 +58,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         transaction(query => query<R>(text, params));
 
     const result = (over: Partial<CertificationCaseResult> = {}): CertificationCaseResult => ({
-        passed: true, servedModel: 'gpt-4.1-mini', usage: { state: 'reported' as const, costUsdCents: 1 }, latencyMs: 10,
+        passed: true, servedModel: 'gpt-6-luna', usage: { state: 'reported' as const, costUsdCents: 1 }, latencyMs: 10,
         transcript: [{ role: 'assistant', content: 'ok' }], tools: [], verification: { ok: true },
         scenario: { key: 'scenario' }, ...over,
     });
@@ -212,7 +212,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         expect(progress.gaps.byProfile[profileId]).toBe(progress.planned);
         expect(progress.gaps.byLanguage.es).toBe(progress.planned);
         expect(progress.gaps.byChannel.whatsapp).toBe(progress.planned);
-        expect(progress.gaps.byModel['gpt-4.1-mini']).toBe(progress.planned);
+        expect(progress.gaps.byModel['gpt-6-luna']).toBe(progress.planned);
         // And per task, read off the scenario key, so a gap can be named as
         // "this profile cannot do this thing" rather than as a total.
         expect(Object.keys(progress.gaps.byTask).length).toBeGreaterThan(0);
@@ -240,7 +240,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         const fresh = await certificationEvidenceFromLedger(sql, run.id);
         expect(fresh.staleCases).toBe(0);
         expect(fresh.evidence).toHaveLength(1);
-        expect(fresh.evidence[0]).toMatchObject({ channelType: 'whatsapp', models: ['gpt-4.1-mini'], status: 'completed' });
+        expect(fresh.evidence[0]).toMatchObject({ channelType: 'whatsapp', models: ['gpt-6-luna'], status: 'completed' });
         // The evidence is sealed the same way a release run is, so the report
         // reads it through exactly one definition of "this run counts".
         expect(fresh.evidence[0].evidenceHash).toEqual(expect.stringMatching(/^[a-f0-9]{16,}$/));
@@ -266,7 +266,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         // And the report is computed from those rows rather than from objects a
         // test built, which is the whole point of the ledger.
         const report = certifyProfiles({
-            scope: { languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'] },
+            scope: { languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'] },
             evidence: stale.evidence, profiles: [profileId],
         });
         expect(report.evidenceKind).toBe('executed_runs');

@@ -572,10 +572,10 @@ export class PersonaService {
                 maxTokens: 800,
                 routing: {
                     tiers: {
-                        tier_1_premium: { models: ['gpt-4o'], costLevel: 'high' },
-                        tier_2_standard: { models: ['gpt-4o-mini'], costLevel: 'medium' },
-                        tier_3_efficient: { models: ['gpt-4o-mini'], costLevel: 'low' },
-                        tier_4_budget: { models: ['gpt-4o-mini'], costLevel: 'very_low' },
+                        tier_1_premium: { models: ['gpt-6-sol'], costLevel: 'high' },
+                        tier_2_standard: { models: ['gpt-6-luna'], costLevel: 'medium' },
+                        tier_3_efficient: { models: ['gemini-3.5-flash-lite'], costLevel: 'low' },
+                        tier_4_budget: { models: ['deepseek-flash'], costLevel: 'very_low' },
                     },
                     factors: {},
                     fallback: 'auto_upgrade',

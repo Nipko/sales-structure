@@ -59,7 +59,7 @@ describe('LlmProviderProbeService', () => {
         expect(calls).toHaveLength(1);
         expect(calls[0].url).toBe('https://api.openai.com/v1/chat/completions');
         const state = await health.getState('openai');
-        expect(state).toMatchObject({ status: 'no_credits', lastErrorKind: 'quota', lastErrorSource: 'probe', lastErrorModel: 'gpt-4o-mini' });
+        expect(state).toMatchObject({ status: 'no_credits', lastErrorKind: 'quota', lastErrorSource: 'probe', lastErrorModel: 'gpt-6-luna' });
         expect(alerts.filter(a => !a.resolveOnly).map(a => [a.key, a.severity])).toEqual([['llm:provider:openai:no_credits', 'critical']]);
         expect(redis.store.get('llm:health:openai:open')).toBeDefined();
         // Qué cuenta factura la clave en uso queda a la vista.

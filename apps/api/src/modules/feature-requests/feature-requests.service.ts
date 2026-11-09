@@ -556,7 +556,7 @@ export class FeatureRequestsService {
         try {
             const openai = await this.ensureOpenAI();
             const r = await openai.chat.completions.create({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: [
                     {
                         role: 'system',

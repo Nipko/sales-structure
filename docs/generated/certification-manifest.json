@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "11d54f2c034b48840d5c0a84cf1bee1951bf3146",
+  "revision": "e9622db93530a5217b8378ac8e00c3120cad2ebf",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",
@@ -26,81 +26,92 @@
   },
   "requiredEnvironmentVariables": [
     "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
     "DEEPSEEK_API_KEY",
-    "XAI_API_KEY",
-    "ANTHROPIC_API_KEY"
+    "XAI_API_KEY"
   ],
   "perModel": [
     {
-      "model": "gpt-4o-mini",
+      "model": "gpt-6-luna",
       "provider": "openai",
       "tier": "tier_2_standard",
       "envVar": "OPENAI_API_KEY",
       "requiredCases": 88720,
       "modelCalls": 255980,
-      "maxCostUsdCents": 44260,
+      "maxCostUsdCents": 31620,
       "maxHours": 427,
-      "planHash": "1ac8380d3120e97080bfc26542212bd3bfcc9680f3fe11a933f61400da110186"
+      "planHash": "e91ebbbffbe38e7620ad557dee8b1fb94629acbe001ef601eba2db58d1b65fd8"
     },
     {
-      "model": "deepseek-chat",
+      "model": "claude-haiku-5-5",
+      "provider": "anthropic",
+      "tier": "tier_2_standard",
+      "envVar": "ANTHROPIC_API_KEY",
+      "requiredCases": 88720,
+      "modelCalls": 255980,
+      "maxCostUsdCents": 31620,
+      "maxHours": 427,
+      "planHash": "49b287c7bad4b982f59e5ea3bcc63693fcdd883424b94a8d672a8df754dc6d89"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "provider": "openai",
+      "tier": "tier_2_standard",
+      "envVar": "OPENAI_API_KEY",
+      "requiredCases": 88720,
+      "modelCalls": 255980,
+      "maxCostUsdCents": 57120,
+      "maxHours": 427,
+      "planHash": "fcc20630a784634ff313d1725239e31c769adc59c91dbdb1daa24ed8b9794678"
+    },
+    {
+      "model": "deepseek-flash",
       "provider": "deepseek",
       "tier": "tier_4_budget",
       "envVar": "DEEPSEEK_API_KEY",
       "requiredCases": 88720,
       "modelCalls": 255980,
-      "maxCostUsdCents": 68540,
+      "maxCostUsdCents": 70180,
       "maxHours": 427,
-      "planHash": "f26a797e5535656363acb109dfbb1f6a5fba749be4b69137aa08b8d191b6f341"
+      "planHash": "fc1aa7e9a5241ced7399d773acc4461c59bc94f4e1d07077bee74e6b13a33973"
     },
     {
-      "model": "gpt-4.1-mini",
-      "provider": "openai",
-      "tier": "tier_2_standard",
-      "envVar": "OPENAI_API_KEY",
-      "requiredCases": 88720,
-      "modelCalls": 255980,
-      "maxCostUsdCents": 94480,
-      "maxHours": 427,
-      "planHash": "06cef18d53d4dfcc1f37f66366b934ac79cdeb24004c68f63dfc74b30439cf7f"
-    },
-    {
-      "model": "grok-4-1-fast-non-reasoning",
+      "model": "grok-4.3",
       "provider": "xai",
-      "tier": "tier_2_standard",
+      "tier": "tier_1_premium",
       "envVar": "XAI_API_KEY",
       "requiredCases": 88720,
       "modelCalls": 255980,
-      "maxCostUsdCents": 223220,
+      "maxCostUsdCents": 219220,
       "maxHours": 427,
-      "planHash": "f9d6a72941cd891567fe3ec50f4784df5c569702c542526ce86aa442bad9e8fa"
+      "planHash": "59fa34e356f02e77e5fc8cfe7e70e367fb97fdcc5e0b3cfbf5e49d3b2206f26c"
     },
     {
-      "model": "gpt-4o",
+      "model": "gpt-6-sol",
       "provider": "openai",
       "tier": "tier_1_premium",
       "envVar": "OPENAI_API_KEY",
       "requiredCases": 88720,
       "modelCalls": 255980,
-      "maxCostUsdCents": 516020,
+      "maxCostUsdCents": 445080,
       "maxHours": 427,
-      "planHash": "0742f2adba83bb0a4e3eb5821b2cc7a084b15f6c6f9698f688196e93c61f678d"
+      "planHash": "6df7bad480530c01ddc3b44a25992b2b16d6eb4036ae951ad24acad2cab8820a"
     },
     {
-      "model": "claude-sonnet-4-6",
+      "model": "claude-sonnet-5-5",
       "provider": "anthropic",
       "tier": "tier_1_premium",
       "envVar": "ANTHROPIC_API_KEY",
       "requiredCases": 88720,
       "modelCalls": 255980,
-      "maxCostUsdCents": 666100,
+      "maxCostUsdCents": 445080,
       "maxHours": 427,
-      "planHash": "ef580236a4f451a290725b814b9879b0bfffa2cd676d0c75fe7d7ecdf8515bec"
+      "planHash": "6b39e158784879aa0c3b4037517d724dfff6b63e4bc070db24b3ded73d05f7ed"
     }
   ],
   "excludedModels": [
     {
-      "model": "gemini-2.5-flash",
+      "model": "gemini-3.5-flash-lite",
       "provider": "google",
       "reason": "no_tool_support"
     }

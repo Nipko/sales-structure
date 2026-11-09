@@ -9,8 +9,8 @@ import { SuperAdminGuard } from "@/components/SuperAdminGuard";
 import { HelpPanel } from "@/components/ui/help-panel";
 
 const MODELS = [
-    "gpt-4o", "gpt-4o-mini", "gemini-2.0-flash", "gemini-2.0-pro",
-    "claude-sonnet-4-20250514", "grok-2", "deepseek-chat",
+    "gpt-6-luna", "gpt-5.6-luna", "gpt-6-sol", "gemini-3.5-flash-lite",
+    "claude-haiku-5-5", "claude-sonnet-5-5", "grok-4.3", "deepseek-flash",
 ];
 
 export default function AIConfigPage() {
@@ -25,7 +25,7 @@ function AIConfigContent() {
     const t = useTranslations("settings");
     const tHelp = useTranslations("help");
     const [values, setValues] = useState({
-        "llm.default_model": "gpt-4o-mini",
+        "llm.default_model": "gpt-6-luna",
         "llm.default_temperature": "0.7",
         "llm.max_tokens": "800",
     });
@@ -38,7 +38,7 @@ function AIConfigContent() {
             if (result.success && result.data) {
                 setValues(prev => ({
                     ...prev,
-                    "llm.default_model": result.data["llm.default_model"] || "gpt-4o-mini",
+                    "llm.default_model": result.data["llm.default_model"] || "gpt-6-luna",
                     "llm.default_temperature": result.data["llm.default_temperature"] || "0.7",
                     "llm.max_tokens": result.data["llm.max_tokens"] || "800",
                 }));

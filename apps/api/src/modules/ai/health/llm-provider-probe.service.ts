@@ -8,6 +8,7 @@ import { LLM_MODEL_CATALOGUE } from '../router/llm-router.service';
 import {
     ACCOUNT_FAILURE_BREAKER_SEC, LLM_PROVIDERS, LlmProviderHealthService, llmBreakerOpenKey,
 } from './llm-provider-health.service';
+import { deepseekChatExtras, geminiThinkingConfig, openAIChatParams, xaiChatParams } from '../providers/model-request-params';
 import { isAccountFailure } from './llm-provider-error';
 
 /** `redis-cli SET llm:probe:drill openai EX 900` -> la proxima sonda corre un simulacro con una clave invalida. */
@@ -148,19 +149,24 @@ export class LlmProviderProbeService {
                     : provider === 'xai' ? 'https://api.x.ai/v1/chat/completions'
                         : 'https://api.deepseek.com/chat/completions';
                 headers = { ...headers, Authorization: `Bearer ${key}` };
-                body = { model, messages: prompt, max_tokens: 1, temperature: 0 };
+                // Con los parámetros que acepta cada familia (ADR-0029): gpt-6-luna rechaza
+                // `max_tokens` y un tope de 1 («Could not finish the message»); 16 basta.
+                body = { model, messages: prompt,
+                    ...(provider === 'openai' ? openAIChatParams(model, { temperature: 0, maxTokens: 16 })
+                        : provider === 'xai' ? xaiChatParams(model, { temperature: 0, maxTokens: 1 })
+                            : { temperature: 0, max_tokens: 1, ...deepseekChatExtras(model) }) };
                 break;
             case 'anthropic':
                 url = 'https://api.anthropic.com/v1/messages';
                 headers = { ...headers, 'x-api-key': key, 'anthropic-version': '2023-06-01' };
-                body = { model, messages: prompt, max_tokens: 1 };
+                body = { model, messages: prompt, max_tokens: 16 };
                 break;
             case 'google':
                 url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
                 headers = { ...headers, 'x-goog-api-key': key };
                 body = {
                     contents: [{ role: 'user', parts: [{ text: 'ping' }] }],
-                    generationConfig: { maxOutputTokens: 1, thinkingConfig: { thinkingBudget: 0 } },
+                    generationConfig: { maxOutputTokens: 1, thinkingConfig: geminiThinkingConfig(model) },
                 };
                 break;
             default:

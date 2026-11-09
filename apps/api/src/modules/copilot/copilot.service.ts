@@ -880,7 +880,7 @@ REGLA DE RECORRIDOS: cuando el usuario pregunte DÓNDE o CÓMO hacer algo que cu
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: chatHistory,
                 systemPrompt: `Eres un copiloto de ventas que asiste a agentes humanos de atención al cliente en Latinoamérica.
 Basándote en el historial de la conversación, genera exactamente 3 respuestas sugeridas que el agente podría enviar al cliente.
@@ -950,7 +950,7 @@ No incluyas explicaciones, solo el JSON.`,
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: chatHistory,
                 systemPrompt: `Eres un copiloto de ventas que analiza conversaciones para agentes humanos.
 Analiza el historial de la conversación y genera un resumen conciso.
@@ -1016,7 +1016,7 @@ Usa español latinoamericano. No incluyas explicaciones, solo el JSON.`,
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: chatHistory,
                 systemPrompt: `Eres un analizador de intención de clientes para un equipo de ventas en Latinoamérica.
 Analiza los últimos mensajes de la conversación y determina la intención del cliente.
@@ -1100,7 +1100,7 @@ El campo confidence debe ser un número entre 0 y 1. No incluyas explicaciones, 
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: [{ role: 'user', content: agentQuery }],
                 tenantId,
                 systemPrompt: `Eres un copiloto inteligente que ayuda a agentes de ventas y soporte en Latinoamérica.
@@ -1179,7 +1179,7 @@ Reglas:
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-4o-mini',
+                model: 'gpt-6-luna',
                 messages: [{ role: 'user', content: draft }],
                 systemPrompt: `Eres un asistente de redacción para agentes de atención al cliente y ventas.
 ${instruction}

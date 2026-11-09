@@ -166,7 +166,7 @@ describe('decideHandoff routes by the label', () => {
         const { decide } = harness(execute);
         await decide('¿Hacen reembolsos?', undefined, undefined, 'tenant-9');
         const request = execute.mock.calls[0][0];
-        expect(request).toMatchObject({ temperature: 0, tenantId: 'tenant-9', model: 'grok-4-1-fast-non-reasoning' });
+        expect(request).toMatchObject({ temperature: 0, tenantId: 'tenant-9', model: 'gpt-6-luna' });
         expect(request.maxTokens).toBeLessThanOrEqual(32);
         expect(request.messages[0].content).toContain('<<<\n¿Hacen reembolsos?\n>>>');
     });

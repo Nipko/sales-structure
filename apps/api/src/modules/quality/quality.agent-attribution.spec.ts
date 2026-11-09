@@ -163,7 +163,7 @@ describe('QualityService agent attribution', () => {
         const { service, llmRouter } = buildHarness(AGENT_ID, 5);
         await service.scoreConversation(TENANT_ID, CONVERSATION_ID);
         expect(llmRouter.execute).toHaveBeenCalledWith(expect.objectContaining({
-            model: 'gpt-4o-mini', temperature: 0.2, maxTokens: 500, jsonMode: true,
+            model: 'gpt-6-luna', temperature: 0.2, maxTokens: 500, jsonMode: true,
         }));
     });
 

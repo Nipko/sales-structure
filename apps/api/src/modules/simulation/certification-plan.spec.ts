@@ -14,7 +14,7 @@ import { DEFAULT_TOKEN_BOUND, JUDGE_BOUND, JUDGE_MODEL, planCertificationRun } f
  */
 describe('what certifying the catalogue would cost', () => {
     const channels = ['whatsapp', 'web_widget'];
-    const models = ['gpt-4.1-mini'];
+    const models = ['gpt-6-luna'];
 
     it('plans exactly the universe the certification report demands', () => {
         const profiles = listCanonicalSubtypeExperienceProfileIds().slice(0, 3);
@@ -52,18 +52,19 @@ describe('what certifying the catalogue would cost', () => {
 
     it('prices from the router catalogue and rounds the ceiling up', () => {
         const profiles = listCanonicalSubtypeExperienceProfileIds().slice(0, 1);
-        const cheap = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['gpt-4o-mini'] });
-        const dear = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['claude-sonnet-4-6'] });
+        const cheap = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['gpt-6-luna'] });
+        const dear = planCertificationRun({ profiles, channels: ['whatsapp'], models: ['claude-sonnet-5-5'] });
         expect(dear.totals.maxCostUsdCents).toBeGreaterThan(cheap.totals.maxCostUsdCents);
         // Both bounds are declared, so the arithmetic can be checked by hand:
         // the subject at its own bound, plus the judge at the 500 output tokens
         // `judgeTranscript` pins.
         const cell = cheap.cells[0];
         expect(cheap.tokenBound).toEqual(DEFAULT_TOKEN_BOUND);
-        const perSubjectCall = (DEFAULT_TOKEN_BOUND.inputPerTurn / 1000) * 0.00015
-            + (DEFAULT_TOKEN_BOUND.outputPerTurn / 1000) * 0.0006;
-        const perJudgeCall = (JUDGE_BOUND.inputPerTurn / 1000) * 0.00015
-            + (JUDGE_BOUND.outputPerTurn / 1000) * 0.0006;
+        // gpt-6-luna a precio de lista: $0,10 / $0,50 por M (ADR-0029).
+        const perSubjectCall = (DEFAULT_TOKEN_BOUND.inputPerTurn / 1000) * 0.0001
+            + (DEFAULT_TOKEN_BOUND.outputPerTurn / 1000) * 0.0005;
+        const perJudgeCall = (JUDGE_BOUND.inputPerTurn / 1000) * 0.0001
+            + (JUDGE_BOUND.outputPerTurn / 1000) * 0.0005;
         expect(cell.maxCostUsdCents).toBe(Math.ceil(
             (cell.subjectCalls * perSubjectCall + cell.judgeCalls * perJudgeCall) * 100));
         // Rounded once, at the end of the cell — not once per component — so the
@@ -78,7 +79,7 @@ describe('what certifying the catalogue would cost', () => {
             profiles: ['turismo/hotel', 'not/a-profile'],
             languages: ['es', 'de'],
             channels: ['whatsapp', 'email'],
-            models: ['gpt-4.1-mini', 'a-model-nobody-has'],
+            models: ['gpt-6-luna', 'a-model-nobody-has'],
         });
         expect(plan.refusals).toEqual(expect.arrayContaining([
             'profile_not_canonical:not/a-profile',
@@ -93,7 +94,7 @@ describe('what certifying the catalogue would cost', () => {
         ]));
         expect(plan.languages).toEqual(['es']);
         expect(plan.channels).toEqual(['whatsapp']);
-        expect(plan.models).toEqual(['gpt-4.1-mini']);
+        expect(plan.models).toEqual(['gpt-6-luna']);
     });
 
     it('says the scope is missing rather than planning nothing quietly', () => {

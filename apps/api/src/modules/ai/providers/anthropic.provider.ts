@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { anthropicRequestParams } from './model-request-params';
 import { usageFromAnthropic } from '../router/llm-cost';
 
 @Injectable()
@@ -32,7 +33,8 @@ export class AnthropicProvider implements ILLMProvider {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
                 max_tokens: Number(options.maxTokens || 4096),
-                temperature: Number(options.temperature ?? 0.7),
+                // Claude 4.7+/5.x: sin muestreo y con el pensamiento mínimo (ADR-0029).
+                ...(anthropicRequestParams(options.model, options)),
             };
 
             // Build the system text first (append the JSON-mode steer if needed —
@@ -116,7 +118,8 @@ export class AnthropicProvider implements ILLMProvider {
                 model: options.model,
                 messages: this.formatMessages(options.messages),
                 max_tokens: Number(options.maxTokens || 4096),
-                temperature: Number(options.temperature ?? 0.7),
+                // Claude 4.7+/5.x: sin muestreo y con el pensamiento mínimo (ADR-0029).
+                ...(anthropicRequestParams(options.model, options)),
                 stream: true,
             };
 

@@ -40,7 +40,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const schema = `cert_conc_${randomUUID().replace(/-/g, '')}`;
     const planInput = {
         agentId: randomUUID(), configHash: 'config-1', dependencyRevision: 'dependency-1',
-        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+        profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
     };
     const transaction = async <T>(work: (query: CertificationQuery) => Promise<T>): Promise<T> => {
         const client = await pool.connect();
@@ -56,7 +56,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const sql: CertificationQuery = <R = any[]>(text: string, params: any[] = []) =>
         transaction(query => query<R>(text, params));
     const result = (over: Partial<CertificationCaseResult> = {}): CertificationCaseResult => ({
-        passed: true, servedModel: 'gpt-4.1-mini', usage: { state: 'reported' as const, costUsdCents: 2 }, latencyMs: 10,
+        passed: true, servedModel: 'gpt-6-luna', usage: { state: 'reported' as const, costUsdCents: 2 }, latencyMs: 10,
         transcript: [], tools: [], verification: { ok: true }, scenario: { key: 'k' }, ...over,
     });
 

@@ -68,7 +68,7 @@ describe('LLM router — tool-calling floor', () => {
             traceContext: { conversationId },
         });
 
-        expect(calls[0].model).not.toBe('deepseek-chat');
+        expect(calls[0].model).not.toBe('deepseek-flash');
     });
 
     it('still lets the budget circuit breaker win', async () => {
@@ -87,7 +87,7 @@ describe('LLM router — tool-calling floor', () => {
 
         // Over budget the agent keeps replying on whatever is cheapest: a weaker
         // answer beats no answer.
-        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[0].model).toBe('deepseek-flash');
     });
 
     it('keeps value-routing for plain conversation turns', async () => {
@@ -160,11 +160,11 @@ describe('LLM router — pinned model inside one turn', () => {
             systemPrompt: 'x',
             tools: [{ name: 'create_property_booking', description: 'd', parameters: {} }] as any,
             allowedTiers: ['tier_1_premium', 'tier_2_standard'],
-            pinnedModel: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+            pinnedModel: { provider: 'anthropic', model: 'claude-sonnet-5-5' },
             traceContext: { conversationId },
         });
 
-        expect(calls[0]).toEqual({ provider: 'anthropic', model: 'claude-sonnet-4-6' });
+        expect(calls[0]).toEqual({ provider: 'anthropic', model: 'claude-sonnet-5-5' });
     });
 
     it('ignores a pin the tenant cannot reach instead of failing the turn', async () => {
@@ -177,7 +177,7 @@ describe('LLM router — pinned model inside one turn', () => {
             systemPrompt: 'x',
             tools: [{ name: 'create_property_booking', description: 'd', parameters: {} }] as any,
             allowedTiers: ['tier_2_standard'],
-            pinnedModel: { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+            pinnedModel: { provider: 'anthropic', model: 'claude-sonnet-5-5' },
             traceContext: { conversationId },
         });
 
@@ -194,7 +194,7 @@ describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () 
             task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
         });
-        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[0].model).toBe('deepseek-flash');
     });
 
     it('Starter: no tool-capable model in tier_3, so the plan tier_4 leads, not tier_2', async () => {
@@ -203,7 +203,7 @@ describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () 
             task: 'tool_calling', messages: [{ role: 'user', content: 'busco un hotel' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_3_efficient', 'tier_4_budget'], traceContext: { conversationId },
         });
-        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[0].model).toBe('deepseek-flash');
     });
 
     it('a model outside the plan is still the last resort when the plan model fails', async () => {
@@ -212,19 +212,19 @@ describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () 
             task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
         });
-        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[0].model).toBe('deepseek-flash');
         expect(calls[1]).toBeDefined();
         expect(calls[1].provider).not.toBe('deepseek');
     });
 
     it('affinity to a model outside the plan (left by an escalation) does not pin later turns', async () => {
         const { router, calls, redisStore } = createRouter();
-        redisStore.set(`llm:affinity:${conversationId}:tool_calling`, 'openai:gpt-4.1-mini');
+        redisStore.set(`llm:affinity:${conversationId}:tool_calling`, 'openai:gpt-6-luna');
         await router.execute({
             task: 'tool_calling', messages: [{ role: 'user', content: '¿y en azul?' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
         });
-        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[0].model).toBe('deepseek-flash');
     });
 
     it('a turn voicing a committed write may still lead above the plan', async () => {
@@ -233,7 +233,7 @@ describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () 
             task: 'tool_calling', messages: [{ role: 'user', content: 'listo' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_4_budget'], voicedWrite: true, traceContext: { conversationId },
         });
-        expect(calls[0].model).not.toBe('deepseek-chat');
+        expect(calls[0].model).not.toBe('deepseek-flash');
     });
 
     it('Pro keeps leading with tier_2 on any tool turn (no change inside the plan)', async () => {

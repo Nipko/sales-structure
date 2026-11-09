@@ -103,7 +103,7 @@ The action should be concrete (e.g., "Call to schedule a demo", "Send pricing in
 Keep it under 40 words total. Respond in Spanish.`;
 
             const response = await this.llmRouter.execute({
-                model: 'deepseek-chat',
+                model: 'deepseek-flash',
                 messages: [{ role: 'user', content: prompt }],
                 maxTokens: 150,
                 temperature: 0.3,

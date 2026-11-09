@@ -123,12 +123,12 @@ export interface CertificationPlan {
 /**
  * The model that grades every attempt, and the bound it declares.
  *
- * `QualityService.judgeTranscript` pins `gpt-4o-mini` and `maxTokens: 500`. It
+ * `QualityService.judgeTranscript` pins `gpt-6-luna` and `maxTokens: 500`. It
  * is a model call the plan did not count at all, so a run asked permission for
  * two thirds of the calls it would make. Named here rather than guessed, and
  * refused loudly if the catalogue stops carrying it.
  */
-export const JUDGE_MODEL = 'gpt-4o-mini';
+export const JUDGE_MODEL = 'gpt-6-luna';
 export const JUDGE_BOUND = Object.freeze({ inputPerTurn: 8000, outputPerTurn: 500 });
 
 export function planCertificationRun(input: CertificationPlanInput): CertificationPlan {

@@ -59,60 +59,96 @@ export interface ModelConfig {
  * list is a price list that will be wrong on the day it matters.
  */
 const MODEL_REGISTRY: ModelConfig[] = [
-    // Tier 1 — Premium (best quality, reserved for enterprise/custom plans)
-    { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, costCachedInPer1k: 0.0003, costCacheWritePer1k: 0.00375, maxContextTokens: 1000000, supportsTools: true },
-    { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, costCachedInPer1k: 0.00125, maxContextTokens: 128000, supportsTools: true },
-    // Tier 2 — Standard (good quality, good value — pro plans)
-    // xAI retiró este slug el 15-may-2026 y lo sirve con grok-4.3 (reasoning `none`) a tarifa de
-    // grok-4.3: $1,25 / $0,20 caché / $2,50 por M (docs.x.ai/developers/migration/may-15-retirement,
-    // verificado el 9-nov-2026). El catálogo seguía en $0,20/$0,50 y subestimaba ~5× (ADR-0027).
-    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0019, costInPer1k: 0.00125, costOutPer1k: 0.0025, costCachedInPer1k: 0.0002, maxContextTokens: 131072, supportsTools: true },
-    { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, costCachedInPer1k: 0.0001, maxContextTokens: 1000000, supportsTools: true },
-    { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.000375, costInPer1k: 0.00015, costOutPer1k: 0.0006, costCachedInPer1k: 0.000075, maxContextTokens: 128000, supportsTools: true },
-    // Tier 3 — Efficient (fast, cheap — starter plans)
-    { id: 'gemini-2.5-flash', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, costCachedInPer1k: 0.000075, maxContextTokens: 1000000, supportsTools: false },
-    // Tier 4 — Budget (cheapest available)
-    { id: 'deepseek-chat', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.000685, costInPer1k: 0.00027, costOutPer1k: 0.0011, costCachedInPer1k: 0.00007, maxContextTokens: 64000, supportsTools: true },
+    // Catálogo migrado el 9-nov-2026 (ADR-0029). Precios de lista verificados ese día en la página
+    // oficial de cada proveedor, USD por 1k tokens. Caché con la convención de ADR-0027: lectura en
+    // `costCachedInPer1k`; escritura en `costCacheWritePer1k` sólo donde se cobra aparte (OpenAI
+    // GPT-5.6+/GPT-6 y Anthropic, 1,25× la entrada a 30 min / 5 min).
+    //
+    // Tier 1 — Premium (enterprise/custom).
+    { id: 'gpt-6-sol', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.006, costInPer1k: 0.002, costOutPer1k: 0.010, costCachedInPer1k: 0.0002, costCacheWritePer1k: 0.0025, maxContextTokens: 1050000, supportsTools: true },
+    // Sin clave de Anthropic en la plataforma (9-nov-2026): no medido, va al final de cada cadena.
+    { id: 'claude-sonnet-5-5', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.006, costInPer1k: 0.002, costOutPer1k: 0.010, costCachedInPer1k: 0.0001, costCacheWritePer1k: 0.0025, maxContextTokens: 1000000, supportsTools: true },
+    // xAI no tiene hoy un modelo barato: grok-4.3 es el más barato de su lista ($1,25/$0,20/$2,50 por M
+    // bajo 200k de prompt). Es el respaldo de otro proveedor cuando OpenAI y DeepSeek caen.
+    { id: 'grok-4.3', provider: 'xai', tier: 'tier_1_premium', costPer1kTokens: 0.001875, costInPer1k: 0.00125, costOutPer1k: 0.0025, costCachedInPer1k: 0.0002, maxContextTokens: 200000, supportsTools: true },
+    // Tier 2 — Standard (pro).
+    { id: 'gpt-6-luna', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.0003, costInPer1k: 0.0001, costOutPer1k: 0.0005, costCachedInPer1k: 0.00001, costCacheWritePer1k: 0.000125, maxContextTokens: 1050000, supportsTools: true },
+    // Haiku 5.5 cobra 5× sobre 100k de prompt: el tope de contexto lo mantiene en su tarifa baja.
+    { id: 'claude-haiku-5-5', provider: 'anthropic', tier: 'tier_2_standard', costPer1kTokens: 0.0003, costInPer1k: 0.0001, costOutPer1k: 0.0005, costCachedInPer1k: 0.00001, costCacheWritePer1k: 0.000125, maxContextTokens: 100000, supportsTools: true },
+    { id: 'gpt-5.6-luna', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.0007, costInPer1k: 0.0002, costOutPer1k: 0.0012, costCachedInPer1k: 0.00002, costCacheWritePer1k: 0.00025, maxContextTokens: 1050000, supportsTools: true },
+    // Tier 3 — Efficient (starter). Google redirige gemini-2.5-flash a este modelo el 1-dic-2026.
+    // Piensa en `minimal` y no se puede apagar. Sin herramientas: el adaptador no devuelve la
+    // `thoughtSignature` que Gemini 3.x exige en el turno siguiente a una llamada de función.
+    { id: 'gemini-3.5-flash-lite', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, costCachedInPer1k: 0.00003, maxContextTokens: 1048576, supportsTools: false },
+    // Tier 4 — Budget. Tarifa de hora pico (lun–vie 01–04 y 06–10 UTC); el resto del día cuesta la
+    // mitad. Se cataloga la pico: el error queda del lado conservador.
+    { id: 'deepseek-flash', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.00075, costInPer1k: 0.0003, costOutPer1k: 0.0012, costCachedInPer1k: 0.000006, maxContextTokens: 1000000, supportsTools: true },
 ];
 
 /** Read-only view of the catalogue for callers outside the router. */
 export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
     Object.freeze(MODEL_REGISTRY.map(model => Object.freeze({ ...model })));
 
-// Task-based fallback chains ordered by cost-effectiveness.
-// Conversation: natural tone + low cost. Gemini included (no tools needed). gemini-2.5-pro left the catalogue
-// on 2-nov-2026: Google answers 404 «no longer available to new users».
-// Tool calling: only models with supportsTools:true. Gemini excluded.
+// Cadenas por tarea (ADR-0029). Dentro de cada una el orden es el de la medición QA del 9-nov:
+// primero el mejor modelo barato, después otros proveedores para que un apagón de OpenAI (8-nov:
+// sin créditos) no deje al agente sin respuesta, y lo premium al final.
+//   ensayo de un turno (7 tenants)  ·  confirmación firmada (28 casos, mismo hash tras el «sí»)
+//   gpt-6-luna   0,940 · 28/28      gpt-5.6-luna 0,927 · 12/28      deepseek-flash 0,914 · 19/28
+//   gpt-6-sol    0,971 · 28/28      grok-4.3     0,925 · 26/28      (gpt-4o-mini, control: 0,874 · 11/28)
 const FALLBACK_CHAINS: Record<TaskType, string[]> = {
     conversation: [
-        'grok-4-1-fast-non-reasoning',   // tier_2 — most natural conversational, $0.0005/1k
-        'gemini-2.5-flash',              // tier_3 — fast + cheap, $0.0005/1k
-        'gpt-4o-mini',                   // tier_2 — reliable all-around, $0.003/1k
-        'deepseek-chat',                 // tier_4 — budget fallback, $0.0001/1k
-        'gpt-4.1-mini',                  // tier_2 — solid backup, $0.004/1k
-        'gpt-4o',                        // tier_1 — premium, $0.0125/1k
-        'claude-sonnet-4-6',             // tier_1 — premium reasoning, $0.015/1k
+        'gpt-6-luna',
+        'deepseek-flash',
+        'gemini-3.5-flash-lite',
+        'claude-haiku-5-5',
+        'gpt-5.6-luna',
+        'gpt-6-sol',
+        'grok-4.3',
+        'claude-sonnet-5-5',
     ],
     tool_calling: [
-        'gpt-4.1-mini',                  // tier_2 — best tool/cost ratio, $0.004/1k
-        'gpt-4o-mini',                   // tier_2 — reliable tools, $0.003/1k
-        'grok-4-1-fast-non-reasoning',   // tier_2 — OpenAI-compat tools, $0.0005/1k
-        'deepseek-chat',                 // tier_4 — basic tools, $0.0001/1k
-        'gpt-4o',                        // tier_1 — gold standard tools, $0.0125/1k
-        'claude-sonnet-4-6',             // tier_1 — excellent tools, $0.015/1k
+        'gpt-6-luna',
+        'claude-haiku-5-5',
+        'gpt-5.6-luna',
+        'deepseek-flash',
+        'gpt-6-sol',
+        'grok-4.3',
+        'claude-sonnet-5-5',
     ],
     // Cheap, JSON-capable models first; a premium model only as the last
     // resort so a classification is still produced when the cheap providers
     // are down (an unavailable classifier degrades the safety triage).
+    //
+    // Esta cadena también es la del verificador de evidencia (pide `task:
+    // 'classify'`, así que su `model` fijo no cuenta). Medido el 9-nov (ADR-0029):
+    // con gpt-6-luna a la cabeza el verificador borraba la frase de traspaso y
+    // dejaba «Claro que sí.» (C30 falló 4–9 veces por corrida); con
+    // gemini-3.5-flash-lite, 0 fallos y el mejor resultado global (0,940).
+    // deepseek-flash va tarde: es el juez del ensayo y no debe verificarse a sí mismo.
     classify: [
-        'gpt-4o-mini',                   // tier_2 — reliable JSON mode, $0.0006/1k out
-        'grok-4-1-fast-non-reasoning',   // tier_2 — cheap, OpenAI-compatible JSON
-        'gemini-2.5-flash',              // tier_3 — cheap
-        'deepseek-chat',                 // tier_4 — budget fallback
-        'gpt-4.1-mini',                  // tier_2 — backup
-        'claude-sonnet-4-6',             // tier_1 — last resort
+        'gemini-3.5-flash-lite',
+        'gpt-5.6-luna',
+        'gpt-6-luna',
+        'deepseek-flash',
+        'claude-haiku-5-5',
+        'gpt-6-sol',
     ],
 };
+
+/**
+ * Modelo que encabeza los turnos de conversación y herramientas en una MEDICIÓN
+ * (ADR-0029). Lo pone sólo el contenedor del runner (`scripts/rehearsal/measure.cjs`)
+ * para medir un candidato en el banco QA con el resto del ruteo intacto; la API y
+ * el worker no lo definen. Entra en la firma de ruteo de las evaluaciones.
+ */
+const MEASUREMENT_LEAD_MODEL = (process.env.LLM_MEASUREMENT_LEAD_MODEL || '').trim() || undefined;
+
+/** Pone `leadId` a la cabeza si está entre los candidatos; si no, no cambia nada. */
+export function leadWithModel<T extends { id: string }>(candidates: T[], leadId: string | undefined): T[] {
+    if (!leadId) return candidates;
+    const idx = candidates.findIndex(c => c.id === leadId);
+    return idx > 0 ? [candidates[idx], ...candidates.slice(0, idx), ...candidates.slice(idx + 1)] : candidates;
+}
 
 const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_efficient', 'tier_4_budget'];
 
@@ -123,9 +159,11 @@ const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_eff
  * the hardest thing we ask a model to do and the place where a weak one does
  * the most damage: it picks the wrong tool, drifts the arguments so the
  * confirmation hash no longer matches, or answers in prose while the customer
- * waits for a booking. Public multi-turn tool benchmarks put the budget models
- * we were leading with (deepseek-chat, gpt-4.1-mini) in the mid-thirties, far
- * under the standard tier.
+ * waits for a booking. When this floor was written (19-ago-2026) public
+ * multi-turn tool benchmarks put the budget models we were leading with
+ * (deepseek-chat, gpt-4.1-mini) in the mid-thirties, far under the standard
+ * tier. Which model sits in each tier is decided by our own QA measurement
+ * (ADR-0029), not by this comment.
  *
  * This is an ORDERING, not a gate: cheaper tiers stay in the chain as fallback,
  * and the monthly-budget circuit breaker still overrides it (see
@@ -190,7 +228,7 @@ export class LLMRouterService {
         const configured = await Promise.all(['openai','anthropic','google','xai','deepseek'].map(async name =>
             [name, await this.llmKeys.isConfigured(name)]));
         return createHash('sha256').update(JSON.stringify({registry:MODEL_REGISTRY, chains:FALLBACK_CHAINS,
-            leadTiers:[...TOOL_CALLING_LEAD_TIERS], configured, providers:this.providers.map(provider => provider.providerName).sort()})).digest('hex');
+            leadTiers:[...TOOL_CALLING_LEAD_TIERS], measurementLead:MEASUREMENT_LEAD_MODEL ?? null, configured, providers:this.providers.map(provider => provider.providerName).sort()})).digest('hex');
     }
 
     private breakerOpenKey(provider: string): string {
@@ -587,6 +625,7 @@ export class LLMRouterService {
             // las búsquedas y las preguntas, no sólo el «sí» que cierra una venta—.
             // Partición estable: no deshace ningún orden dentro de cada grupo.
             candidates = partitionByPlan(candidates, routingTiers);
+            if (!fixedChain) candidates = leadWithModel(candidates, MEASUREMENT_LEAD_MODEL);
 
             // A model pinned by the caller wins over everything above: inside one
             // turn the tool loop must stay on the model that made the first

@@ -21,6 +21,8 @@ const SKIP_PROBE_IF_SUCCESS_WITHIN_MS = 4 * 60 * 1000;
 export interface ProbeResult {
     ok: boolean;
     model: string;
+    /** Cuenta a la que factura la clave, si el proveedor la dice (OpenAI: cabeceras openai-organization / openai-project). */
+    account?: string;
     error?: { status?: number; code?: string; type?: string; message: string; name?: string };
 }
 
@@ -93,6 +95,7 @@ export class LlmProviderProbeService {
         if (state.status === 'healthy' && state.lastSuccessAt && Date.now() - state.lastSuccessAt < SKIP_PROBE_IF_SUCCESS_WITHIN_MS) return;
 
         const result = await this.callMinimal(provider, key);
+        if (result.account) await this.health.recordAccount(provider, result.account);
         if (result.ok) {
             await this.health.recordSuccess(provider, result.model, 'probe');
             // La cuenta responde: vuelve a rotacion ya, sin esperar el TTL del breaker.
@@ -170,11 +173,14 @@ export class LlmProviderProbeService {
                 body: JSON.stringify(body),
                 signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
             });
+            const org = res.headers?.get?.('openai-organization');
+            const project = res.headers?.get?.('openai-project');
+            const account = org ? [org, project].filter(Boolean).join(' / ') : undefined;
             if (res.ok) {
                 await res.text().catch(() => '');
-                return { ok: true, model };
+                return { ok: true, model, account };
             }
-            return { ok: false, model, error: await errorFromResponse(res) };
+            return { ok: false, model, account, error: await errorFromResponse(res) };
         } catch (e: any) {
             return { ok: false, model, error: { name: e?.name, code: e?.cause?.code ?? e?.code, message: e?.message ?? 'network error' } };
         }

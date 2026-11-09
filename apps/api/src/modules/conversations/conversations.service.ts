@@ -6032,6 +6032,7 @@ export class ConversationsService {
                     allowedTiers: keepsWriteFloor ? planAllowedTiers : allowedTiers,
                     budgetConstrained: budgetConstrained && !keepsWriteFloor,
                     voicedWrite,
+                    writeInPlay,
                     pinnedModel: turnModel,
                     tenantId,
                     traceContext: {

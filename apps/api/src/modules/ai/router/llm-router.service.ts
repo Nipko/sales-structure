@@ -137,6 +137,15 @@ const TOOL_CALLING_LEAD_TIERS: ReadonlySet<ModelTier> = new Set<ModelTier>([
     'tier_2_standard',
 ]);
 
+/**
+ * Modelos del plan primero y, detrás, los de escalada (fuera del plan), cada
+ * grupo en el orden que ya traía. Pura y estable (ADR-0028).
+ */
+export function partitionByPlan<T extends { tier: ModelTier }>(candidates: T[], allowedTiers: readonly ModelTier[]): T[] {
+    const inPlan = candidates.filter(c => allowedTiers.includes(c.tier));
+    return inPlan.length === candidates.length ? candidates : [...inPlan, ...candidates.filter(c => !allowedTiers.includes(c.tier))];
+}
+
 @Injectable()
 export class LLMRouterService {
     private readonly logger = new Logger(LLMRouterService.name);
@@ -460,6 +469,14 @@ export class LLMRouterService {
          * riesgo; la excepcion que se escribio no cubria este caso.
          */
         voicedWrite?: boolean;
+        /**
+         * El servidor reconoce una escritura en juego en este turno: una
+         * propuesta esperando su «sí», un pedido, una reserva en curso, una
+         * cancelación (`writeInPlay` de conversations.service). Sólo entonces el
+         * piso de herramientas puede saltar por encima de los tiers del plan
+         * (ADR-0028).
+         */
+        writeInPlay?: boolean;
         withSourceAuthority?: LLMSourceAuthority;
     }): Promise<LLMResponse & { routingDecision?: RoutingDecision }> {
 
@@ -521,13 +538,25 @@ export class LLMRouterService {
                 }
             }
 
+            // Hasta dónde puede subir este turno (ADR-0028). Por defecto, los
+            // tiers del plan. Un turno con una escritura en juego (o que vocea
+            // una ya cometida) puede subir además a tier_1/2 aunque el plan no
+            // los incluya: es donde un modelo débil cambia los argumentos o
+            // contesta en prosa mientras el cliente espera su reserva.
+            const writeFloorAbovePlan = protectedTurn && !options.budgetConstrained
+                && (options.writeInPlay === true || options.voicedWrite === true);
+            const routingTiers: readonly ModelTier[] = writeFloorAbovePlan
+                ? [...new Set([...allowedTiers, ...TOOL_CALLING_LEAD_TIERS])]
+                : allowedTiers;
+
             // Tool-calling floor: models good enough to pick a tool and fill its
             // arguments lead; the cheap ones stay as fallback. Stable partition,
             // so the chain's own cost ordering survives inside each group.
+            // Sólo entre los modelos a los que este turno puede subir.
             if (protectedTurn && !options.budgetConstrained) {
-                const lead = candidates.filter(c => TOOL_CALLING_LEAD_TIERS.has(c.tier));
+                const lead = candidates.filter(c => TOOL_CALLING_LEAD_TIERS.has(c.tier) && routingTiers.includes(c.tier));
                 if (lead.length && lead.length < candidates.length) {
-                    candidates = [...lead, ...candidates.filter(c => !TOOL_CALLING_LEAD_TIERS.has(c.tier))];
+                    candidates = [...lead, ...candidates.filter(c => !lead.includes(c))];
                     this.logger.debug(`[LLM] Tool-calling floor → leading with ${candidates[0].id}`);
                 }
             }
@@ -548,6 +577,16 @@ export class LLMRouterService {
                     this.logger.debug(`[LLM] Sticky routing — pinned ${sticky.id} (${sticky.provider}) for conv ${convId}`);
                 }
             }
+
+            // El plan manda sobre el orden (ADR-0028). Los modelos fuera del
+            // plan quedan en la cadena sólo como último recurso ante un fallo:
+            // el piso de herramientas (tier_1/2 primero) y la afinidad (el
+            // modelo que atendió el turno anterior, quizá por escalada) los
+            // subían a la cabeza, y así Emprendedor y Starter abrían sus turnos
+            // con herramientas en gpt-4.1-mini contra topes de $3 y $8 —incluidas
+            // las búsquedas y las preguntas, no sólo el «sí» que cierra una venta—.
+            // Partición estable: no deshace ningún orden dentro de cada grupo.
+            candidates = partitionByPlan(candidates, routingTiers);
 
             // A model pinned by the caller wins over everything above: inside one
             // turn the tool loop must stay on the model that made the first

@@ -1,4 +1,4 @@
-import { LLMRouterService } from './llm-router.service';
+import { LLM_MODEL_CATALOGUE, LLMRouterService, partitionByPlan } from './llm-router.service';
 
 /**
  * Which model leads a tool-calling turn, and who gets to change it.
@@ -12,13 +12,14 @@ import { LLMRouterService } from './llm-router.service';
 
 const conversationId = '33333333-3333-4333-8333-333333333333';
 
-function createRouter(opts: { configured?: string[] } = {}) {
+function createRouter(opts: { configured?: string[]; failing?: string[] } = {}) {
     const configured = new Set(opts.configured || ['openai', 'anthropic', 'google', 'xai', 'deepseek']);
     const calls: Array<{ provider: string; model: string }> = [];
     const makeProvider = (providerName: string) => ({
         providerName,
         generate: jest.fn(async (req: any) => {
             calls.push({ provider: providerName, model: req.model });
+            if (opts.failing?.includes(providerName)) throw Object.assign(new Error('upstream down'), { status: 503 });
             return { content: 'ok', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } };
         }),
     });
@@ -32,7 +33,9 @@ function createRouter(opts: { configured?: string[] } = {}) {
         lpush: jest.fn(),
         lrange: jest.fn(async () => []),
         ltrim: jest.fn(),
-        expire: jest.fn(),
+        expire: jest.fn(async () => 1),
+        incrBy: jest.fn(async () => 1),
+        incr: jest.fn(async () => 1),
     };
     const router = new LLMRouterService(
         providers as any,
@@ -60,6 +63,8 @@ describe('LLM router — tool-calling floor', () => {
             tools: [{ name: 'create_property_booking', description: 'd', parameters: {} }] as any,
             routingFactors: CONFIRMATION_FACTORS as any,
             allowedTiers: ['tier_4_budget'],
+            // The «sí» that closes a sale: the server sees a proposal waiting for it (ADR-0028).
+            writeInPlay: true,
             traceContext: { conversationId },
         });
 
@@ -177,5 +182,75 @@ describe('LLM router — pinned model inside one turn', () => {
         });
 
         expect(calls[0].provider).toBe('openai');
+    });
+});
+
+const TOOLS = [{ name: 'search_catalog', description: 'd', parameters: {} }] as any;
+
+describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () => {
+    it('Emprendedor: a tool turn with no write in play stays on the plan model', async () => {
+        const { router, calls } = createRouter();
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
+        });
+        expect(calls[0].model).toBe('deepseek-chat');
+    });
+
+    it('Starter: no tool-capable model in tier_3, so the plan tier_4 leads, not tier_2', async () => {
+        const { router, calls } = createRouter();
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: 'busco un hotel' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_3_efficient', 'tier_4_budget'], traceContext: { conversationId },
+        });
+        expect(calls[0].model).toBe('deepseek-chat');
+    });
+
+    it('a model outside the plan is still the last resort when the plan model fails', async () => {
+        const { router, calls } = createRouter({ failing: ['deepseek'] });
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
+        });
+        expect(calls[0].model).toBe('deepseek-chat');
+        expect(calls[1]).toBeDefined();
+        expect(calls[1].provider).not.toBe('deepseek');
+    });
+
+    it('affinity to a model outside the plan (left by an escalation) does not pin later turns', async () => {
+        const { router, calls, redisStore } = createRouter();
+        redisStore.set(`llm:affinity:${conversationId}:tool_calling`, 'openai:gpt-4.1-mini');
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: '¿y en azul?' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_4_budget'], traceContext: { conversationId },
+        });
+        expect(calls[0].model).toBe('deepseek-chat');
+    });
+
+    it('a turn voicing a committed write may still lead above the plan', async () => {
+        const { router, calls } = createRouter();
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: 'listo' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_4_budget'], voicedWrite: true, traceContext: { conversationId },
+        });
+        expect(calls[0].model).not.toBe('deepseek-chat');
+    });
+
+    it('Pro keeps leading with tier_2 on any tool turn (no change inside the plan)', async () => {
+        const { router, calls } = createRouter();
+        await router.execute({
+            task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
+            tools: TOOLS, allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], traceContext: { conversationId },
+        });
+        expect(LLM_MODEL_CATALOGUE.find(m => m.id === calls[0].model)?.tier).toBe('tier_2_standard');
+    });
+
+    it('partitionByPlan is stable inside each group', () => {
+        const c = [
+            { id: 'a', tier: 'tier_2_standard' as const }, { id: 'b', tier: 'tier_4_budget' as const },
+            { id: 'c', tier: 'tier_1_premium' as const }, { id: 'd', tier: 'tier_4_budget' as const },
+        ];
+        expect(partitionByPlan(c, ['tier_4_budget']).map(x => x.id)).toEqual(['b', 'd', 'a', 'c']);
+        expect(partitionByPlan(c, ['tier_1_premium', 'tier_2_standard', 'tier_4_budget'])).toBe(c);
     });
 });

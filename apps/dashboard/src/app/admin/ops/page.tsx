@@ -31,6 +31,7 @@ interface LlmProvider {
     lastErrorAt: number | null; lastErrorMessage: string | null; lastErrorLabel: string | null; lastErrorModel: string | null;
     lastProbeAt: number | null; lastProbeOk: boolean | null; breakerOpen: boolean;
     balance: { amount: number; currency: string } | null;
+    account?: string | null;
     errorsToday: Record<string, number>;
 }
 interface LlmRoutingWindow { total: number; fallback: number; pct: number; byServedProvider: Record<string, number> }
@@ -301,6 +302,7 @@ export default function OpsCenterPage() {
                                         </span>
                                         {p.configured && p.since && p.status !== "healthy" && <span className="text-xs text-muted-foreground">{shortTime(p.since)}</span>}
                                         <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+                                            {p.account && <span className="font-mono">{p.account}</span>}
                                             {p.balance && <span>{t("llmBalance")}: <b className="text-foreground">{p.balance.amount.toFixed(2)} {p.balance.currency}</b></span>}
                                             {errorsToday > 0 && <span>{t("llmErrorsToday")}: <b className="text-foreground">{errorsToday}</b></span>}
                                             {p.lastProbeAt && <span>{t("llmLastProbe")}: {shortTime(p.lastProbeAt)} {p.lastProbeOk ? "✓" : "✗"}</span>}

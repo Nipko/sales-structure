@@ -34,7 +34,7 @@ export class AnthropicProvider implements ILLMProvider {
                 messages: this.formatMessages(options.messages),
                 max_tokens: Number(options.maxTokens || 4096),
                 // Claude 4.7+/5.x: sin muestreo y con el pensamiento mínimo (ADR-0029).
-                ...(anthropicRequestParams(options.model, options) as {}),
+                ...(anthropicRequestParams(options.model, options)),
             };
 
             // Build the system text first (append the JSON-mode steer if needed —
@@ -119,7 +119,7 @@ export class AnthropicProvider implements ILLMProvider {
                 messages: this.formatMessages(options.messages),
                 max_tokens: Number(options.maxTokens || 4096),
                 // Claude 4.7+/5.x: sin muestreo y con el pensamiento mínimo (ADR-0029).
-                ...(anthropicRequestParams(options.model, options) as {}),
+                ...(anthropicRequestParams(options.model, options)),
                 stream: true,
             };
 

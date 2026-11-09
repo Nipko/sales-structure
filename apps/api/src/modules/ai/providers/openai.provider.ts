@@ -33,7 +33,7 @@ export class OpenAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                ...(openAIChatParams(options.model, options)) as {},
+                ...openAIChatParams(options.model, options),
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -82,7 +82,7 @@ export class OpenAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                ...(openAIChatParams(options.model, options)) as {},
+                ...openAIChatParams(options.model, options),
                 stream: true,
             };
 

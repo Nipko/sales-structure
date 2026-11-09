@@ -36,7 +36,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 temperature: Number(options.temperature ?? 0.7),
                 max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
                 // deepseek-flash piensa por defecto (ADR-0029).
-                ...(deepseekChatExtras(options.model) as {}),
+                ...(deepseekChatExtras(options.model)),
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -88,7 +88,7 @@ export class DeepSeekProvider implements ILLMProvider {
                 temperature: Number(options.temperature ?? 0.7),
                 max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
                 // deepseek-flash piensa por defecto (ADR-0029).
-                ...(deepseekChatExtras(options.model) as {}),
+                ...(deepseekChatExtras(options.model)),
                 stream: true,
             };
 

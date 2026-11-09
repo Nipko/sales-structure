@@ -33,7 +33,7 @@ export class XAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                ...(xaiChatParams(options.model, options) as {}),
+                ...(xaiChatParams(options.model, options)),
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -81,7 +81,7 @@ export class XAIProvider implements ILLMProvider {
             const req: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
                 model: options.model,
                 messages: formattedMessages as any,
-                ...(xaiChatParams(options.model, { temperature: options.temperature }) as {}),
+                ...(xaiChatParams(options.model, { temperature: options.temperature })),
                 stream: true,
             };
             const stream = await client.chat.completions.create(req, transport ? { maxRetries: transport.maxRetries } : undefined);

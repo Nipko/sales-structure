@@ -75,7 +75,7 @@ export class ImageVisionService {
             // gpt-6-luna exige max_completion_tokens y reasoning none; grok-4.3, reasoning none (ADR-0029).
             ...((provider === 'xai'
                 ? xaiChatParams(model, { temperature: 0.3, maxTokens: 300 })
-                : openAIChatParams(model, { temperature: 0.3, maxTokens: 300 })) as {}),
+                : openAIChatParams(model, { temperature: 0.3, maxTokens: 300 }))),
         });
 
         const description = response.choices[0]?.message?.content || '';

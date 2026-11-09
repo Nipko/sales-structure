@@ -5,7 +5,7 @@ Generado por `apps/api/scripts/artifacts/generate-closure-state.cjs`. **Ningún 
 programa que sí se escribieron a mano envejecieron —el 32/10 de la matriz, el `complete` de canales,
 «otras salidas», «faltan términos en otras familias»—, y ése es exactamente el motivo.
 
-Revisión: `4c0d2b6c85fe23b762c88cf694e4a5acdabca53a`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
+Revisión: `ee796e11f97517d7b10302c9091cec11f1a0e265`. Sin base de datos, sin modelo, sin proveedor, sin tenant.
 
 ## Matriz de tareas
 
@@ -15,11 +15,11 @@ Revisión: `4c0d2b6c85fe23b762c88cf694e4a5acdabca53a`. Sin base de datos, sin mo
 
 ## Lo que costaría certificar el catálogo
 
-Un modelo (`gpt-4.1-mini`), 5 canales, 4 idiomas, k=1:
+Un modelo (`gpt-6-luna`), 5 canales, 4 idiomas, k=1:
 
 - **88.720** casos requeridos
 - **255.980** llamadas al modelo (derivadas de los mensajes de cliente de cada escenario)
-- techo **US$944.80** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
+- techo **US$316.20** con un límite declarado de 8000 tokens de entrada y 1000 de salida por turno
 - **427 h** de tiempo de modelo
 - rechazos del plan: —
 

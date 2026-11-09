@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { RedisService } from '../../redis/redis.service';
 import { CronLockService } from '../../redis/cron-lock.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
-import { LLM_MODEL_CATALOGUE } from '../router/llm-router.service';
+import { activeLlmCatalog } from '../router/llm-catalog';
 import {
     ACCOUNT_FAILURE_BREAKER_SEC, LLM_PROVIDERS, LlmProviderHealthService, llmBreakerOpenKey,
 } from './llm-provider-health.service';
@@ -129,7 +129,7 @@ export class LlmProviderProbeService {
     }
 
     private probeModel(provider: string): string {
-        const models = LLM_MODEL_CATALOGUE.filter(m => m.provider === provider)
+        const models = activeLlmCatalog().models.filter(m => m.provider === provider)
             .slice()
             .sort((a, b) => a.costOutPer1k - b.costOutPer1k);
         return models[0]?.id ?? '';

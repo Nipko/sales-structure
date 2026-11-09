@@ -3,6 +3,7 @@ import OpenAI from 'openai';
 import { LlmKeyService } from '../settings/llm-key.service';
 import { TenantThrottleService } from '../throttle/tenant-throttle.service';
 import { openAIChatParams, xaiChatParams } from '../ai/providers/model-request-params';
+import { roleModelForProvider } from '../ai/router/llm-catalog';
 
 export interface VisionResult {
     description: string;
@@ -127,35 +128,39 @@ export class ImageVisionService {
         // Lower-tier plans → Gemini Flash (cheapest vision)
         if (llmTier === 'tier_4' || llmTier === 'tier_3') {
             const googleKey = await this.llmKeys.getKey('google');
-            if (googleKey) {
-                return { model: 'gemini-3.5-flash-lite', provider: 'google', client: null };
+            const googleModel = roleModelForProvider('vision', 'google');
+            if (googleKey && googleModel) {
+                return { model: googleModel, provider: 'google', client: null };
             }
         }
 
         // Higher-tier plans or Google not configured → try xAI (primary)
         const xaiKey = await this.llmKeys.getKey('xai');
-        if (xaiKey) {
+        const xaiModel = roleModelForProvider('vision', 'xai');
+        if (xaiKey && xaiModel) {
             if (!this.xaiClient || xaiKey !== this.xaiKey) {
                 this.xaiClient = new OpenAI({ apiKey: xaiKey, baseURL: 'https://api.x.ai/v1' });
                 this.xaiKey = xaiKey;
             }
-            return { model: 'grok-4.3', provider: 'xai', client: this.xaiClient };
+            return { model: xaiModel, provider: 'xai', client: this.xaiClient };
         }
 
         // Fallback to OpenAI
         const openaiKey = await this.llmKeys.getKey('openai');
-        if (openaiKey) {
+        const openaiModel = roleModelForProvider('vision', 'openai');
+        if (openaiKey && openaiModel) {
             if (!this.openaiClient || openaiKey !== this.openaiKey) {
                 this.openaiClient = new OpenAI({ apiKey: openaiKey });
                 this.openaiKey = openaiKey;
             }
-            return { model: 'gpt-6-luna', provider: 'openai', client: this.openaiClient };
+            return { model: openaiModel, provider: 'openai', client: this.openaiClient };
         }
 
         // Last resort: Google
         const googleKey = await this.llmKeys.getKey('google');
-        if (googleKey) {
-            return { model: 'gemini-3.5-flash-lite', provider: 'google', client: null };
+        const googleModel = roleModelForProvider('vision', 'google');
+        if (googleKey && googleModel) {
+            return { model: googleModel, provider: 'google', client: null };
         }
 
         throw new Error('No vision-capable LLM provider configured');

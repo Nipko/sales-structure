@@ -678,7 +678,7 @@ export class AgentConsoleService {
         const ordered = [...messages].reverse();
         try {
             const res = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: ordered.map((m: any) => ({
                     role: (m.direction === 'inbound' ? 'user' : 'assistant') as any,
                     content: m.content_text || '',
@@ -1004,7 +1004,7 @@ export class AgentConsoleService {
         // Usar LLM Router para generar sugerencia real
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: messages.map((m: any) => ({
                     role: (m.direction === 'inbound' ? 'user' : 'assistant') as any,
                     content: m.content_text || '',
@@ -1032,7 +1032,7 @@ Responde SOLO con el texto de la sugerencia, sin explicaciones adicionales.`,
         const lang = LANG[targetLanguage] || targetLanguage;
         try {
             const res = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: [{ role: 'user', content: text }],
                 systemPrompt: `You are a professional translator. Translate the following text to ${lang}.
 Rules: return ONLY the translated text, no explanations, no quotes, preserve formatting.`,
@@ -1058,7 +1058,7 @@ Rules: return ONLY the translated text, no explanations, no quotes, preserve for
             // with the image data URL, which works with OpenAI and xAI vision models).
             const dataUrl = `data:${mimeType};base64,${imageBase64}`;
             const res = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: [
                     {
                         role: 'user',

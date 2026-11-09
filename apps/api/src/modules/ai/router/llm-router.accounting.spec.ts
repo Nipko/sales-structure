@@ -1,4 +1,5 @@
-import { LLM_MODEL_CATALOGUE, LLMRouterService } from './llm-router.service';
+import { activeLlmCatalog } from './llm-catalog';
+import { LLMRouterService } from './llm-router.service';
 
 function harness(execResult: Array<[Error | null, unknown]> | null = []) {
     const calls: Array<[string, ...unknown[]]> = [];
@@ -14,7 +15,7 @@ function harness(execResult: Array<[Error | null, unknown]> | null = []) {
 }
 
 describe('LLM accounting transaction', () => {
-    const model = LLM_MODEL_CATALOGUE.find(candidate => candidate.id === 'gpt-5.6-luna')!;
+    const model = activeLlmCatalog().models.find(candidate => candidate.id === 'gpt-5.6-luna')!;
 
     it('commits the monthly guard, daily counters, indexes and retention together', async () => {
         const { router, transaction, calls } = harness([]);

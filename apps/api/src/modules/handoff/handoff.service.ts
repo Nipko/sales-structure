@@ -287,7 +287,7 @@ export class HandoffService {
                 // Same route as the intent interpreter's small extraction call; the
                 // router accounts the spend to the tenant and applies its budget.
                 this.llmRouter.execute({
-                    model: 'gpt-6-luna',
+                    role: 'aux_reasoning',
                     messages: [{ role: 'user', content: userContent }],
                     systemPrompt,
                     temperature: 0,
@@ -1427,7 +1427,7 @@ export class HandoffService {
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: [{ role: 'user', content: transcript }],
                 systemPrompt: [
                     'You create concise internal handoff summaries from the supplied transcript only.',

@@ -267,7 +267,7 @@ export class LlmProviderHealthService {
             severity: 'warning',
             subject: `Modelo ${model} no disponible en ${this.providerLabel(provider)}`,
             html: `El modelo <b>${model}</b> responde "no encontrado / retirado". El router lo salta y usa el siguiente de la cadena.<br>`
-                + `Ultimo error: <code>${escapeHtml(message)}</code><br><b>Que hacer:</b> sacarlo del catalogo (MODEL_REGISTRY) o reemplazarlo.`,
+                + `Ultimo error: <code>${escapeHtml(message)}</code><br><b>Que hacer:</b> sacarlo del catalogo (llm-catalog.ts) o reemplazarlo.`,
             value: 1,
         });
     }

@@ -17,123 +17,9 @@ import {
     operationalUsageAccountingEnabled,
     persistenceDisabled,
 } from '../../../common/types/execution-context';
+import { activeLlmCatalog, catalogModel, roleModel, type CatalogRole, type ModelConfig, type TaskType } from './llm-catalog';
 
-/**
- * - `conversation` / `tool_calling`: the reply of a turn.
- * - `classify`: a short, strict-JSON, temperature-0 judgement that runs BEFORE
- *   the reply (the health safety triage today). It never decides tools and
- *   never writes, so it takes a fixed cheap chain: no value-based reordering,
- *   no tool-calling floor and no sticky affinity — the same message must reach
- *   the same model whatever the conversation did before.
- */
-export type TaskType = 'conversation' | 'tool_calling' | 'classify';
-
-export interface ModelConfig {
-    id: string;
-    provider: string;
-    tier: ModelTier;
-    /** Blended display rate (USD per 1k tokens). Kept for routing-decision display. */
-    costPer1kTokens: number;
-    /** Real input/output rates (USD per 1k tokens) — used for accurate cost tracking. */
-    costInPer1k: number;
-    costOutPer1k: number;
-    /**
-     * Entrada leída de la caché de prompts del proveedor (ADR-0027). Sin este
-     * dato la caché se cobra a precio completo: el 52 % de la entrada de
-     * sep–nov 2026 era caché y la estimación quedó 71 % por encima de la factura.
-     */
-    costCachedInPer1k?: number;
-    /** Entrada escrita en caché; sólo Anthropic la cobra aparte (1,25× la entrada). */
-    costCacheWritePer1k?: number;
-    maxContextTokens: number;
-    supportsTools: boolean;
-}
-
-// Rates are USD per 1k tokens (provider list price / 1000), input vs output
-// separated because output is typically 3-5× input. Update when providers
-// change pricing. costPer1kTokens is a rough blended figure for display only.
-/**
- * The one catalogue. Anything that needs to know what a model costs — the
- * router at runtime, a certification plan that has to state a maximum spend
- * before anyone authorises it — reads THIS, because a second copy of a price
- * list is a price list that will be wrong on the day it matters.
- */
-const MODEL_REGISTRY: ModelConfig[] = [
-    // Catálogo migrado el 9-nov-2026 (ADR-0029). Precios de lista verificados ese día en la página
-    // oficial de cada proveedor, USD por 1k tokens. Caché con la convención de ADR-0027: lectura en
-    // `costCachedInPer1k`; escritura en `costCacheWritePer1k` sólo donde se cobra aparte (OpenAI
-    // GPT-5.6+/GPT-6 y Anthropic, 1,25× la entrada a 30 min / 5 min).
-    //
-    // Tier 1 — Premium (enterprise/custom).
-    { id: 'gpt-6-sol', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.006, costInPer1k: 0.002, costOutPer1k: 0.010, costCachedInPer1k: 0.0002, costCacheWritePer1k: 0.0025, maxContextTokens: 1050000, supportsTools: true },
-    // Sin clave de Anthropic en la plataforma (9-nov-2026): no medido, va al final de cada cadena.
-    { id: 'claude-sonnet-5-5', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.006, costInPer1k: 0.002, costOutPer1k: 0.010, costCachedInPer1k: 0.0001, costCacheWritePer1k: 0.0025, maxContextTokens: 1000000, supportsTools: true },
-    // xAI no tiene hoy un modelo barato: grok-4.3 es el más barato de su lista ($1,25/$0,20/$2,50 por M
-    // bajo 200k de prompt). Es el respaldo de otro proveedor cuando OpenAI y DeepSeek caen.
-    { id: 'grok-4.3', provider: 'xai', tier: 'tier_1_premium', costPer1kTokens: 0.001875, costInPer1k: 0.00125, costOutPer1k: 0.0025, costCachedInPer1k: 0.0002, maxContextTokens: 200000, supportsTools: true },
-    // Tier 2 — Standard (pro).
-    { id: 'gpt-6-luna', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.0003, costInPer1k: 0.0001, costOutPer1k: 0.0005, costCachedInPer1k: 0.00001, costCacheWritePer1k: 0.000125, maxContextTokens: 1050000, supportsTools: true },
-    // Haiku 5.5 cobra 5× sobre 100k de prompt: el tope de contexto lo mantiene en su tarifa baja.
-    { id: 'claude-haiku-5-5', provider: 'anthropic', tier: 'tier_2_standard', costPer1kTokens: 0.0003, costInPer1k: 0.0001, costOutPer1k: 0.0005, costCachedInPer1k: 0.00001, costCacheWritePer1k: 0.000125, maxContextTokens: 100000, supportsTools: true },
-    { id: 'gpt-5.6-luna', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.0007, costInPer1k: 0.0002, costOutPer1k: 0.0012, costCachedInPer1k: 0.00002, costCacheWritePer1k: 0.00025, maxContextTokens: 1050000, supportsTools: true },
-    // Tier 3 — Efficient (starter). Google redirige gemini-2.5-flash a este modelo el 1-dic-2026.
-    // Piensa en `minimal` y no se puede apagar. Sin herramientas: el adaptador no devuelve la
-    // `thoughtSignature` que Gemini 3.x exige en el turno siguiente a una llamada de función.
-    { id: 'gemini-3.5-flash-lite', provider: 'google', tier: 'tier_3_efficient', costPer1kTokens: 0.0014, costInPer1k: 0.0003, costOutPer1k: 0.0025, costCachedInPer1k: 0.00003, maxContextTokens: 1048576, supportsTools: false },
-    // Tier 4 — Budget. Tarifa de hora pico (lun–vie 01–04 y 06–10 UTC); el resto del día cuesta la
-    // mitad. Se cataloga la pico: el error queda del lado conservador.
-    { id: 'deepseek-flash', provider: 'deepseek', tier: 'tier_4_budget', costPer1kTokens: 0.00075, costInPer1k: 0.0003, costOutPer1k: 0.0012, costCachedInPer1k: 0.000006, maxContextTokens: 1000000, supportsTools: true },
-];
-
-/** Read-only view of the catalogue for callers outside the router. */
-export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
-    Object.freeze(MODEL_REGISTRY.map(model => Object.freeze({ ...model })));
-
-// Cadenas por tarea (ADR-0029). Dentro de cada una el orden es el de la medición QA del 9-nov:
-// primero el mejor modelo barato, después otros proveedores para que un apagón de OpenAI (8-nov:
-// sin créditos) no deje al agente sin respuesta, y lo premium al final.
-//   ensayo de un turno (7 tenants)  ·  confirmación firmada (28 casos, mismo hash tras el «sí»)
-//   gpt-6-luna   0,940 · 28/28      gpt-5.6-luna 0,927 · 12/28      deepseek-flash 0,914 · 19/28
-//   gpt-6-sol    0,971 · 28/28      grok-4.3     0,925 · 26/28      (gpt-4o-mini, control: 0,874 · 11/28)
-const FALLBACK_CHAINS: Record<TaskType, string[]> = {
-    conversation: [
-        'gpt-6-luna',
-        'deepseek-flash',
-        'gemini-3.5-flash-lite',
-        'claude-haiku-5-5',
-        'gpt-5.6-luna',
-        'gpt-6-sol',
-        'grok-4.3',
-        'claude-sonnet-5-5',
-    ],
-    tool_calling: [
-        'gpt-6-luna',
-        'claude-haiku-5-5',
-        'gpt-5.6-luna',
-        'deepseek-flash',
-        'gpt-6-sol',
-        'grok-4.3',
-        'claude-sonnet-5-5',
-    ],
-    // Cheap, JSON-capable models first; a premium model only as the last
-    // resort so a classification is still produced when the cheap providers
-    // are down (an unavailable classifier degrades the safety triage).
-    //
-    // Esta cadena también es la del verificador de evidencia (pide `task:
-    // 'classify'`, así que su `model` fijo no cuenta). Medido el 9-nov (ADR-0029):
-    // con gpt-6-luna a la cabeza el verificador borraba la frase de traspaso y
-    // dejaba «Claro que sí.» (C30 falló 4–9 veces por corrida); con
-    // gemini-3.5-flash-lite, 0 fallos y el mejor resultado global (0,940).
-    // deepseek-flash va tarde: es el juez del ensayo y no debe verificarse a sí mismo.
-    classify: [
-        'gemini-3.5-flash-lite',
-        'gpt-5.6-luna',
-        'gpt-6-luna',
-        'deepseek-flash',
-        'claude-haiku-5-5',
-        'gpt-6-sol',
-    ],
-};
+export type { ModelConfig, TaskType, CatalogRole } from './llm-catalog';
 
 /**
  * Modelo que encabeza los turnos de conversación y herramientas en una MEDICIÓN
@@ -225,9 +111,10 @@ export class LLMRouterService {
 
     /** The exact routing policy/configuration used by readonly evaluations; exposes no prices or credentials. */
     async evaluationRoutingSignature(): Promise<string> {
+        const catalog = activeLlmCatalog();
         const configured = await Promise.all(['openai','anthropic','google','xai','deepseek'].map(async name =>
             [name, await this.llmKeys.isConfigured(name)]));
-        return createHash('sha256').update(JSON.stringify({registry:MODEL_REGISTRY, chains:FALLBACK_CHAINS,
+        return createHash('sha256').update(JSON.stringify({registry:catalog.models, chains:catalog.chains, roles:catalog.roles,
             leadTiers:[...TOOL_CALLING_LEAD_TIERS], measurementLead:MEASUREMENT_LEAD_MODEL ?? null, configured, providers:this.providers.map(provider => provider.providerName).sort()})).digest('hex');
     }
 
@@ -404,9 +291,9 @@ export class LLMRouterService {
         executionContext?: ServiceExecutionContext,
         skippedForHealthOut?: string[],
     ): Promise<ModelConfig[]> {
-        const chain = FALLBACK_CHAINS[task];
-        const allConfigs = chain
-            .map(id => MODEL_REGISTRY.find(m => m.id === id))
+        const catalog = activeLlmCatalog();
+        const allConfigs = catalog.chains[task]
+            .map(id => catalogModel(id, catalog))
             .filter((m): m is ModelConfig => !!m);
 
         const eligible = task === 'tool_calling'
@@ -474,6 +361,11 @@ export class LLMRouterService {
 
     async execute(options: Omit<LLMRequestOptions, 'model'> & {
         model?: string;
+        /**
+         * Rol auxiliar del catálogo (ADR-0030 §3). Sin `task`, el modelo es la
+         * cabeza del rol en la versión activa; un `model` explícito gana.
+         */
+        role?: CatalogRole;
         task?: TaskType;
         routingFactors?: RoutingFactors;
         allowedTiers?: ModelTier[];
@@ -668,7 +560,7 @@ export class LLMRouterService {
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
                     if (this.providerHealth) {
-                        const chain = FALLBACK_CHAINS[options.task];
+                        const chain = activeLlmCatalog().chains[options.task];
                         const servedPos = chain.indexOf(candidate.id);
                         // Fallback = algo fallo antes en este turno, o un modelo que
                         // la cadena pone ANTES del servido quedo fuera por salud.
@@ -763,22 +655,21 @@ export class LLMRouterService {
             throw lastError || new Error('All LLM providers failed');
         }
 
-        // Direct model selection (backwards compat for copilot, widget, etc.)
-        let modelConfig = options.model
-            ? MODEL_REGISTRY.find(m => m.id === options.model)
-            : undefined;
+        // Direct model selection: an explicit model or the head of a catalogue role.
+        const directModelId = options.model ?? (options.role ? roleModel(options.role) : undefined);
+        let modelConfig: ModelConfig | undefined = directModelId ? catalogModel(directModelId) : undefined;
 
         if (!modelConfig) {
             // Unknown/unspecified model — don't blindly pick the premium
-            // MODEL_REGISTRY[0]. Use the best CONFIGURED + healthy model from the
+            // first catalogue model. Use the best CONFIGURED + healthy model from the
             // conversation chain so we never dispatch to an unconfigured provider.
             const fallbackCandidates = await this.buildCandidates(
                 'conversation',
                 ALL_TIERS,
                 options.executionContext,
             );
-            modelConfig = fallbackCandidates[0] || MODEL_REGISTRY[0];
-            this.logger.warn(`Model ${options.model || '(none)'} not in registry, falling back to ${modelConfig.id}`);
+            modelConfig = fallbackCandidates[0] || activeLlmCatalog().models[0];
+            this.logger.warn(`Model ${directModelId || '(none)'} not in registry, falling back to ${modelConfig.id}`);
         }
 
         const rawProvider = this.getProvider(modelConfig.provider);
@@ -1185,6 +1076,11 @@ export class LLMRouterService {
 
     async *executeStream(options: Omit<LLMRequestOptions, 'model'> & {
         model?: string;
+        /**
+         * Rol auxiliar del catálogo (ADR-0030 §3). Sin `task`, el modelo es la
+         * cabeza del rol en la versión activa; un `model` explícito gana.
+         */
+        role?: CatalogRole;
         task?: TaskType;
         allowedTiers?: ModelTier[];
         tenantId?: string;
@@ -1198,13 +1094,12 @@ export class LLMRouterService {
         }
 
         if (!modelConfig) {
-            modelConfig = options.model
-                ? MODEL_REGISTRY.find(m => m.id === options.model)
-                : undefined;
+            const directModelId = options.model ?? (options.role ? roleModel(options.role) : undefined);
+            modelConfig = directModelId ? catalogModel(directModelId) : undefined;
         }
 
         if (!modelConfig) {
-            modelConfig = MODEL_REGISTRY[0];
+            modelConfig = activeLlmCatalog().models[0];
         }
 
         const reqOptions: LLMRequestOptions = {
@@ -1333,6 +1228,6 @@ export class LLMRouterService {
     }
 
     getModels(): ModelConfig[] {
-        return MODEL_REGISTRY;
+        return [...activeLlmCatalog().models];
     }
 }

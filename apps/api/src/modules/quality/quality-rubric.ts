@@ -1,4 +1,5 @@
 import { QUALITY_RUBRIC_VERSION, qualityHash } from './quality-evidence';
+import { roleModel } from '../ai/router/llm-catalog';
 
 export const RUBRIC_PROMPT = `Eres un evaluador de calidad (QA) de conversaciones de atención al cliente y ventas en Latinoamérica.
 Analiza la transcripción y evalúa la calidad del servicio prestado (sea por IA o por un agente humano).
@@ -45,7 +46,7 @@ Usa español. No incluyas explicaciones fuera del JSON.`;
  * answer, not what is being measured, and every current verdict is read
  * through `rubric_hash`: hashing it would orphan all of them to fix a parser.
  */
-export const QUALITY_JUDGE_CALL = Object.freeze({ model: 'gpt-6-luna', temperature: 0.2, maxTokens: 500 });
+export const QUALITY_JUDGE_CALL = Object.freeze({ model: roleModel('judge_quality'), temperature: 0.2, maxTokens: 500 });
 
 export const QUALITY_RUBRIC_HASH = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION,
     model: QUALITY_JUDGE_CALL.model, temperature: QUALITY_JUDGE_CALL.temperature, maxTokens: QUALITY_JUDGE_CALL.maxTokens });

@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import OpenAI from 'openai';
 import { CronLockService } from '../redis/cron-lock.service';
 import { LlmKeyService } from '../settings/llm-key.service';
+import { roleModelForProvider } from '../ai/router/llm-catalog';
+import { openAIChatParams } from '../ai/providers/model-request-params';
 
 const STATUSES = ['open', 'under_review', 'planned', 'in_progress', 'shipped', 'declined'] as const;
 type Status = (typeof STATUSES)[number];
@@ -554,9 +556,15 @@ export class FeatureRequestsService {
 
     private async summarizeSignalCluster(sampleText: string): Promise<{ title: string; description: string } | null> {
         try {
+            // Habla directo con OpenAI: el primer modelo de OpenAI del rol (ADR-0030).
+            const model = roleModelForProvider('aux_reasoning', 'openai');
+            if (!model) {
+                this.logger.warn('summarize skipped: aux_reasoning has no OpenAI model');
+                return null;
+            }
             const openai = await this.ensureOpenAI();
             const r = await openai.chat.completions.create({
-                model: 'gpt-6-luna',
+                model,
                 messages: [
                     {
                         role: 'system',
@@ -565,7 +573,8 @@ export class FeatureRequestsService {
                     },
                     { role: 'user', content: sampleText },
                 ],
-                temperature: 0.3,
+                // GPT-5.6+/GPT-6 rechazan temperature ≠ 1 sin reasoning_effort none (ADR-0029).
+                ...openAIChatParams(model, { temperature: 0.3 }),
                 response_format: { type: 'json_object' },
             });
             const parsed = JSON.parse(r.choices[0].message.content ?? '{}');

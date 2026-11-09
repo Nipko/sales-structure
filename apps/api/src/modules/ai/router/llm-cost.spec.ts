@@ -1,11 +1,12 @@
 import {
     splitPromptTokens, usageCostUsd, usageFromAnthropic, usageFromGemini, usageFromOpenAICompatible,
 } from './llm-cost';
-import { LLM_MODEL_CATALOGUE, LLMRouterService } from './llm-router.service';
+import { activeLlmCatalog } from './llm-catalog';
+import { LLMRouterService } from './llm-router.service';
 import { modelCostMicro } from './llm-spend-guard.service';
 import { callCostUsd } from '../../conversations/agent-turn-session';
 
-const model = (id: string) => LLM_MODEL_CATALOGUE.find(m => m.id === id)!;
+const model = (id: string) => activeLlmCatalog().models.find(m => m.id === id)!;
 
 describe('Caché de prompts en el costo LLM (ADR-0027)', () => {
     describe('normalización por proveedor', () => {
@@ -21,7 +22,7 @@ describe('Caché de prompts en el costo LLM (ADR-0027)', () => {
                 prompt_tokens: 1_206, completion_tokens: 34, total_tokens: 1_240,
                 prompt_tokens_details: { cached_tokens: 0, cache_write_tokens: 1_203, audio_tokens: 0 },
             })).toEqual({ promptTokens: 1_206, completionTokens: 34, totalTokens: 1_240, cacheWritePromptTokens: 1_203 });
-            const luna = LLM_MODEL_CATALOGUE.find(m => m.id === 'gpt-6-luna')!;
+            const luna = activeLlmCatalog().models.find(m => m.id === 'gpt-6-luna')!;
             // 3 frescos a $0,10/M + 1.203 escritos a $0,125/M + 34 de salida a $0,50/M.
             expect(usageCostUsd(luna, { promptTokens: 1_206, completionTokens: 34, totalTokens: 1_240, cacheWritePromptTokens: 1_203 }))
                 .toBeCloseTo((3 * 0.10 + 1_203 * 0.125 + 34 * 0.50) / 1e6, 12);
@@ -81,7 +82,7 @@ describe('Caché de prompts en el costo LLM (ADR-0027)', () => {
     });
 
     it('cada modelo del catálogo declara precio de caché, menor que la entrada', () => {
-        for (const m of LLM_MODEL_CATALOGUE) {
+        for (const m of activeLlmCatalog().models) {
             expect(m.costCachedInPer1k).toBeGreaterThan(0);
             expect(m.costCachedInPer1k!).toBeLessThan(m.costInPer1k);
         }

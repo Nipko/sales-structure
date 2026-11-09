@@ -13,14 +13,15 @@
  *
  * Nunca bloquea el turno: si el clasificador no responde o no se puede leer, la respuesta sale como estaba. Detrás de la
  * bandera por tenant `agentRuntime.evidenceVerifier` (encendida por defecto desde E2h), sellada en la foto como las demás. Usa un
- * modelo distinto del juez del ensayo (`deepseek-flash`) para que el ensayo no mida su propio sesgo.
+ * modelo distinto del juez del ensayo (rol `judge_rehearsal`) para que el ensayo no mida su propio sesgo.
  *
- * La llamada pide `task: 'classify'`, así que el router usa la cadena `classify` y este nombre es sólo informativo: debe
- * coincidir con su cabeza (ADR-0029, gemini-3.5-flash-lite).
+ * La llamada pide `task: 'classify'`, así que el router usa la cadena `classify` y este nombre es sólo informativo: se lee
+ * de la cabeza de esa cadena en el catálogo activo (ADR-0029, ADR-0030).
  */
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
+import { activeLlmCatalog } from '../../ai/router/llm-catalog';
 
-export const EVIDENCE_VERIFIER_MODEL = 'gemini-3.5-flash-lite';
+export const EVIDENCE_VERIFIER_MODEL = activeLlmCatalog().chains.classify[0];
 export const EVIDENCE_VERIFIER_MAX_TOKENS = 400;
 const EVIDENCE_MAX_CHARS = 9000;
 const REPLY_MAX_CHARS = 3000;

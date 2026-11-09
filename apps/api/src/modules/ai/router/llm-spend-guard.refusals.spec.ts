@@ -1,7 +1,7 @@
 import { LlmSpendGuardService, isUnbilledRefusal } from './llm-spend-guard.service';
-import { LLM_MODEL_CATALOGUE } from './llm-router.service';
+import { activeLlmCatalog } from './llm-catalog';
 
-const price = LLM_MODEL_CATALOGUE.find(m => m.id === 'gpt-6-luna')!;
+const price = activeLlmCatalog().models.find(m => m.id === 'gpt-6-luna')!;
 const request = { messages: [{ role: 'user', content: 'hola '.repeat(200) }], maxTokens: 512 } as any;
 
 function harness(providerName: string, failure?: unknown, response?: any) {

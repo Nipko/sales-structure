@@ -100,3 +100,43 @@ export function anthropicRequestParams(model: string, opts: { temperature?: numb
 export function geminiThinkingConfig(model: string): Record<string, unknown> {
     return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
 }
+
+/**
+ * Familias cuyos parámetros están verificados en este archivo (ADR-0030 §4).
+ * Un modelo sólo puede entrar al catálogo si su familia es conocida: uno de una
+ * familia nueva (gpt-7, gemini-4, claude-6…) puede exigir o rechazar parámetros
+ * que no sabemos, y fallaría con 400 en la primera llamada. Para habilitar una
+ * familia nueva: verificar contra la API real, ajustar las funciones de arriba,
+ * agregarla aquí y en el test.
+ */
+export type ModelFamily =
+    | 'openai_classic' | 'openai_reasoning'
+    | 'anthropic_sampling' | 'anthropic_no_sampling'
+    | 'gemini_2' | 'gemini_3'
+    | 'xai_reasoning'
+    | 'deepseek'
+    | 'unknown';
+
+export function modelFamily(provider: string, model: string): ModelFamily {
+    switch (provider) {
+        case 'openai':
+            if (/^(gpt-5|gpt-6)(?:[.-]|$)/.test(model) || /^o\d/.test(model)) return 'openai_reasoning';
+            if (/^gpt-4(?:o|\.1)(?:-|$)/.test(model)) return 'openai_classic';
+            return 'unknown';
+        case 'anthropic': {
+            const v = claudeVersion(model);
+            if (!v || v.major > 5) return 'unknown';
+            return anthropicAcceptsSampling(model) ? 'anthropic_sampling' : 'anthropic_no_sampling';
+        }
+        case 'google':
+            if (/^gemini-2\./.test(model)) return 'gemini_2';
+            if (/^gemini-3\./.test(model)) return 'gemini_3';
+            return 'unknown';
+        case 'xai':
+            return /^grok-4\.(?:[3-9]|\d{2})(?:-|$)/.test(model) ? 'xai_reasoning' : 'unknown';
+        case 'deepseek':
+            return /^deepseek-(?:flash|chat|reasoner)$/.test(model) ? 'deepseek' : 'unknown';
+        default:
+            return 'unknown';
+    }
+}

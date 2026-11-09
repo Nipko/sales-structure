@@ -2614,7 +2614,7 @@ export class ConversationsService {
             const lang = config.language || 'es-CO';
             const personaName = config.persona?.name || 'Assistant';
             const result = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
                 systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
                 temperature: 0.7,

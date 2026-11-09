@@ -27,6 +27,14 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { CronLockService } from '../redis/cron-lock.service';
 
+export interface AlertOptions {
+    severity?: IncidentSeverity;
+    /** Cooldown de Telegram/email para esta clave; por defecto 1 h. */
+    cooldownSec?: number;
+    /** false = solo avisar (Telegram/email), sin abrir incidente. */
+    persistIncident?: boolean;
+}
+
 interface AlertState {
     lastAlertedAt: number;
     value: number;
@@ -1960,13 +1968,24 @@ export class PlatformMonitorService implements OnModuleInit {
 
     // ── Alert sender: persist incident always, email/Telegram throttled ──
 
-    private async alert(key: string, subject: string, html: string, value: number) {
-        const severity = this.severityFromKey(key);
+    /**
+     * Aviso desde fuera del monitor (p. ej. la salud de proveedores LLM, que
+     * decide sus propias transiciones y su dedupe). Mismo camino: incidente,
+     * Telegram y email a los super_admin.
+     */
+    async notify(key: string, subject: string, html: string, value: number, opts: AlertOptions = {}): Promise<void> {
+        await this.alert(key, subject, html, value, opts);
+    }
+
+    private async alert(key: string, subject: string, html: string, value: number, opts: AlertOptions = {}) {
+        const severity = opts.severity ?? this.severityFromKey(key);
         const cfg = await this.alertConfig.get();
 
         // Persist/dedup the incident on every fire, independent of the email
         // cooldown, so re-fires bump count/lastSeen and survive restarts.
-        await this.incidents.record(key, severity, subject, html, value);
+        if (opts.persistIncident !== false) {
+            await this.incidents.record(key, severity, subject, html, value);
+        }
 
         // El cooldown vive en REDIS, no en memoria del proceso.
         //
@@ -1982,7 +2001,7 @@ export class PlatformMonitorService implements OnModuleInit {
         // SET NX con TTL: el primero en llegar manda la alerta, el otro no.
         const cooldownKey = `alert:cooldown:${key}`;
         const gotSlot = await this.redis
-            .acquireLock(cooldownKey, Math.floor(COOLDOWN_MS / 1000))
+            .acquireLock(cooldownKey, opts.cooldownSec ?? Math.floor(COOLDOWN_MS / 1000))
             // Si Redis está caído se manda igual: perder una alerta de
             // plataforma es peor que mandarla dos veces.
             .catch(() => true);

@@ -25,6 +25,24 @@ interface Health {
     services: { api: boolean; redis: boolean; postgres: boolean };
     queues: Array<{ name: string; waiting: number; active: number; delayed: number; failed: number }>;
 }
+type LlmStatus = "unknown" | "healthy" | "degraded" | "down" | "no_credits" | "auth_invalid";
+interface LlmProvider {
+    provider: string; configured: boolean; status: LlmStatus; since: number | null;
+    lastErrorAt: number | null; lastErrorMessage: string | null; lastErrorLabel: string | null; lastErrorModel: string | null;
+    lastProbeAt: number | null; lastProbeOk: boolean | null; breakerOpen: boolean;
+    balance: { amount: number; currency: string } | null;
+    errorsToday: Record<string, number>;
+}
+interface LlmRoutingWindow { total: number; fallback: number; pct: number; byServedProvider: Record<string, number> }
+interface LlmProviderStatus { providers: LlmProvider[]; routing: { lastHour: LlmRoutingWindow; last24h: LlmRoutingWindow } }
+
+const LLM_PROVIDER_NAMES: Record<string, string> = { openai: "OpenAI", anthropic: "Anthropic", google: "Gemini", xai: "xAI (Grok)", deepseek: "DeepSeek" };
+const LLM_SEVERE: LlmStatus[] = ["down", "no_credits", "auth_invalid"];
+
+function shortTime(ts: number | null): string {
+    return ts ? new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "-";
+}
+
 interface Overview {
     disk: { totalBytes: number; freeBytes: number; usedBytes: number; usedPct: number } | null;
     totalMediaBytes: number; totalDbBytes: number; tenantCount: number;
@@ -51,18 +69,22 @@ export default function OpsCenterPage() {
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [health, setHealth] = useState<Health | null>(null);
     const [storage, setStorage] = useState<Overview | null>(null);
+    const [llm, setLlm] = useState<LlmProviderStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [updatedAt, setUpdatedAt] = useState<string>("");
 
     const fetchData = useCallback(async () => {
         try {
-            const [sum, list, hp, ov] = await Promise.all([
+            const [sum, list, hp, ov, lp] = await Promise.all([
                 api.getIncidentsSummary(),
                 api.getIncidents("active"),
                 api.getPlatformHealth(),
                 api.getStorageOverview(),
+                // La tarjeta de proveedores no debe tumbar el resto del panel.
+                api.getLlmProviderStatus().catch(() => null),
             ]);
+            if (lp?.success) setLlm(lp.data as LlmProviderStatus);
             if (sum.success) setSummary(sum.data as Summary);
             if (list.success) setIncidents(((list.data?.items as Incident[]) || []).slice(0, 6));
             if (hp.success) setHealth(hp.data as Health);
@@ -85,7 +107,8 @@ export default function OpsCenterPage() {
     const servicesUp = health?.services ? health.services.api && health.services.redis && health.services.postgres : true;
     const anyFailed = health?.queues?.some(q => q.failed > 0) || false;
     const diskPct = storage?.disk?.usedPct ?? 0;
-    const critical = (summary?.activeCritical ?? 0) > 0 || !servicesUp;
+    const llmSevere = (llm?.providers || []).some(p => p.configured && LLM_SEVERE.includes(p.status));
+    const critical = (summary?.activeCritical ?? 0) > 0 || !servicesUp || llmSevere;
     const warning = !critical && ((summary?.activeWarning ?? 0) > 0 || anyFailed || diskPct >= 80);
     const status = critical ? "critical" : warning ? "warning" : "operational";
 
@@ -230,6 +253,55 @@ export default function OpsCenterPage() {
                         ))}
                     </div>
                 </div>
+            </div>
+
+            {/* AI providers (ADR-0026) */}
+            <div className="bg-card border border-border rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                    <h3 className="text-sm font-semibold flex items-center gap-2"><Brain className="h-4 w-4 text-violet-500" /> {t("llmProvidersTitle")}</h3>
+                    {llm && (
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>{t("llmFallbackLastHour")}: <b className={cn(llm.routing.lastHour.pct >= 20 ? "text-red-600" : llm.routing.lastHour.pct > 0 ? "text-amber-600" : "text-foreground")}>{llm.routing.lastHour.pct}%</b> <span className="font-mono">({llm.routing.lastHour.fallback}/{llm.routing.lastHour.total})</span></span>
+                            <span>{t("llmFallback24h")}: <b className="text-foreground">{llm.routing.last24h.pct}%</b> <span className="font-mono">({llm.routing.last24h.fallback}/{llm.routing.last24h.total})</span></span>
+                        </div>
+                    )}
+                </div>
+                {!llm ? (
+                    <div className="text-xs text-muted-foreground italic">{t("llmNoData")}</div>
+                ) : (
+                    <ul className="divide-y divide-border">
+                        {llm.providers.map(p => {
+                            const severe = LLM_SEVERE.includes(p.status);
+                            const dot = !p.configured ? "bg-muted-foreground/40"
+                                : severe ? "bg-red-500"
+                                    : p.status === "degraded" ? "bg-amber-500"
+                                        : p.status === "healthy" ? "bg-emerald-500" : "bg-muted-foreground/40";
+                            const errorsToday = Object.values(p.errorsToday || {}).reduce((a, b) => a + b, 0);
+                            return (
+                                <li key={p.provider} className="py-2 text-sm">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className={cn("h-2 w-2 rounded-full shrink-0", dot)} />
+                                        <span className="font-medium">{LLM_PROVIDER_NAMES[p.provider] ?? p.provider}</span>
+                                        <span className={cn("text-xs px-1.5 py-0.5 rounded", severe ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-muted text-muted-foreground")}>
+                                            {p.configured ? t(`llmStatus_${p.status}`) : t("llmNotConfigured")}
+                                        </span>
+                                        {p.configured && p.since && p.status !== "healthy" && <span className="text-xs text-muted-foreground">{shortTime(p.since)}</span>}
+                                        <span className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+                                            {p.balance && <span>{t("llmBalance")}: <b className="text-foreground">{p.balance.amount.toFixed(2)} {p.balance.currency}</b></span>}
+                                            {errorsToday > 0 && <span>{t("llmErrorsToday")}: <b className="text-foreground">{errorsToday}</b></span>}
+                                            {p.lastProbeAt && <span>{t("llmLastProbe")}: {shortTime(p.lastProbeAt)} {p.lastProbeOk ? "✓" : "✗"}</span>}
+                                        </span>
+                                    </div>
+                                    {p.configured && p.lastErrorAt && (
+                                        <div className="mt-1 ml-4 text-xs text-muted-foreground truncate" title={p.lastErrorMessage ?? ""}>
+                                            {t("llmLastError")} ({shortTime(p.lastErrorAt)}{p.lastErrorModel ? ` · ${p.lastErrorModel}` : ""}{p.lastErrorLabel ? ` · ${p.lastErrorLabel}` : ""}): <span className="font-mono">{p.lastErrorMessage}</span>
+                                        </div>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
             </div>
 
             {/* Storage */}

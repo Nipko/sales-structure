@@ -10399,7 +10399,22 @@
     "noActiveIncidents": "No active incidents — all clear",
     "systemVitalsTitle": "System vitals",
     "storageTitle": "Storage",
-    "quickLinksTitle": "Quick links"
+    "quickLinksTitle": "Quick links",
+    "llmProvidersTitle": "AI providers",
+    "llmFallbackLastHour": "Fallback turns (1 h)",
+    "llmFallback24h": "Fallback turns (24 h)",
+    "llmLastError": "Last error",
+    "llmLastProbe": "Last probe",
+    "llmBalance": "Balance",
+    "llmErrorsToday": "Errors today",
+    "llmNotConfigured": "no key",
+    "llmNoData": "No data yet",
+    "llmStatus_unknown": "no data",
+    "llmStatus_healthy": "healthy",
+    "llmStatus_degraded": "degraded",
+    "llmStatus_down": "down",
+    "llmStatus_no_credits": "out of credits",
+    "llmStatus_auth_invalid": "invalid key"
   },
   "integrationOutbox": {
     "title": "Integration rail",

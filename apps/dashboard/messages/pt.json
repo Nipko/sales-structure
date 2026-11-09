@@ -10399,7 +10399,22 @@
     "noActiveIncidents": "Sem incidentes ativos — tudo em ordem",
     "systemVitalsTitle": "Vitais do sistema",
     "storageTitle": "Armazenamento",
-    "quickLinksTitle": "Acessos rápidos"
+    "quickLinksTitle": "Acessos rápidos",
+    "llmProvidersTitle": "Provedores de IA",
+    "llmFallbackLastHour": "Turnos por fallback (1 h)",
+    "llmFallback24h": "Turnos por fallback (24 h)",
+    "llmLastError": "Último erro",
+    "llmLastProbe": "Última sonda",
+    "llmBalance": "Saldo",
+    "llmErrorsToday": "Erros hoje",
+    "llmNotConfigured": "sem chave",
+    "llmNoData": "Ainda sem dados",
+    "llmStatus_unknown": "sem dados",
+    "llmStatus_healthy": "saudável",
+    "llmStatus_degraded": "degradado",
+    "llmStatus_down": "fora do ar",
+    "llmStatus_no_credits": "sem créditos",
+    "llmStatus_auth_invalid": "chave inválida"
   },
   "integrationOutbox": {
     "title": "Trilho de integrações",

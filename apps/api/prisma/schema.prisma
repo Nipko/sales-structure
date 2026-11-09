@@ -221,6 +221,26 @@ model PlatformSetting {
   @@schema("public")
 }
 
+// Catálogo LLM versionado (ADR-0030 fase 2; migración 20261109120000_add_llm_catalog_versions).
+// Una sola fila `active` (índice único parcial `llm_catalog_versions_one_active`, que Prisma no expresa).
+// La app la lee y escribe con $queryRaw/$executeRaw desde `LlmCatalogService`.
+model LlmCatalogVersion {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  version       Int       @unique(map: "llm_catalog_versions_version_key")
+  status        String    @default("draft") @db.VarChar(16)
+  snapshot      Json
+  parentVersion Int?      @map("parent_version")
+  reason        String
+  createdBy     String?   @map("created_by") @db.Uuid
+  publishedBy   String?   @map("published_by") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  validation    Json?
+
+  @@map("llm_catalog_versions")
+  @@schema("public")
+}
+
 // ---- Channel Accounts (WhatsApp numbers, IG accounts, etc.) ----
 model ChannelAccount {
   id            String   @id @default(uuid())

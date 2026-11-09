@@ -8,7 +8,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { scoreProductionEvidence } from './quality-production-evidence';
 import { QUALITY_EVIDENCE_DDL } from './quality-evidence-schema';
 import { CURRENT_QUALITY_CTE } from './quality-evidence';
-import { QUALITY_JUDGE_CALL, QUALITY_RUBRIC_HASH, RUBRIC_PROMPT } from './quality-rubric';
+import { qualityJudgeCall, qualityRubricHash, RUBRIC_PROMPT } from './quality-rubric';
 import { qualityJudgeContext, type QualityJudgeContext } from './quality-judge-context';
 import { isQualityJudgeInvalidResponse, parseJudgeResponse } from './quality-judge-response';
 export { RUBRIC_PROMPT } from './quality-rubric';
@@ -147,7 +147,7 @@ export class QualityService {
         if (!schemaName) return { status: 'unavailable' as const };
         await this.ensureTables(schemaName);
         const result = await scoreProductionEvidence(this.prisma, schemaName, conversationId,
-            QUALITY_RUBRIC_HASH,
+            qualityRubricHash(),
             (transcript, context) => this.judgeTranscript(tenantId, transcript, undefined, undefined, context));
         if (result.status === 'scored' && result.agentId) {
             this.eventEmitter.emit('quality.scored', { tenantId, agentId: result.agentId,
@@ -181,7 +181,7 @@ export class QualityService {
                 COUNT(*) FILTER (WHERE (coverage->>'complete')::boolean = false)::int AS partial_transcripts
              FROM current_quality
              WHERE created_at >= $1::timestamptz AND created_at <= $2::timestamptz`,
-            [startDate, endDate, QUALITY_RUBRIC_HASH],
+            [startDate, endDate, qualityRubricHash()],
         );
 
         const r = rows?.[0] || {};
@@ -224,7 +224,7 @@ export class QualityService {
                AND (jsonb_array_length(flags) > 0 OR overall_score < 6)
              ORDER BY overall_score ASC, created_at DESC
              LIMIT $4`,
-            [startDate, endDate, QUALITY_RUBRIC_HASH, limit],
+            [startDate, endDate, qualityRubricHash(), limit],
         );
 
         return (rows || []).map((r: any) => ({
@@ -255,15 +255,15 @@ export class QualityService {
         withSourceAuthority?: import('../ai/interfaces/llm-source-authority').LLMSourceAuthority,
         context?: QualityJudgeContext): Promise<JudgeResult> {
         const response = await this.llmRouter.execute({
-            model: QUALITY_JUDGE_CALL.model,
+            model: qualityJudgeCall().model,
             messages: [{ role: 'user', content: JSON.stringify({
                 evaluationContext: context ?? qualityJudgeContext(null, { source: 'production' }), transcript,
             }) }],
             systemPrompt: RUBRIC_PROMPT,
             withSourceAuthority,
             executionContext,
-            temperature: QUALITY_JUDGE_CALL.temperature,
-            maxTokens: QUALITY_JUDGE_CALL.maxTokens,
+            temperature: qualityJudgeCall().temperature,
+            maxTokens: qualityJudgeCall().maxTokens,
             // This call has no `task`, so the router sends it straight to the
             // named model with no fallback; OpenAI maps jsonMode to
             // response_format json_object, which needs the word "JSON" in the
@@ -284,7 +284,7 @@ export class QualityService {
                     ? response.finishReason : 'unknown';
                 this.logger.warn(`[QA] Failed to parse judge JSON: reason=${error.reason} field=${error.field ?? '-'}`
                     + `${error.detail ? ` ${error.detail}` : ''} finishReason=${finishReason} contentLength=${content.length}`
-                    + ` completionTokens=${response.usage?.completionTokens ?? 'unknown'} maxTokens=${QUALITY_JUDGE_CALL.maxTokens}`
+                    + ` completionTokens=${response.usage?.completionTokens ?? 'unknown'} maxTokens=${qualityJudgeCall().maxTokens}`
                     + ` tenant=${tenantId}`);
             }
             throw error;

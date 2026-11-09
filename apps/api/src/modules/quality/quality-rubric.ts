@@ -46,7 +46,27 @@ Usa español. No incluyas explicaciones fuera del JSON.`;
  * answer, not what is being measured, and every current verdict is read
  * through `rubric_hash`: hashing it would orphan all of them to fix a parser.
  */
-export const QUALITY_JUDGE_CALL = Object.freeze({ model: roleModel('judge_quality'), temperature: 0.2, maxTokens: 500 });
+const QUALITY_JUDGE_SAMPLING = Object.freeze({ temperature: 0.2, maxTokens: 500 });
 
-export const QUALITY_RUBRIC_HASH = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION,
-    model: QUALITY_JUDGE_CALL.model, temperature: QUALITY_JUDGE_CALL.temperature, maxTokens: QUALITY_JUDGE_CALL.maxTokens });
+/**
+ * El modelo es la cabeza del rol `judge_quality` de la versión activa del
+ * catálogo, así que se lee en cada llamada (ADR-0030 fase 2). Publicar otro
+ * juez es cambiar de vara: el hash cambia con él y los veredictos anteriores
+ * quedan con su propio `rubric_hash`, como pasaba antes con un despliegue.
+ */
+export function qualityJudgeCall(): Readonly<{ model: string; temperature: number; maxTokens: number }> {
+    return Object.freeze({ model: roleModel('judge_quality'), ...QUALITY_JUDGE_SAMPLING });
+}
+
+const rubricHashByModel = new Map<string, string>();
+
+export function qualityRubricHash(): string {
+    const call = qualityJudgeCall();
+    let hash = rubricHashByModel.get(call.model);
+    if (!hash) {
+        hash = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION,
+            model: call.model, temperature: call.temperature, maxTokens: call.maxTokens });
+        rubricHashByModel.set(call.model, hash);
+    }
+    return hash;
+}

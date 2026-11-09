@@ -1,6 +1,6 @@
 import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { certifyProfiles } from './agent-certification';
-import { DEFAULT_TOKEN_BOUND, JUDGE_BOUND, JUDGE_MODEL, planCertificationRun } from './certification-plan';
+import { DEFAULT_TOKEN_BOUND, JUDGE_BOUND, judgeModel, planCertificationRun } from './certification-plan';
 
 /**
  * The number somebody has to authorise before a single model call is made.
@@ -39,7 +39,7 @@ describe('what certifying the catalogue would cost', () => {
         // of what a run would actually spend.
         for (const cell of plan.cells) expect(cell.judgeCalls).toBe(cell.scenarios * plan.k);
         expect(plan.totals.modelCalls).toBe(plan.totals.subjectCalls + plan.totals.judgeCalls);
-        expect(plan.judge.model).toBe(JUDGE_MODEL);
+        expect(plan.judge.model).toBe(judgeModel());
     });
 
     it('multiplies by k, because pass^k means k attempts', () => {

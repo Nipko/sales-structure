@@ -111,6 +111,11 @@ export interface CertificationPlan {
         readonly maxCostUsdCents: number;
         readonly maxSeconds: number;
     };
+    /**
+     * La versión del catálogo cuyos precios calcularon el gasto máximo (ADR-0030 §2). Fuera del
+     * `planHash`: es la procedencia de los precios, no parte de lo que se autoriza.
+     */
+    readonly catalogVersion: string;
     /** The model that grades every attempt, and what its own calls cost. */
     readonly judge: { readonly model: string; readonly inputPerTurn: number; readonly outputPerTurn: number };
     /**
@@ -128,7 +133,9 @@ export interface CertificationPlan {
  * two thirds of the calls it would make. Named here rather than guessed, and
  * refused loudly if the catalogue stops carrying it.
  */
-export const JUDGE_MODEL = roleModel('judge_quality');
+export function judgeModel(): string {
+    return roleModel('judge_quality');
+}
 export const JUDGE_BOUND = Object.freeze({ inputPerTurn: 8000, outputPerTurn: 500 });
 
 export function planCertificationRun(input: CertificationPlanInput): CertificationPlan {
@@ -159,7 +166,10 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
     }
     if (!channels.length) refusals.push('channel_scope_required');
 
-    const rates = new Map(activeLlmCatalog().models.map(model => [model.id, model]));
+    // Una sola lectura del catálogo: precios y juez de la misma versión aunque se publique otra a mitad.
+    const catalog = activeLlmCatalog();
+    const judge = roleModel('judge_quality', catalog);
+    const rates = new Map(catalog.models.map(model => [model.id, model]));
     const requestedModels = [...new Set(input.models)];
     const models = requestedModels.filter(model => rates.has(model)).sort();
     for (const model of requestedModels) {
@@ -173,8 +183,8 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
 
     // The judge is a second model, priced from the same catalogue. Its bound is
     // the one `judgeTranscript` actually sets: the transcript in, 500 tokens out.
-    const judgeRate = rates.get(JUDGE_MODEL);
-    if (!judgeRate) refusals.push(`judge_model_not_in_catalogue:${JUDGE_MODEL}`);
+    const judgeRate = rates.get(judge);
+    if (!judgeRate) refusals.push(`judge_model_not_in_catalogue:${judge}`);
 
     const cells: CertificationPlanCell[] = [];
     let requiredCases = 0, subjectCalls = 0, judgeCalls = 0, modelCalls = 0, maxCostUsdCents = 0, maxSeconds = 0;
@@ -228,12 +238,13 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
     const body = {
         version: 1 as const,
         profiles, languages, channels, models, k, tokenBound, secondsPerTurn,
-        judge: { model: JUDGE_MODEL, ...JUDGE_BOUND },
+        judge: { model: judge, ...JUDGE_BOUND },
         totals: { cells: cells.length, requiredCases, subjectCalls, judgeCalls, modelCalls, maxCostUsdCents, maxSeconds },
     };
     return Object.freeze({
         ...body,
         planHash: revisionHash(body),
+        catalogVersion: catalog.version,
         cells: Object.freeze(cells),
         refusals: Object.freeze([...new Set(refusals)].sort()),
     });

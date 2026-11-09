@@ -1,5 +1,5 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
-import { authoritativeNumbers, departureBacked, dropBackedViolations, evidenceVerifierRequest, EVIDENCE_VERIFIER_MODEL, explicitUnavailable, parseEvidenceVerdict, readDepartures, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
+import { authoritativeNumbers, departureBacked, dropBackedViolations, evidenceVerifierRequest, evidenceVerifierModel, explicitUnavailable, parseEvidenceVerdict, readDepartures, repairReply, sentenceNumbers, splitSentences, turnEvidence, unknownNotice } from './evidence-verifier';
 
 const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKnowledgeContract => ({
     schema: 'business-spec/turn-contract@1' as any, specVersion: '1', verdict: 'limitado' as any, resultHash: 'h',
@@ -15,8 +15,8 @@ const contract = (offers: Partial<TurnKnowledgeContract['offers']> = {}): TurnKn
 describe('EvidenceVerifier (D1b)', () => {
     it('la solicitud lleva lo que no consta, los hechos y la evidencia, con otro modelo que el juez del ensayo', () => {
         const req = evidenceVerifierRequest({ customerMessage: '¿Abren el sábado?', reply: 'Sí, abrimos de 8 a 13.', contract: contract(), evidence: ['{"slots":[]}'] });
-        expect(req).toMatchObject({ task: 'classify', model: EVIDENCE_VERIFIER_MODEL, temperature: 0, jsonMode: true });
-        expect(EVIDENCE_VERIFIER_MODEL).not.toBe('deepseek-flash'); // el juez del ensayo (ADR-0029)
+        expect(req).toMatchObject({ task: 'classify', model: evidenceVerifierModel(), temperature: 0, jsonMode: true });
+        expect(evidenceVerifierModel()).not.toBe('deepseek-flash'); // el juez del ensayo (ADR-0029)
         const payload = JSON.parse(req.messages[0].content);
         expect(payload.unknown.map((u: any) => u.id)).toEqual(['CORE.HOURS.REGULAR', 'OBJ.APPOINTMENT.AVAILABILITY_SOURCE']);
         expect(payload.facts[0].id).toBe('CORE.IDENTITY.NAME');

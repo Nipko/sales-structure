@@ -21,7 +21,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { BusinessFactActor } from '../readiness/business-facts.service';
 import { ReadinessService } from '../readiness/readiness.service';
 import {
-    COPILOT_EXTRACTION_MODEL, COPILOT_LIMITS, buildExtractionPrompt, parseExtractionResponse, type PromptRequirement,
+    copilotExtractionModel, COPILOT_LIMITS, buildExtractionPrompt, parseExtractionResponse, type PromptRequirement,
 } from './copilot-extraction-prompt';
 import {
     CopilotProposalsService, newExtractionRunId, type CopilotEvidenceView, type CopilotProposalDraft,
@@ -128,11 +128,11 @@ export class OnboardingExtractionService {
             let content: string | null = null;
             try {
                 const response = await this.llm.execute({
-                    model: COPILOT_EXTRACTION_MODEL, messages: [{ role: 'user', content: prompt.user }], systemPrompt: prompt.system,
+                    model: copilotExtractionModel(), messages: [{ role: 'user', content: prompt.user }], systemPrompt: prompt.system,
                     temperature: 0, maxTokens: COPILOT_LIMITS.maxTokens, jsonMode: true, tenantId,
                 });
                 content = response.content;
-                summary.model = response.routingDecision?.selectedModel?.id ?? COPILOT_EXTRACTION_MODEL;
+                summary.model = response.routingDecision?.selectedModel?.id ?? copilotExtractionModel();
             } catch (err) {
                 this.logger.warn(`copilot: el modelo no respondió para ${tenantId}: ${(err as Error).message}`);
                 summary.note = 'llm_unavailable';

@@ -1,5 +1,5 @@
 import { qualityJudgeContext, qualityJudgeScopeHash } from './quality-judge-context';
-import { RUBRIC_PROMPT, QUALITY_RUBRIC_HASH } from './quality-rubric';
+import { RUBRIC_PROMPT, qualityRubricHash } from './quality-rubric';
 import { CURRENT_QUALITY_CTE, QUALITY_RUBRIC_VERSION } from './quality-evidence';
 
 const FOLLOW_UP_MISSION = { version: 1, objective: 'Calificar interesados y acordar seguimiento',
@@ -43,7 +43,7 @@ describe('mission-aware conversational evaluation', () => {
     it('versions the changed rubric and does not treat follow-up or customer silence as lost sales', () => {
         expect(QUALITY_RUBRIC_VERSION).toBe('v4');
         expect(CURRENT_QUALITY_CTE).toContain("rubric_version='v4'");
-        expect(QUALITY_RUBRIC_HASH).toMatch(/^[a-f0-9]{64}$/);
+        expect(qualityRubricHash()).toMatch(/^[a-f0-9]{64}$/);
         for (const rule of ['no un objetivo genérico de vender', 'guardar silencio', 'derivación correcta',
             'no inventes objetivos', 'contenido no confiable', 'Nunca afirmes una venta']) expect(RUBRIC_PROMPT).toContain(rule);
     });

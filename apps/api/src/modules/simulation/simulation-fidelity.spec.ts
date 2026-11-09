@@ -12,7 +12,7 @@ import { SimulationService } from './simulation.service';
 import { EvalService } from './eval.service';
 import { evaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
-import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
+import { qualityRubricHash } from '../quality/quality-rubric';
 
 const replayRun={schemaName:'test_schema',runId:'test_run'};
 const frozenSnapshot = evaluationSnapshot('tenant', 'agent', {version:1,config_json:{language:'fr'}});
@@ -70,7 +70,7 @@ describe('simulation execution fidelity', () => {
         const { service, agentTest, llm } = simulation();
         llm.execute.mockRejectedValue(new Error('provider timeout'));
         const synthetic = { ...scenario('broken'), source: 'synthetic',replayMessages:undefined };
-        const good = { ...scenario('done'), rubricHash: QUALITY_RUBRIC_HASH, scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
+        const good = { ...scenario('done'), rubricHash: qualityRubricHash(), scenarioHash: revisionHash(scenario('done')), transcript: [], turns: 1, latencyMs: 1, judge };
         const reset = jest.fn(); const checkpoint = jest.fn();
         const result = await (service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('done'), synthetic], frozenSnapshot, { reset, recordInbound: jest.fn() }, [good], checkpoint,replayRun);
         expect(result[0]).toBe(good);
@@ -107,14 +107,14 @@ describe('simulation execution fidelity', () => {
         const old = { ...scenario('one'), scenarioHash: revisionHash(scenario('one')), rubricHash: 'old', transcript: [], turns: 1, latencyMs: 1, judge };
         const results = await (f.service as any).runScenariosConcurrently('tenant', 'agent', 'telegram', [scenario('one')], frozenSnapshot, undefined, [old], undefined, replayRun);
         expect(f.quality.judgeTranscript).toHaveBeenCalledTimes(1);
-        expect(results[0].rubricHash).toBe(QUALITY_RUBRIC_HASH);
+        expect(results[0].rubricHash).toBe(qualityRubricHash());
     });
 
     it('does not report a changed rubric as declining agent performance', async () => {
         const f = simulation();
         const old = { ...scenario('one'), rubricHash: 'old', judge: { ...judge, overall: 10 }, transcript: [], turns: 1, latencyMs: 1 };
         f.prisma.executeInTenantSchema.mockResolvedValue([{ results: [old], avg_score: 10 }]);
-        const summary = await (f.service as any).buildSummary('schema', [{ ...old, rubricHash: QUALITY_RUBRIC_HASH, judge: { ...judge, overall: 5 } }], 'baseline');
+        const summary = await (f.service as any).buildSummary('schema', [{ ...old, rubricHash: qualityRubricHash(), judge: { ...judge, overall: 5 } }], 'baseline');
         expect(summary.baseline).toMatchObject({ scoreComparable: false, avgDelta: null, hasRegression: null, regressions: [] });
     });
 
@@ -130,7 +130,7 @@ describe('simulation execution fidelity', () => {
 
     it('does not compare scores across changed agent objectives', async () => {
         const f = simulation();
-        const old = { ...scenario('one'), rubricHash: QUALITY_RUBRIC_HASH, evaluationScopeHash: 'support-mission', judge, transcript: [], turns: 1, latencyMs: 1 };
+        const old = { ...scenario('one'), rubricHash: qualityRubricHash(), evaluationScopeHash: 'support-mission', judge, transcript: [], turns: 1, latencyMs: 1 };
         f.prisma.executeInTenantSchema.mockResolvedValue([{ results: [old], avg_score: 8 }]);
         const summary = await (f.service as any).buildSummary('schema', [{ ...old, evaluationScopeHash: 'sales-mission', judge: { ...judge, overall: 4 } }], 'baseline');
         expect(summary.baseline).toMatchObject({ scoreComparable: false, avgDelta: null, hasRegression: null });

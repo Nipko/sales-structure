@@ -13,7 +13,7 @@ import { RedisService } from '../redis/redis.service';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { QualityService } from '../quality/quality.service';
 import { qualityJudgeContext } from '../quality/quality-judge-context';
-import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
+import { qualityRubricHash } from '../quality/quality-rubric';
 import {
     composeSubtypeEvalPack,
     CONVERSATIONAL_CHANNELS,
@@ -569,7 +569,7 @@ export class EvalService {
                 const contextHash=releaseRunContext({agentId,dependencyRevision:snapshot.manifest?.revision||'',
                     configHash:snapshot.configHash,channelType,k,passPolicy,threshold});
                 for (const sc of scenarios) {
-                    const completed = opts?.previousResults?.find(row => row.rubricHash === QUALITY_RUBRIC_HASH && row.contextHash===contextHash && row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
+                    const completed = opts?.previousResults?.find(row => row.rubricHash === qualityRubricHash() && row.contextHash===contextHash && row.key === sc.key && row.scenarioHash === revisionHash(sc) && !row.error && Number.isFinite(row.score));
                     if (completed) { out.push(completed); continue; }
                     activeScenario = sc;
                     const hasActions = Array.isArray(sc.expectedActions) && sc.expectedActions.length > 0;
@@ -644,7 +644,7 @@ export class EvalService {
             key: sc.key,
             ...regressionProvenance(sc),
             scenarioHash: revisionHash(sc),
-            rubricHash: QUALITY_RUBRIC_HASH,
+            rubricHash: qualityRubricHash(),
             title: sc.title,
             k,
             passes,

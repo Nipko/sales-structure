@@ -1,7 +1,7 @@
 import { HttpException } from '@nestjs/common';
 import { loadSpec } from '@parallext/business-spec/load';
 import type { BusinessFactActor } from '../readiness/business-facts.service';
-import { buildExtractionPrompt, COPILOT_EXTRACTION_MODEL, parseExtractionResponse } from './copilot-extraction-prompt';
+import { buildExtractionPrompt, copilotExtractionModel, parseExtractionResponse } from './copilot-extraction-prompt';
 import type { CopilotProposalDraft } from './copilot-proposals.service';
 import { OnboardingExtractionService } from './onboarding-extraction.service';
 
@@ -53,7 +53,7 @@ function make(opts: {
         getCurrent: jest.fn(async () => ({ result: { requirements: [requirement(PAYMENT), requirement(DESCRIPTION), requirement(FAQ_HYGIENE), requirement('CORE.SAFETY.FORBIDDEN_TOPICS')] } })),
         readSnapshot: jest.fn(async () => ({ values })),
     };
-    const llm = { execute: jest.fn(async () => ({ content: JSON.stringify(opts.llm ?? { proposals: [], questions: [] }), routingDecision: { selectedModel: { id: COPILOT_EXTRACTION_MODEL } } })) };
+    const llm = { execute: jest.fn(async () => ({ content: JSON.stringify(opts.llm ?? { proposals: [], questions: [] }), routingDecision: { selectedModel: { id: copilotExtractionModel() } } })) };
     const stored: CopilotProposalDraft[] = [];
     const proposals = {
         storeRun: jest.fn(async (_t: string, _run: string, _by: string, drafts: CopilotProposalDraft[]) => {
@@ -77,14 +77,14 @@ describe('OnboardingExtractionService.run: el LLM propone, el código decide', (
             },
         });
         const summary = await kit.service.run(TENANT, OWNER);
-        expect(kit.llm.execute).toHaveBeenCalledWith(expect.objectContaining({ model: COPILOT_EXTRACTION_MODEL, jsonMode: true, temperature: 0, tenantId: TENANT }));
+        expect(kit.llm.execute).toHaveBeenCalledWith(expect.objectContaining({ model: copilotExtractionModel(), jsonMode: true, temperature: 0, tenantId: TENANT }));
         const values = kit.stored.filter(d => d.kind === 'value');
         expect(values).toEqual([expect.objectContaining({
             requirementId: PAYMENT, targetRef: '', input: { value: { methods: ['efectivo', 'transferencia'] } },
             evidence: [expect.objectContaining({ sourceRef: 'S1', origin: 'knowledge_documents:d1', url: 'https://www.sonrisa.co/' })],
         })]);
         expect(summary.discarded).toEqual([expect.objectContaining({ requirementId: DESCRIPTION, code: 'quote_not_verbatim' })]);
-        expect(summary).toMatchObject({ proposed: 1, model: COPILOT_EXTRACTION_MODEL });
+        expect(summary).toMatchObject({ proposed: 1, model: copilotExtractionModel() });
     });
 
     it('descarta una propuesta con una cifra que no está en ninguna cita', async () => {

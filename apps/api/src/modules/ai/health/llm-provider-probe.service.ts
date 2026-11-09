@@ -129,7 +129,7 @@ export class LlmProviderProbeService {
     }
 
     private probeModel(provider: string): string {
-        const models = activeLlmCatalog().models.filter(m => m.provider === provider)
+        const models = activeLlmCatalog().models.filter(m => m.provider === provider && !m.retired)
             .slice()
             .sort((a, b) => a.costOutPer1k - b.costOutPer1k);
         return models[0]?.id ?? '';

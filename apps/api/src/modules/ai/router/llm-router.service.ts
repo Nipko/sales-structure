@@ -115,11 +115,18 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
     // Cheap, JSON-capable models first; a premium model only as the last
     // resort so a classification is still produced when the cheap providers
     // are down (an unavailable classifier degrades the safety triage).
+    //
+    // Esta cadena también es la del verificador de evidencia (pide `task:
+    // 'classify'`, así que su `model` fijo no cuenta). Medido el 9-nov (ADR-0029):
+    // con gpt-6-luna a la cabeza el verificador borraba la frase de traspaso y
+    // dejaba «Claro que sí.» (C30 falló 4–9 veces por corrida); con
+    // gemini-3.5-flash-lite, 0 fallos y el mejor resultado global (0,940).
+    // deepseek-flash va tarde: es el juez del ensayo y no debe verificarse a sí mismo.
     classify: [
-        'gpt-6-luna',
-        'deepseek-flash',
         'gemini-3.5-flash-lite',
         'gpt-5.6-luna',
+        'gpt-6-luna',
+        'deepseek-flash',
         'claude-haiku-5-5',
         'gpt-6-sol',
     ],

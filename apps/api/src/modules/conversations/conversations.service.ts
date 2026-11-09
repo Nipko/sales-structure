@@ -6510,6 +6510,17 @@ export class ConversationsService {
                     router: session ? llmRouter : this.llmRouter, tenantId, executionContext, conversationId: conversation.id, turnTrace, session,
                 });
             }
+            // E2ae C01 (dental): the evidence verifier can drop the template-services note that applyOutputGuardrails added. It is said
+            // again on the composed reply as it leaves; with the note (or any «pendiente de confirmar») already there, nothing changes.
+            if (finalResponse && !isErrorFallback(finalResponse) && !deterministicReply && !catalogFirstApplied && !isSystemFixedText(finalResponse)
+                && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
+                const pendingAgain = pendingServicesNote(finalResponse, templateServicesOfTurn(turnContext as any,
+                    [...preExecutedTools, ...executedToolsThisTurn, ...engineExecutedTools, ...toolReadsOfTurnMessages(currentMessages)]), userLanguage);
+                if (pendingAgain) {
+                    this.logger.warn(`[Guardrail] Template-services note restored after the evidence verifier: "${finalResponse.slice(0, 100)}"`);
+                    finalResponse = pendingAgain;
+                }
+            }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
             const placeholderOutcome = UNFILLED_PLACEHOLDER_OUTCOME.get(turnContext);
             if (placeholderOutcome) turnTrace.add('guardrail', 'unfilled_placeholder', { ...placeholderOutcome });

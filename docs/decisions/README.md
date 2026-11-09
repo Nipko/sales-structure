@@ -30,6 +30,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0023](0023-familias-de-herramientas-por-plan.md) | Los planes deciden qué familias de herramientas recibe cada tenant (sin lista = todas), con puerta en la ejecución y caché de 30 s; crear y archivar planes | aprobada | 2026-11-07 |
 | [0027](0027-costo-llm-cache-y-rechazos.md) | Costo LLM: la caché de prompts se cobra a su tarifa y los rechazos sin cobro (sin créditos, clave, 402, límite de tasa) se liquidan en 0 | aprobada | 2026-11-09 |
 | [0028](0028-piso-de-herramientas-dentro-del-plan.md) | El piso de herramientas respeta los tiers del plan; solo un turno con una escritura en juego puede subir a tier_1/2, y la afinidad ya no fija modelos de fuera del plan | aprobada | 2026-11-09 |
+| [0029](0029-migracion-del-catalogo-llm-nov-2026.md) | Catálogo LLM migrado antes del apagado de GPT-4 (14-ene-2027): gpt-6-luna lidera, gemini-3.5-flash-lite encabeza `classify`, adaptadores sin razonamiento y modelos fijos reemplazados, elegidos con el banco QA propio | aprobada | 2026-11-09 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

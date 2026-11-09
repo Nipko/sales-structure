@@ -73,7 +73,7 @@ function verifyArtifact(file, next) {
 }
 const emit = (file, next) => { if (CHECK) verifyArtifact(file, next); else fs.writeFileSync(file, next); };
 const matrix = buildTaskCompetenceMatrix();
-const plan = planCertificationRun({ channels: [...CONVERSATIONAL_CHANNELS], models: ['gpt-4.1-mini'] });
+const plan = planCertificationRun({ channels: [...CONVERSATIONAL_CHANNELS], models: ['gpt-6-luna'] });
 const channels = buildChannelCertificationMatrix(channelCertificationRuntime());
 const channelSummary = summariseChannelCertification(channels);
 const openStores = openAgentOutputStores();

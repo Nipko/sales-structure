@@ -68,7 +68,7 @@ const SUPER_ADMIN = { id: '11111111-1111-4111-8111-111111111111', role: 'super_a
     const planBody = (over: Record<string, unknown> = {}) => ({
         requestKey: `cat-${randomUUID().replace(/-/g, '').slice(0, 20)}`,
         mode: 'dry_run' as const,
-        profiles: PROFILES, languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+        profiles: PROFILES, languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
         subjects,
         agentId: randomUUID(), configHash: 'config-catalogue', dependencyRevision: 'dependency-catalogue',
         ...over,
@@ -113,7 +113,7 @@ const SUPER_ADMIN = { id: '11111111-1111-4111-8111-111111111111', role: 'super_a
 
     it('plans all 76 profiles, one subject each, with the case count the report demands', async () => {
         const expected = planCertificationRun({
-            profiles: PROFILES, languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+            profiles: PROFILES, languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
         });
         const run = await metrics.time('plan_76_profiles',
             () => service.plan(tenantId, planBody() as any, SUPER_ADMIN));
@@ -212,7 +212,7 @@ const SUPER_ADMIN = { id: '11111111-1111-4111-8111-111111111111', role: 'super_a
         const full = planCertificationRun({
             profiles: PROFILES, languages: ['es', 'en', 'pt', 'fr'],
             channels: ['whatsapp', 'instagram', 'messenger', 'telegram', 'web_widget'],
-            models: ['gpt-4.1-mini'],
+            models: ['gpt-6-luna'],
         });
         // Not executed and not asserted on a threshold: this is the number the
         // cost report quotes, and what is worth knowing about it is that it is

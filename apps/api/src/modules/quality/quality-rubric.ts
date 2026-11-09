@@ -45,7 +45,7 @@ Usa español. No incluyas explicaciones fuera del JSON.`;
  * answer, not what is being measured, and every current verdict is read
  * through `rubric_hash`: hashing it would orphan all of them to fix a parser.
  */
-export const QUALITY_JUDGE_CALL = Object.freeze({ model: 'gpt-4o-mini', temperature: 0.2, maxTokens: 500 });
+export const QUALITY_JUDGE_CALL = Object.freeze({ model: 'gpt-6-luna', temperature: 0.2, maxTokens: 500 });
 
 export const QUALITY_RUBRIC_HASH = qualityHash({ prompt: RUBRIC_PROMPT, version: QUALITY_RUBRIC_VERSION,
     model: QUALITY_JUDGE_CALL.model, temperature: QUALITY_JUDGE_CALL.temperature, maxTokens: QUALITY_JUDGE_CALL.maxTokens });

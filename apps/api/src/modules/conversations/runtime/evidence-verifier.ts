@@ -17,7 +17,7 @@
  */
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
 
-export const EVIDENCE_VERIFIER_MODEL = 'gpt-4.1-mini';
+export const EVIDENCE_VERIFIER_MODEL = 'gpt-6-luna';
 export const EVIDENCE_VERIFIER_MAX_TOKENS = 400;
 const EVIDENCE_MAX_CHARS = 9000;
 const REPLY_MAX_CHARS = 3000;

@@ -14,7 +14,7 @@ function harness(execResult: Array<[Error | null, unknown]> | null = []) {
 }
 
 describe('LLM accounting transaction', () => {
-    const model = LLM_MODEL_CATALOGUE.find(candidate => candidate.id === 'gpt-4o-mini')!;
+    const model = LLM_MODEL_CATALOGUE.find(candidate => candidate.id === 'gpt-5.6-luna')!;
 
     it('commits the monthly guard, daily counters, indexes and retention together', async () => {
         const { router, transaction, calls } = harness([]);
@@ -26,8 +26,8 @@ describe('LLM accounting transaction', () => {
         expect(transaction.exec).toHaveBeenCalledTimes(1);
         expect(calls).toEqual(expect.arrayContaining([
             ['incrby', expect.stringMatching(/^llm:stats:tenant-1:\d{4}-\d{2}-\d{2}:openai:calls$/), 1],
-            ['incrby', expect.stringMatching(/^llm:stats:tenant-1:\d{4}-\d{2}-\d{2}:openai:cost_centi_usd$/), 5],
-            ['incrby', expect.stringMatching(/^llm:cost:tenant-1:\d{4}-\d{2}$/), 5],
+            ['incrby', expect.stringMatching(/^llm:stats:tenant-1:\d{4}-\d{2}-\d{2}:openai:cost_centi_usd$/), 8],
+            ['incrby', expect.stringMatching(/^llm:cost:tenant-1:\d{4}-\d{2}$/), 8],
             ['expire', expect.stringMatching(/^llm:stats:tenants:\d{4}-\d{2}-\d{2}$/), 90 * 24 * 3600],
             ['expire', expect.stringMatching(/^llm:stats:providers:\d{4}-\d{2}-\d{2}$/), 90 * 24 * 3600],
             ['expire', expect.stringMatching(/^llm:cost:tenant-1:\d{4}-\d{2}$/), 40 * 24 * 3600],

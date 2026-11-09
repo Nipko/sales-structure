@@ -52,8 +52,8 @@ suite('LLM money admission through PostgreSQL and the real router', () => {
         await db.billingPlan.update({where:{slug},data:{features:{llmHardBudgetUsdCents:0}}});
         const provider:any={providerName:'openai',generate:jest.fn(),generateStream:jest.fn()};
         const router=new LLMRouterService([provider],{} as any,{} as any,{} as any,guard);
-        await expect(router.execute({model:'gpt-4o-mini',tenantId,messages:[]})).rejects.toBeInstanceOf(LlmBudgetExceeded);
-        await expect(router.executeStream({model:'gpt-4o-mini',tenantId,messages:[]}).next()).rejects.toBeInstanceOf(LlmBudgetExceeded);
+        await expect(router.execute({model:'gpt-6-luna',tenantId,messages:[]})).rejects.toBeInstanceOf(LlmBudgetExceeded);
+        await expect(router.executeStream({model:'gpt-6-luna',tenantId,messages:[]}).next()).rejects.toBeInstanceOf(LlmBudgetExceeded);
         expect(provider.generate).not.toHaveBeenCalled();expect(provider.generateStream).not.toHaveBeenCalled();
     });
     it('reads plan edits afresh, independent of a warm entitlement cache',async()=>{

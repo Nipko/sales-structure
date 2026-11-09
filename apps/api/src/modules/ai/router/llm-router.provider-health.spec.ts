@@ -53,22 +53,22 @@ describe('LLM router — salud de proveedores', () => {
 
         await router.execute(req);
         // Un solo intento contra la cuenta sin credito, no uno por cada modelo de OpenAI.
-        expect(calls).toEqual(['openai/gpt-4.1-mini', 'xai/grok-4-1-fast-non-reasoning']);
+        expect(calls).toEqual(['openai/gpt-6-luna', 'anthropic/claude-haiku-5-5']);
         expect(store.get('llm:health:openai:open')).toBeDefined();
-        expect(health.recordFailure).toHaveBeenCalledWith('openai', 'gpt-4.1-mini', noCredits, 'traffic');
-        expect(health.recordRouting).toHaveBeenLastCalledWith('xai', true);
+        expect(health.recordFailure).toHaveBeenCalledWith('openai', 'gpt-6-luna', noCredits, 'traffic');
+        expect(health.recordRouting).toHaveBeenLastCalledWith('anthropic', true);
 
         // Siguiente turno: OpenAI ya no se intenta, y sigue contando como fallback.
         calls.length = 0;
         await router.execute(req);
         expect(calls.every(c => !c.startsWith('openai/'))).toBe(true);
-        expect(health.recordRouting).toHaveBeenLastCalledWith('xai', true);
+        expect(health.recordRouting).toHaveBeenLastCalledWith('anthropic', true);
     });
 
     it('un turno atendido por el modelo preferido no es fallback', async () => {
         const { router, health } = createRouter({});
         await router.execute({ task: 'tool_calling', messages: [{ role: 'user', content: 'hola' }], systemPrompt: 'x' });
         expect(health.recordRouting).toHaveBeenLastCalledWith('openai', false);
-        expect(health.recordSuccess).toHaveBeenCalledWith('openai', 'gpt-4.1-mini', 'traffic');
+        expect(health.recordSuccess).toHaveBeenCalledWith('openai', 'gpt-6-luna', 'traffic');
     });
 });

@@ -51,7 +51,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
         transaction(query => query<R>(text, params));
 
     const result = (over: Partial<CertificationCaseResult> = {}): CertificationCaseResult => ({
-        passed: true, servedModel: 'gpt-4.1-mini', usage: { state: 'reported', costUsdCents: 1 },
+        passed: true, servedModel: 'gpt-6-luna', usage: { state: 'reported', costUsdCents: 1 },
         latencyMs: 10, transcript: [], tools: [], verification: { passed: true }, scenario: {}, ...over,
     });
 
@@ -59,7 +59,7 @@ const profileId = listCanonicalSubtypeExperienceProfileIds()[0];
     const startRun = async (budgetUsdCents: number) => {
         const record = await transaction(query => planCertificationLedger(query, {
             agentId, configHash: 'config-1', dependencyRevision: 'dependency-1',
-            profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-4.1-mini'],
+            profiles: [profileId], languages: ['es'], channels: ['whatsapp'], models: ['gpt-6-luna'],
             mode: 'live', budgetUsdCents, deadlineAt: null,
         } as any));
         return String((record as any).id ?? (record as any).runId);

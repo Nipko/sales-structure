@@ -236,9 +236,11 @@ import { isInformationSeekingMessage, normalizeCustomerIntent } from '../../comm
 
 /** Max characters of history to send to the LLM to avoid exceeding context window */
 // History budget in TOKENS (not chars), measured against the smallest context window
-// reachable by ANY plan: every plan's allowedTiers includes tier_4_budget, whose chain
-// entry deepseek-chat has maxContextTokens=64_000. We reserve room for the system prompt
-// + the reply, and cap the history so very long conversations don't blow up cost.
+// reachable by ANY plan. Until 9-nov-2026 that was deepseek-chat at 64_000; since the
+// catalogue migration (ADR-0029) the smallest window is claude-haiku-5-5, capped at
+// 100_000 so it stays on its cheap rate. 64_000 is kept as a conservative floor. We
+// reserve room for the system prompt + the reply, and cap the history so very long
+// conversations don't blow up cost.
 /** The per-tenant flag of each required-reads pilot (PR5: restaurants, store; PR7: lodging, travel; real estate). */
 const REQUIRED_READS_FLAG_BY_PILOT: Readonly<Record<RequiredReadsPilot, string>> = Object.freeze({
     restaurants: REQUIRED_READS_RESTAURANTS_FLAG,
@@ -2612,7 +2614,7 @@ export class ConversationsService {
             const lang = config.language || 'es-CO';
             const personaName = config.persona?.name || 'Assistant';
             const result = await this.llmRouter.execute({
-                model: 'grok-4-1-fast-non-reasoning',
+                model: 'gpt-6-luna',
                 messages: [{ role: 'user', content: `Rewrite naturally:\n${text}` }],
                 systemPrompt: `You are ${personaName}. Rewrite this after-hours message in ${lang}. Be warm and concise.`,
                 temperature: 0.7,

@@ -1,7 +1,7 @@
 import { LlmSpendGuardService, isUnbilledRefusal } from './llm-spend-guard.service';
 import { LLM_MODEL_CATALOGUE } from './llm-router.service';
 
-const price = LLM_MODEL_CATALOGUE.find(m => m.id === 'gpt-4.1-mini')!;
+const price = LLM_MODEL_CATALOGUE.find(m => m.id === 'gpt-6-luna')!;
 const request = { messages: [{ role: 'user', content: 'hola '.repeat(200) }], maxTokens: 512 } as any;
 
 function harness(providerName: string, failure?: unknown, response?: any) {
@@ -75,7 +75,7 @@ describe('Rechazos que el proveedor no factura se liquidan en 0 (ADR-0027)', () 
         const [sql, , amount, basis] = prisma.$executeRawUnsafe.mock.calls[0];
         expect(sql).toMatch(/basis=\$3/);
         expect(basis).toBe('reported_tokens_estimate');
-        expect(amount).toBeGreaterThanOrEqual(1_000); // 10k × $0,10/M = 1.000 micro-USD
-        expect(amount).toBeLessThanOrEqual(1_001);    // a precio completo serían 4.000
+        expect(amount).toBeGreaterThanOrEqual(100); // 10k × $0,01/M = 100 micro-USD
+        expect(amount).toBeLessThanOrEqual(101);    // a precio completo serían 1.000
     });
 });

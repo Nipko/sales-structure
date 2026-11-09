@@ -33,7 +33,7 @@ import type { LLMSourceAuthority } from '../ai/interfaces/llm-source-authority';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { callCostUsd } from '../conversations/agent-turn-session';
 
-export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'deepseek-chat';
+export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'deepseek-flash';
 export const REHEARSAL_JUDGE_MODEL_ENV = 'REHEARSAL_JUDGE_MODEL';
 export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, maxTokens: 400 });
 

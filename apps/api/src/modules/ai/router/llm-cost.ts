@@ -20,7 +20,7 @@ export interface LLMUsage {
     totalTokens: number;
     /** Parte de `promptTokens` leída de la caché del proveedor. */
     cachedPromptTokens?: number;
-    /** Parte de `promptTokens` escrita en caché (Anthropic la cobra con recargo). */
+    /** Parte de `promptTokens` escrita en caché (Anthropic y OpenAI GPT-5.6+ la cobran con recargo). */
     cacheWritePromptTokens?: number;
 }
 
@@ -65,16 +65,21 @@ export function usageCostUsd(rates: LLMRates, usage: LLMUsage | undefined): numb
 /**
  * OpenAI, xAI y DeepSeek (API compatible con OpenAI).
  * - OpenAI y xAI: `prompt_tokens_details.cached_tokens`, incluido en `prompt_tokens`.
+ * - OpenAI GPT-5.6+/GPT-6: además `prompt_tokens_details.cache_write_tokens`,
+ *   también incluido en `prompt_tokens` y cobrado a 1,25× la entrada (ADR-0029;
+ *   visto en la API real el 9-nov-2026: 1.206 de entrada, 1.203 escritos).
  * - DeepSeek: `prompt_cache_hit_tokens` (+ `prompt_cache_miss_tokens` = `prompt_tokens`).
  */
 export function usageFromOpenAICompatible(raw: any): LLMUsage | undefined {
     if (!raw) return undefined;
     const cached = raw.prompt_tokens_details?.cached_tokens ?? raw.prompt_cache_hit_tokens;
+    const written = raw.prompt_tokens_details?.cache_write_tokens;
     return {
         promptTokens: raw.prompt_tokens,
         completionTokens: raw.completion_tokens,
         totalTokens: raw.total_tokens,
         ...(count(cached) > 0 ? { cachedPromptTokens: count(cached) } : {}),
+        ...(count(written) > 0 ? { cacheWritePromptTokens: count(written) } : {}),
     };
 }
 

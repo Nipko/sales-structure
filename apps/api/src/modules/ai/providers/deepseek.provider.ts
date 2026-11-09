@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { deepseekChatExtras } from './model-request-params';
 import { usageFromOpenAICompatible } from '../router/llm-cost';
 
 @Injectable()
@@ -34,6 +35,8 @@ export class DeepSeekProvider implements ILLMProvider {
                 messages: formattedMessages as any,
                 temperature: Number(options.temperature ?? 0.7),
                 max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
+                // deepseek-flash piensa por defecto (ADR-0029).
+                ...(deepseekChatExtras(options.model) as {}),
             };
 
             if (options.tools && options.tools.length > 0) {
@@ -84,6 +87,8 @@ export class DeepSeekProvider implements ILLMProvider {
                 messages: formattedMessages as any,
                 temperature: Number(options.temperature ?? 0.7),
                 max_tokens: options.maxTokens != null ? Number(options.maxTokens) : undefined,
+                // deepseek-flash piensa por defecto (ADR-0029).
+                ...(deepseekChatExtras(options.model) as {}),
                 stream: true,
             };
 

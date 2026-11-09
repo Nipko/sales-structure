@@ -168,20 +168,20 @@ describe('LLM router classify role', () => {
         const { instance, calls, store } = router();
         await instance.execute({ ...buildSafetyClassifierRequest(dental, 'hola'), tenantId: 't', traceContext: { conversationId: 'c' },
             routingFactors: { ticketValue: 100, complexity: 100, conversationStage: 100, sentiment: 100, intentType: 100 } });
-        expect(calls[0]).toEqual({ provider: 'openai', model: 'gpt-4o-mini', temperature: 0, jsonMode: true });
+        expect(calls[0]).toEqual({ provider: 'openai', model: 'gpt-6-luna', temperature: 0, jsonMode: true });
         expect([...store.keys()].some(key => key.startsWith('llm:affinity:'))).toBe(false);
     });
 
     it('ignores a sticky model a conversation turn left behind', async () => {
         const { instance, calls, store } = router();
-        store.set('llm:affinity:c:classify', 'anthropic:claude-sonnet-4-6');
+        store.set('llm:affinity:c:classify', 'anthropic:claude-sonnet-5-5');
         await instance.execute({ ...buildSafetyClassifierRequest(dental, 'hola'), traceContext: { conversationId: 'c' } });
-        expect(calls[0].model).toBe('gpt-4o-mini');
+        expect(calls[0].model).toBe('gpt-6-luna');
     });
 
     it('falls through the fixed chain when the cheapest provider is not configured', async () => {
-        const { instance, calls } = router(['xai', 'anthropic']);
+        const { instance, calls } = router(['google', 'anthropic']);
         await instance.execute({ ...buildSafetyClassifierRequest(dental, 'hola') });
-        expect(calls[0].model).toBe('grok-4-1-fast-non-reasoning');
+        expect(calls[0].model).toBe('gemini-3.5-flash-lite');
     });
 });

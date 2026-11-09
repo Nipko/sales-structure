@@ -128,7 +128,7 @@ export interface CertificationPlan {
  * two thirds of the calls it would make. Named here rather than guessed, and
  * refused loudly if the catalogue stops carrying it.
  */
-export const JUDGE_MODEL = 'gpt-4o-mini';
+export const JUDGE_MODEL = 'gpt-6-luna';
 export const JUDGE_BOUND = Object.freeze({ inputPerTurn: 8000, outputPerTurn: 500 });
 
 export function planCertificationRun(input: CertificationPlanInput): CertificationPlan {

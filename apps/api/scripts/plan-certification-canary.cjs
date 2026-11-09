@@ -78,7 +78,7 @@ const { EVAL_LANGUAGES } = require('@parallext/shared');
 // the plan and the run share `listCanonicalSubtypeExperienceProfileIds`.
 const profile = arg('profile', 'salud/medica_general');
 const channel = arg('channel', 'web_widget');
-const model = arg('model', 'gpt-4o-mini');
+const model = arg('model', 'gpt-6-luna');
 
 const plan = planCertificationRun({
     profiles: [profile], languages: [...EVAL_LANGUAGES], channels: [channel], models: [model], k: 1,

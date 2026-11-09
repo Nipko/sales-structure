@@ -92,6 +92,9 @@ export const LLM_MODEL_CATALOGUE: readonly Readonly<ModelConfig>[] =
 // Cadenas por tarea (ADR-0029). Dentro de cada una el orden es el de la medición QA del 9-nov:
 // primero el mejor modelo barato, después otros proveedores para que un apagón de OpenAI (8-nov:
 // sin créditos) no deje al agente sin respuesta, y lo premium al final.
+//   ensayo de un turno (7 tenants)  ·  confirmación firmada (28 casos, mismo hash tras el «sí»)
+//   gpt-6-luna   0,940 · 28/28      gpt-5.6-luna 0,927 · 12/28      deepseek-flash 0,914 · 19/28
+//   gpt-6-sol    0,971 · 28/28      grok-4.3     0,925 · 26/28      (gpt-4o-mini, control: 0,874 · 11/28)
 const FALLBACK_CHAINS: Record<TaskType, string[]> = {
     conversation: [
         'gpt-6-luna',
@@ -99,8 +102,8 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
         'gemini-3.5-flash-lite',
         'claude-haiku-5-5',
         'gpt-5.6-luna',
-        'grok-4.3',
         'gpt-6-sol',
+        'grok-4.3',
         'claude-sonnet-5-5',
     ],
     tool_calling: [
@@ -108,8 +111,8 @@ const FALLBACK_CHAINS: Record<TaskType, string[]> = {
         'claude-haiku-5-5',
         'gpt-5.6-luna',
         'deepseek-flash',
-        'grok-4.3',
         'gpt-6-sol',
+        'grok-4.3',
         'claude-sonnet-5-5',
     ],
     // Cheap, JSON-capable models first; a premium model only as the last

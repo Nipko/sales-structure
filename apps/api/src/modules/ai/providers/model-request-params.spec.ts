@@ -1,5 +1,5 @@
 import {
-    anthropicAcceptsSampling, anthropicRequestParams, anthropicThinkingParam, deepseekChatExtras,
+    anthropicAcceptsSampling, anthropicRequestParams, anthropicThinkingParam, deepseekChatExtras, geminiThinkingConfig,
     isOpenAIReasoningModel, openAIChatParams, xaiChatParams,
 } from './model-request-params';
 
@@ -49,5 +49,10 @@ describe('model-request-params', () => {
             expect(anthropicRequestParams('claude-haiku-5-5', { temperature: 0.7 })).toEqual({ thinking: { type: 'disabled' } });
             expect(anthropicRequestParams('claude-sonnet-4-6', { temperature: 0 })).toEqual({ temperature: 0 });
         });
+    });
+
+    it('Gemini: 2.x apaga con presupuesto 0; 3.x rechaza el presupuesto y usa minimal', () => {
+        expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({ thinkingBudget: 0 });
+        expect(geminiThinkingConfig('gemini-3.5-flash-lite')).toEqual({ thinkingLevel: 'minimal' });
     });
 });

@@ -92,3 +92,11 @@ export function anthropicRequestParams(model: string, opts: { temperature?: numb
         ...(thinking ? { thinking } : {}),
     };
 }
+
+/**
+ * Razonamiento mínimo de Gemini. 2.x lo apaga con `thinkingBudget: 0`; 3.x no
+ * acepta presupuesto (400 INVALID_ARGUMENT) y su mínimo es `thinkingLevel: "minimal"`.
+ */
+export function geminiThinkingConfig(model: string): Record<string, unknown> {
+    return /^gemini-2\./.test(model) ? { thinkingBudget: 0 } : { thinkingLevel: 'minimal' };
+}

@@ -28,6 +28,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0024](0024-correcciones-de-calidad-e2v.md) | Correcciones de calidad tras E2v: calificación, juez determinista, reparación con el tema preguntado, datos sembrados fuera de la evidencia y disponibilidad sin fuente | aprobada | 2026-11-07 |
 | [0022](0022-control-de-herramientas-en-superadmin.md) | Control de las herramientas del agente en el superadmin: registro de cada uso, agregado por día, y vistas de catálogo, matriz por tenant y salud | aprobada | 2026-11-07 |
 | [0023](0023-familias-de-herramientas-por-plan.md) | Los planes deciden qué familias de herramientas recibe cada tenant (sin lista = todas), con puerta en la ejecución y caché de 30 s; crear y archivar planes | aprobada | 2026-11-07 |
+| [0027](0027-costo-llm-cache-y-rechazos.md) | Costo LLM: la caché de prompts se cobra a su tarifa y los rechazos sin cobro (sin créditos, clave, 402, límite de tasa) se liquidan en 0 | aprobada | 2026-11-09 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

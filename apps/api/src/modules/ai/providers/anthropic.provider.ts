@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { usageFromAnthropic } from '../router/llm-cost';
 
 @Injectable()
 export class AnthropicProvider implements ILLMProvider {
@@ -98,11 +99,7 @@ export class AnthropicProvider implements ILLMProvider {
                 content: textContent,
                 finishReason,
                 toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                usage: {
-                    promptTokens: response.usage.input_tokens,
-                    completionTokens: response.usage.output_tokens,
-                    totalTokens: response.usage.input_tokens + response.usage.output_tokens,
-                },
+                usage: usageFromAnthropic(response.usage),
                 raw: response,
             };
         } catch (error: any) {

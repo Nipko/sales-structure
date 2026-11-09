@@ -1,14 +1,12 @@
 import { ChatMessage, ToolDefinition, ToolCall } from '@parallext/shared';
+import type { LLMUsage } from '../router/llm-cost';
 
 export interface LLMResponse {
     content: string;
     toolCalls?: ToolCall[];
     finishReason: 'stop' | 'tool_calls' | 'length' | 'content_filter' | 'error';
-    usage?: {
-        promptTokens: number;
-        completionTokens: number;
-        totalTokens: number;
-    };
+    /** `promptTokens` es toda la entrada; la parte en caché va aparte (ADR-0027). */
+    usage?: LLMUsage;
     raw?: any;
 }
 

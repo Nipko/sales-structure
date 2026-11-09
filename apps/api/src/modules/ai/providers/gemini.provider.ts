@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { usageFromGemini } from '../router/llm-cost';
 
 @Injectable()
 export class GeminiProvider implements ILLMProvider {
@@ -70,12 +71,7 @@ export class GeminiProvider implements ILLMProvider {
             return {
                 content: text,
                 finishReason,
-                usage: response.usageMetadata ? {
-                    promptTokens: response.usageMetadata.promptTokenCount,
-                    completionTokens: (response.usageMetadata.candidatesTokenCount ?? 0)
-                        + (Number((response.usageMetadata as any).thoughtsTokenCount) || 0),
-                    totalTokens: response.usageMetadata.totalTokenCount,
-                } : undefined,
+                usage: usageFromGemini(response.usageMetadata),
                 raw: response,
             };
         } catch (error: any) {

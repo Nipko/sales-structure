@@ -5,6 +5,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { CronLockService } from '../../redis/cron-lock.service';
 import type { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm-provider.interface';
+import { classifyProviderError, type ProviderErrorKind } from '../health/llm-provider-error';
+import { splitPromptTokens } from './llm-cost';
 
 export class LlmBudgetUnavailable extends ServiceUnavailableException {
     constructor() { super({ error: 'llm_budget_unavailable' }); }
@@ -12,7 +14,23 @@ export class LlmBudgetUnavailable extends ServiceUnavailableException {
 export class LlmBudgetExceeded extends HttpException {
     constructor() { super({ error: 'llm_budget_exceeded' }, 429); }
 }
-export type ModelPrice = { id: string; costInPer1k: number; costOutPer1k: number; maxContextTokens: number };
+export type ModelPrice = {
+    id: string; costInPer1k: number; costOutPer1k: number; maxContextTokens: number;
+    /** Entrada leída de caché (ADR-0027). Sin dato, la caché se cobra como entrada normal. */
+    costCachedInPer1k?: number;
+    costCacheWritePer1k?: number;
+};
+
+/**
+ * Rechazos que el proveedor no factura: la petición se corta antes de llegar
+ * al modelo. El 8-nov-2026 se cargaron $17,97 a 7 tenants QA por 2.043
+ * respuestas «429 You have no credits remaining» que OpenAI nunca cobró
+ * (ADR-0027). Un `bad_request` (400) sí conserva el piso: algunos proveedores
+ * validan después de tokenizar, y no podemos demostrar que no se cobró.
+ */
+const UNBILLED_REFUSALS: ReadonlySet<ProviderErrorKind> = new Set(['quota', 'auth', 'rate_limit', 'model_not_found']);
+export const isUnbilledRefusal = (error: unknown, provider?: string): boolean =>
+    UNBILLED_REFUSALS.has(classifyProviderError(error, provider));
 
 /**
  * Marca de una llamada que salió sin poder medirse. No hay fila que conciliar,
@@ -22,10 +40,18 @@ export type ModelPrice = { id: string; costInPer1k: number; costOutPer1k: number
 const UNMETERED_PREFIX = 'unmetered:';
 export const isUnmeteredReservation = (id: string): boolean => id.startsWith(UNMETERED_PREFIX);
 
-/** Micro-USD, rounded upwards. The catalogue is an estimate, not a provider invoice. */
-export function modelCostMicro(price: ModelPrice, input: number, output: number): number {
-    if (![input, output].every(n => Number.isSafeInteger(n) && n >= 0)) throw new LlmBudgetUnavailable();
-    const cost = Math.ceil(input * price.costInPer1k * 1000 + output * price.costOutPer1k * 1000);
+/**
+ * Micro-USD, rounded upwards. The catalogue is an estimate, not a provider invoice.
+ * `input` es TODA la entrada; `cachedInput` y `cacheWriteInput` son la parte de
+ * ella que el proveedor cobró a otra tarifa (ADR-0027).
+ */
+export function modelCostMicro(price: ModelPrice, input: number, output: number, cachedInput = 0, cacheWriteInput = 0): number {
+    if (![input, output, cachedInput, cacheWriteInput].every(n => Number.isSafeInteger(n) && n >= 0)) throw new LlmBudgetUnavailable();
+    const { fresh, cached, cacheWrite } = splitPromptTokens({ promptTokens: input, cachedPromptTokens: cachedInput, cacheWritePromptTokens: cacheWriteInput });
+    const cost = Math.ceil(fresh * price.costInPer1k * 1000
+        + cached * (price.costCachedInPer1k ?? price.costInPer1k) * 1000
+        + cacheWrite * (price.costCacheWritePer1k ?? price.costInPer1k) * 1000
+        + output * price.costOutPer1k * 1000);
     if (!Number.isSafeInteger(cost) || cost < 0) throw new LlmBudgetUnavailable();
     return cost;
 }
@@ -81,7 +107,7 @@ export class LlmSpendGuardService {
                     // tier dejaba una fila inmortal en `reserved_estimate`, y
                     // como la admisión suma TODO el mes, un mes de fallas
                     // dejaba mudo a un tenant con dinero sin gastar.
-                    await this.settleFailedAttempt(id, price, bounded, error);
+                    await this.settleFailedAttempt(id, price, bounded, error, provider.providerName);
                     throw error;
                 }
             },
@@ -185,17 +211,23 @@ export class LlmSpendGuardService {
      *   entrada. Este es el caso común —límites de tasa, caídas del proveedor,
      *   cada salto al siguiente tier— y cobrarle el máximo estimado es lo que
      *   dejaba mudo a un tenant con dinero sin gastar.
+     * - **El proveedor rechazó sin procesar** (sin crédito, clave inválida o
+     *   revocada, 402, límite de tasa, modelo inexistente). No se factura nada,
+     *   así que se liquida en 0 (ADR-0027). Se decide con `classifyProviderError`,
+     *   el mismo clasificador que usa la salud de proveedores (ADR-0026).
      * - **Cortamos nosotros** (timeout, aborto, conexión caída). No se puede
      *   descartar que haya generado y facturado. Se conserva la estimación
      *   completa: un timeout no puede crear presupuesto, que es la regla con
      *   la que se escribió este guardián y sigue siendo la correcta acá.
      */
-    private async settleFailedAttempt(id: string, price: ModelPrice, request: LLMRequestOptions, error: unknown): Promise<void> {
+    private async settleFailedAttempt(id: string, price: ModelPrice, request: LLMRequestOptions, error: unknown, provider?: string): Promise<void> {
         if (isUnmeteredReservation(id)) return;
         const status = Number((error as any)?.status ?? (error as any)?.statusCode ?? (error as any)?.response?.status);
         if (!Number.isInteger(status) || status < 400) return;
         try {
-            const floor = modelCostMicro(price, inputTokenUpperEstimate(price, request), 0);
+            const floor = isUnbilledRefusal(error, provider)
+                ? 0
+                : modelCostMicro(price, inputTokenUpperEstimate(price, request), 0);
             await this.prisma.$executeRawUnsafe(`UPDATE public.llm_spend_reservations
                 SET accounted_micro=$2, basis='failed_estimate', updated_at=clock_timestamp()
                 WHERE id=$1 AND basis='reserved_estimate'`, id, floor);
@@ -235,7 +267,8 @@ export class LlmSpendGuardService {
     private async recordUsage(id: string, price: ModelPrice, usage: LLMResponse['usage'], basis = 'reported_tokens_estimate'): Promise<void> {
         if (!usage || isUnmeteredReservation(id)) return; // No usage is not free usage.
         try {
-            const actual = modelCostMicro(price, usage.promptTokens, usage.completionTokens);
+            const { cached, cacheWrite } = splitPromptTokens(usage);
+            const actual = modelCostMicro(price, usage.promptTokens, usage.completionTokens, cached, cacheWrite);
             await this.prisma.$executeRawUnsafe(`UPDATE public.llm_spend_reservations
                 SET accounted_micro=$2, basis=$3, updated_at=clock_timestamp()
                 WHERE id=$1 AND basis='reserved_estimate'`,id,actual,basis);

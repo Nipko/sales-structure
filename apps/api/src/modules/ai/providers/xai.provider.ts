@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ILLMProvider, LLMRequestOptions, LLMResponse, LLMTransportOptions } from '../interfaces/illm-provider.interface';
 import { LlmKeyService } from '../../settings/llm-key.service';
+import { usageFromOpenAICompatible } from '../router/llm-cost';
 
 @Injectable()
 export class XAIProvider implements ILLMProvider {
@@ -64,11 +65,7 @@ export class XAIProvider implements ILLMProvider {
                         arguments: tc.function.arguments,
                     }
                 })),
-                usage: response.usage ? {
-                    promptTokens: response.usage.prompt_tokens,
-                    completionTokens: response.usage.completion_tokens,
-                    totalTokens: response.usage.total_tokens,
-                } : undefined,
+                usage: usageFromOpenAICompatible(response.usage),
                 raw: response,
             };
         } catch (error: any) {

@@ -12,6 +12,7 @@ import { IncidentService } from './incident.service';
 import { AlertConfigService } from './alert-config.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { LLMRouterService } from '../ai/router/llm-router.service';
+import { LlmProviderHealthService } from '../ai/health/llm-provider-health.service';
 import * as os from 'os';
 
 @ApiTags('health')
@@ -26,6 +27,7 @@ export class HealthController {
         private alertConfig: AlertConfigService,
         private mediaCleanup: MediaCleanupService,
         private llmRouter: LLMRouterService,
+        private providerHealth: LlmProviderHealthService,
     ) { }
 
     @Get()
@@ -136,6 +138,20 @@ export class HealthController {
     @ApiOperation({ summary: 'LLM provider health status (super_admin only)' })
     async llmProviderHealth() {
         return this.llmRouter.getProviderHealth();
+    }
+
+    @Get('llm-providers/status')
+    @UseGuards(AuthGuard('jwt'), RolesGuard)
+    @Roles('super_admin')
+    @ApiOperation({ summary: 'LLM provider status: sin creditos / clave invalida / caido, ultimo error y % de fallback (super_admin only)' })
+    async llmProviderStatus() {
+        const configured: Record<string, boolean> = {};
+        for (const p of await this.llmRouter.getProviderHealth()) configured[p.provider] = p.configured;
+        const [snapshot, budgets] = await Promise.all([
+            this.providerHealth.snapshot(configured),
+            this.monitor.getLlmBudgetStatus(),
+        ]);
+        return { success: true, data: { ...snapshot, budgets } };
     }
 
     @Get('storage')

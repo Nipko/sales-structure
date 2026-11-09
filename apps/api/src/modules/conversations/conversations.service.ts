@@ -6511,6 +6511,17 @@ export class ConversationsService {
                     router: session ? llmRouter : this.llmRouter, tenantId, executionContext, conversationId: conversation.id, turnTrace, session,
                 });
             }
+            // E2ae C01 (dental): the evidence verifier can drop the template-services note that applyOutputGuardrails added. It is said
+            // again on the composed reply as it leaves; with the note (or any «pendiente de confirmar») already there, nothing changes.
+            if (finalResponse && !isErrorFallback(finalResponse) && !deterministicReply && !catalogFirstApplied && !isSystemFixedText(finalResponse)
+                && !(engineTextIsReply && engineProducedText && finalResponse.trim() === engineProducedText.trim())) {
+                const pendingAgain = pendingServicesNote(finalResponse, templateServicesOfTurn(turnContext as any,
+                    [...preExecutedTools, ...executedToolsThisTurn, ...engineExecutedTools, ...toolReadsOfTurnMessages(currentMessages)]), userLanguage);
+                if (pendingAgain) {
+                    this.logger.warn(`[Guardrail] Template-services note restored after the evidence verifier: "${finalResponse.slice(0, 100)}"`);
+                    finalResponse = pendingAgain;
+                }
+            }
             turnTrace.add('guardrail', 'output', { responseLength: finalResponse?.length || 0 });
             const placeholderOutcome = UNFILLED_PLACEHOLDER_OUTCOME.get(turnContext);
             if (placeholderOutcome) turnTrace.add('guardrail', 'unfilled_placeholder', { ...placeholderOutcome });
@@ -7968,11 +7979,14 @@ export class ConversationsService {
             response = wrongService;
         }
         // E2aa C01 (dental): «¿qué hacen?» listed the setup template's services as confirmed; they are said as pending (option B).
-        const pendingServices = !(trustedContext as any)?.directive && !isSystemFixedText(response)
+        // E2ad: not gated on `directive`. With booking in away mode (dental, C16) the engine adds a directive to every turn, «¿qué
+        // hacen?» included, and the guard never ran there. Only the engine's own text sent as the reply is left untouched.
+        const engineReplyText = String((trustedContext as any)?.engineReplyText ?? '').trim();
+        const pendingServices = !isSystemFixedText(response) && !(engineReplyText && response.trim() === engineReplyText)
             ? pendingServicesNote(response, templateServicesOfTurn(trustedContext as any,
                 [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)]), lang) : null;
         if (pendingServices) {
-            this.logger.log(`[Guardrail] Template services listed as confirmed: said as pending: "${response.slice(0, 100)}"`);
+            this.logger.warn(`[Guardrail] Template services listed as confirmed: said as pending: "${response.slice(0, 100)}"`);
             response = pendingServices;
         }
         // F4300-47: «para dos personas sería el doble de ese valor» after «40.000 COP» is said as the total the customer asked for.

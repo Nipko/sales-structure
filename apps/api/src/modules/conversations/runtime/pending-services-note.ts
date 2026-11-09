@@ -68,6 +68,9 @@ export function templateServicesOfTurn(
 export function pendingServicesNote(reply: string, services: readonly MaybeSeededService[] | undefined, lang?: string): string | null {
     const text = String(reply || '').trim();
     if (!text) return null;
+    // E2ae: «Ofrecemos los siguientes servicios, aunque están pendientes de confirmación:» seguido de una lista con viñetas ya lo
+    // dice, aunque la frase que lo dice no nombre los servicios.
+    if (PENDING.test(normalizeForIntent(text))) return null;
     const sentences = text.split(/(?<=[.!?])\s+|\n+/).map(sentence => normalizeForIntent(sentence));
     const named: string[] = [];
     for (const service of (services ?? []).filter(isTemplate)) {
@@ -75,8 +78,6 @@ export function pendingServicesNote(reply: string, services: readonly MaybeSeede
         if (!pattern) continue;
         const said = sentences.filter(sentence => pattern.test(sentence));
         if (!said.length) continue;
-        // Una frase que lo nombra y dice que está por confirmar: ya está dicho como opción B lo pide.
-        if (said.some(sentence => PENDING.test(sentence))) return null;
         named.push(service.name);
     }
     if (named.length < 2) return null;

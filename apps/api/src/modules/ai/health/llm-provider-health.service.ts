@@ -70,6 +70,8 @@ export interface ProviderSnapshot extends ProviderState {
     breakerOpen: boolean;
     lastProbeAt: number | null;
     lastProbeOk: boolean | null;
+    /** Cuenta que factura la clave en uso, según la última sonda (solo OpenAI la informa). */
+    account: string | null;
     balance: ProviderBalance | null;
     /** Errores de hoy (UTC) por tipo. */
     errorsToday: Partial<Record<ProviderErrorKind, number>>;
@@ -304,6 +306,18 @@ export class LlmProviderHealthService {
         }
     }
 
+    /** La cuenta que factura la clave en uso. Si cambia (clave nueva de otra cuenta), queda a la vista. */
+    async recordAccount(provider: string, account: string): Promise<void> {
+        try {
+            const key = `llm:provider:account:${provider}`;
+            const prev = await this.redis.get(key);
+            if (prev && prev !== account) {
+                this.logger.warn(`${LLM_PROVIDER_ALERT_MARKER} provider=${provider} account_changed from="${prev}" to="${account}"`);
+            }
+            await this.redis.set(key, account.slice(0, 200), STATE_TTL_SEC);
+        } catch { /* best-effort */ }
+    }
+
     // ── Saldo (solo donde el proveedor lo expone) ──
 
     async recordBalance(provider: string, balance: ProviderBalance, lowThreshold: number): Promise<void> {
@@ -404,10 +418,11 @@ export class LlmProviderHealthService {
         const errors = await this.redis.hgetall(this.errorsKey(day)).catch(() => ({} as Record<string, string>));
         const providers = await Promise.all(LLM_PROVIDERS.map(async provider => {
             const state = await this.getState(provider);
-            const [breaker, probeRaw, balanceRaw] = await Promise.all([
+            const [breaker, probeRaw, balanceRaw, account] = await Promise.all([
                 this.redis.get(llmBreakerOpenKey(provider)).catch(() => null),
                 this.redis.get(`llm:provider:probe:${provider}`).catch(() => null),
                 this.redis.get(`llm:provider:balance:${provider}`).catch(() => null),
+                this.redis.get(`llm:provider:account:${provider}`).catch(() => null),
             ]);
             const probe = safeJson<{ at: number; ok: boolean }>(probeRaw);
             const errorsToday: Partial<Record<ProviderErrorKind, number>> = {};
@@ -427,6 +442,7 @@ export class LlmProviderHealthService {
                 breakerOpen: !!breaker,
                 lastProbeAt: probe?.at ?? null,
                 lastProbeOk: probe?.ok ?? null,
+                account,
                 balance: safeJson<ProviderBalance>(balanceRaw),
                 errorsToday,
                 errorsTodayByModel,

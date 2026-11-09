@@ -2,8 +2,8 @@
   "version": 1,
   "reviewCadence": "quarterly_and_before_claim",
   "owner": "product-marketing",
-  "verifiedAt": "2026-08-08",
-  "expiresAt": "2026-11-08",
+  "verifiedAt": "2026-11-09",
+  "expiresAt": "2027-02-09",
   "entries": [
     { "industry": "salud", "vendor": "NexHealth", "canonicalUrl": "https://www.nexhealth.com/", "tier": "public_product", "region": "vendor_defined", "maturity": "general_available", "capabilitySignal": "Patient experience and practice integration", "internalAcceptanceTest": "PMS sandbox booking, A2 sensitive data and webhook reconciliation" },
     { "industry": "moda_belleza", "vendor": "Zenoti", "canonicalUrl": "https://www.zenoti.com/pricing-zenoti", "tier": "commercial", "region": "vendor_defined", "maturity": "general_available", "capabilitySignal": "Salon and spa operations", "internalAcceptanceTest": "Atomic staff plus room booking, package consumption and deposit" },

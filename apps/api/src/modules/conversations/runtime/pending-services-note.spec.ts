@@ -60,3 +60,18 @@ describe('E2ab · los servicios de plantilla del turno salen de tres fuentes', (
             .map(s => s.name)).toEqual(['Color y tratamiento']);
     });
 });
+
+describe('E2ae · la nota sobrevive y no se repite', () => {
+    const DENTAL3 = [{ name: 'Consulta general', contentStatus: 'seeded' }, { name: 'Consulta especializada', contentStatus: 'seeded' }, { name: 'Control y seguimiento', contentStatus: 'seeded' }];
+    it('una lista con viñetas precedida de «aunque están pendientes de confirmación» ya lo dice', () => {
+        const reply = ['Ofrecemos los siguientes servicios odontológicos, aunque están pendientes de confirmación por parte de la clínica:',
+            '- Consulta general', '- Consulta especializada', '- Control y seguimiento', '¿Le interesa alguno?'].join('\n');
+        expect(pendingServicesNote(reply, DENTAL3, 'es')).toBeNull();
+    });
+    it('aplicada dos veces (antes y después del verificador de evidencia) no se repite', () => {
+        const reply = 'Podemos ayudarle con consultas generales, consultas especializadas y controles o seguimientos de tratamientos dentales. Así puedo orientarle mejor.';
+        const once = pendingServicesNote(reply, DENTAL3, 'es');
+        expect(once).toContain('aún están pendientes de confirmar por el negocio');
+        expect(pendingServicesNote(once as string, DENTAL3, 'es')).toBeNull();
+    });
+});

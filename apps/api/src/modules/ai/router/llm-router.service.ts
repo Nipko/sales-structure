@@ -626,6 +626,9 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
+                    if (err instanceof LlmBudgetExceeded && options.tenantId) {
+                        this.providerHealth?.recordBudgetExceeded(options.tenantId).catch(() => {});
+                    }
                     if (err instanceof LlmBudgetExceeded || err instanceof LlmBudgetUnavailable) throw err;
                     if (err instanceof LLMSourceAuthorityUnavailable) {
                         if (accountOperationalUsage && err.usage) this.trackStats(options.tenantId,candidate,durationMs,err.usage,false)
@@ -711,6 +714,9 @@ export class LLMRouterService {
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
+            if (e instanceof LlmBudgetExceeded && options.tenantId) {
+                this.providerHealth?.recordBudgetExceeded(options.tenantId).catch(() => {});
+            }
             if (e instanceof LlmBudgetExceeded || e instanceof LlmBudgetUnavailable) throw e;
             if (e instanceof LLMSourceAuthorityUnavailable) {
                 if (accountOperationalUsage && e.usage) this.trackStats(options.tenantId,modelConfig,durationMs,e.usage,false)

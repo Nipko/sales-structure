@@ -10414,7 +10414,16 @@
     "llmStatus_degraded": "degradado",
     "llmStatus_down": "caído",
     "llmStatus_no_credits": "sin créditos",
-    "llmStatus_auth_invalid": "clave inválida"
+    "llmStatus_auth_invalid": "clave inválida",
+    "llmBudgetsTitle": "Presupuesto de IA por tenant (mes)",
+    "llmBudgetSoft": "blando",
+    "llmBudgetHard": "duro",
+    "llmBudgetNone": "Ningún tenant cerca de sus topes",
+    "llmBudget_ok": "ok",
+    "llmBudget_soft_warn": "cerca del tope blando",
+    "llmBudget_soft_reached": "modelos baratos",
+    "llmBudget_hard_near": "cerca del tope duro",
+    "llmBudget_hard_reached": "agente sin responder"
   },
   "integrationOutbox": {
     "title": "Riel de integraciones",

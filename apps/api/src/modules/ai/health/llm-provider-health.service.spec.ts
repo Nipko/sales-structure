@@ -125,6 +125,16 @@ describe('LlmProviderHealthService', () => {
         expect(alerts().some(a => a.resolveOnly && a.resolveKeys?.includes('llm:provider:deepseek:low_balance'))).toBe(true);
     });
 
+    it('tope duro: un aviso critico inmediato por tenant, aunque el guardian corte muchas llamadas', async () => {
+        const { svc, sent } = setup();
+        for (let i = 0; i < 5; i++) await svc.recordBudgetExceeded('t1');
+        await svc.recordBudgetExceeded('t2');
+        expect(sent().map(a => [a.key, a.severity, a.cooldownSec])).toEqual([
+            ['llm:budget:t1:hard_reached', 'critical', 86400],
+            ['llm:budget:t2:hard_reached', 'critical', 86400],
+        ]);
+    });
+
     it('snapshot: estado, ultimo error y conteos del dia', async () => {
         const { svc } = setup();
         await svc.recordFailure('openai', 'gpt-4.1-mini', noCredits, 'traffic');

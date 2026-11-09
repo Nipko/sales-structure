@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RedisService } from '../../redis/redis.service';
+import { budgetIncidentKey } from '../../health/llm-budget-level';
 import {
     classifyProviderError, isAccountFailure, summarizeProviderError,
     PROVIDER_ERROR_LABEL_ES, ProviderErrorKind,
@@ -30,6 +31,8 @@ export interface LlmProviderHealthAlert {
     noIncident?: boolean;
     /** Solo cerrar `resolveKeys`, sin mandar nada. */
     resolveOnly?: boolean;
+    /** Cooldown de Telegram/email del monitor para esta clave (por defecto 60 s). */
+    cooldownSec?: number;
     /** Simulacro: se avisa y el incidente se cierra al momento. */
     drill?: boolean;
 }
@@ -272,6 +275,32 @@ export class LlmProviderHealthService {
             this.events.emit(LLM_PROVIDER_HEALTH_ALERT_EVENT, alert);
         } catch (e: any) {
             this.logger.warn(`Provider alert emit failed: ${e?.message}`);
+        }
+    }
+
+    // ── Presupuesto por tenant: el tope duro corto una llamada ──
+
+    /**
+     * El guardian de gasto rechazo una llamada por el tope duro: el agente de
+     * ese tenant deja de responder. Se avisa en el acto (el chequeo de 10 min
+     * lo confirma con el nombre y los montos). Una vez cada 6 h por tenant.
+     */
+    async recordBudgetExceeded(tenantId: string): Promise<void> {
+        try {
+            if (!(await this.gate(`llm:budget:alerted:${tenantId}:hard_reached`, OUTAGE_REMINDER_SEC))) return;
+            this.logger.error(`${LLM_PROVIDER_ALERT_MARKER} tenant=${tenantId} status=hard_budget_reached`);
+            this.emit({
+                key: budgetIncidentKey(tenantId, 'hard_reached'),
+                severity: 'critical',
+                subject: `Tope duro de IA alcanzado: el agente del tenant ${tenantId} no responde`,
+                html: `El guardian de gasto rechazo una llamada al LLM del tenant <code>${tenantId}</code> porque llego a su `
+                    + '<b>tope duro mensual</b> (<code>llmHardBudgetUsdCents</code>). Hasta el proximo mes o hasta subir el tope '
+                    + '(plan o <code>settings.quotaOverrides</code>), <b>el agente no responde</b>.',
+                value: 100,
+                cooldownSec: 24 * 3600,
+            });
+        } catch (e: any) {
+            this.logger.warn(`Budget alert failed for ${tenantId}: ${e?.message}`);
         }
     }
 

@@ -10414,7 +10414,16 @@
     "llmStatus_degraded": "degraded",
     "llmStatus_down": "down",
     "llmStatus_no_credits": "out of credits",
-    "llmStatus_auth_invalid": "invalid key"
+    "llmStatus_auth_invalid": "invalid key",
+    "llmBudgetsTitle": "AI budget per tenant (month)",
+    "llmBudgetSoft": "soft",
+    "llmBudgetHard": "hard",
+    "llmBudgetNone": "No tenant near its caps",
+    "llmBudget_ok": "ok",
+    "llmBudget_soft_warn": "near soft cap",
+    "llmBudget_soft_reached": "cheap models",
+    "llmBudget_hard_near": "near hard cap",
+    "llmBudget_hard_reached": "agent not replying"
   },
   "integrationOutbox": {
     "title": "Integration rail",

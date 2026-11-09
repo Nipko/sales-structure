@@ -30,7 +30,7 @@ export class LlmProviderAlertListener {
             if (alert.resolveOnly) return;
             await this.monitor.notify(alert.key, alert.subject, alert.html, alert.value, {
                 severity: alert.severity,
-                cooldownSec: 60,
+                cooldownSec: alert.cooldownSec ?? 60,
                 persistIncident: !alert.noIncident,
             });
             // Un simulacro deja rastro en el historial pero no un incidente abierto.

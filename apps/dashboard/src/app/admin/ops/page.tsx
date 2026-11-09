@@ -34,7 +34,17 @@ interface LlmProvider {
     errorsToday: Record<string, number>;
 }
 interface LlmRoutingWindow { total: number; fallback: number; pct: number; byServedProvider: Record<string, number> }
-interface LlmProviderStatus { providers: LlmProvider[]; routing: { lastHour: LlmRoutingWindow; last24h: LlmRoutingWindow } }
+type BudgetLevel = "ok" | "soft_warn" | "soft_reached" | "hard_near" | "hard_reached";
+interface TenantBudget {
+    tenantId: string; tenantName: string; spentCents: number;
+    softCents: number | null; hardCents: number | null; softPct: number | null; hardPct: number | null; level: BudgetLevel;
+}
+interface LlmProviderStatus {
+    providers: LlmProvider[];
+    routing: { lastHour: LlmRoutingWindow; last24h: LlmRoutingWindow };
+    budgets?: { at: number | null; tenants: TenantBudget[] };
+}
+const BUDGET_ORDER: BudgetLevel[] = ["hard_reached", "hard_near", "soft_reached", "soft_warn", "ok"];
 
 const LLM_PROVIDER_NAMES: Record<string, string> = { openai: "OpenAI", anthropic: "Anthropic", google: "Gemini", xai: "xAI (Grok)", deepseek: "DeepSeek" };
 const LLM_SEVERE: LlmStatus[] = ["down", "no_credits", "auth_invalid"];
@@ -107,7 +117,11 @@ export default function OpsCenterPage() {
     const servicesUp = health?.services ? health.services.api && health.services.redis && health.services.postgres : true;
     const anyFailed = health?.queues?.some(q => q.failed > 0) || false;
     const diskPct = storage?.disk?.usedPct ?? 0;
-    const llmSevere = (llm?.providers || []).some(p => p.configured && LLM_SEVERE.includes(p.status));
+    const llmSevere = (llm?.providers || []).some(p => p.configured && LLM_SEVERE.includes(p.status))
+        || (llm?.budgets?.tenants || []).some(b => b.level === "hard_reached");
+    const budgetRows = (llm?.budgets?.tenants || [])
+        .filter(b => b.level !== "ok")
+        .sort((a, b) => BUDGET_ORDER.indexOf(a.level) - BUDGET_ORDER.indexOf(b.level));
     const critical = (summary?.activeCritical ?? 0) > 0 || !servicesUp || llmSevere;
     const warning = !critical && ((summary?.activeWarning ?? 0) > 0 || anyFailed || diskPct >= 80);
     const status = critical ? "critical" : warning ? "warning" : "operational";
@@ -301,6 +315,32 @@ export default function OpsCenterPage() {
                             );
                         })}
                     </ul>
+                )}
+                {llm && (
+                    <div className="mt-4 pt-3 border-t border-border">
+                        <h4 className="text-xs font-semibold text-muted-foreground mb-2">{t("llmBudgetsTitle")}</h4>
+                        {budgetRows.length === 0 ? (
+                            <div className="text-xs text-muted-foreground">{t("llmBudgetNone")}</div>
+                        ) : (
+                            <ul className="space-y-1">
+                                {budgetRows.map(b => {
+                                    const hardLevel = b.level === "hard_reached" || b.level === "hard_near";
+                                    return (
+                                        <li key={b.tenantId} className="flex items-center gap-2 text-xs flex-wrap">
+                                            <span className={cn("h-2 w-2 rounded-full shrink-0", hardLevel ? "bg-red-500" : "bg-amber-500")} />
+                                            <span className="font-medium truncate max-w-[16rem]">{b.tenantName}</span>
+                                            <span className={cn("px-1.5 py-0.5 rounded", hardLevel ? "bg-red-500/10 text-red-700 dark:text-red-300" : "bg-amber-500/10 text-amber-700 dark:text-amber-300")}>{t(`llmBudget_${b.level}`)}</span>
+                                            <span className="ml-auto font-mono text-muted-foreground">
+                                                ${(b.spentCents / 100).toFixed(2)}
+                                                {b.softCents !== null && <> · {t("llmBudgetSoft")} ${(b.softCents / 100).toFixed(2)} ({b.softPct}%)</>}
+                                                {b.hardCents !== null && <> · {t("llmBudgetHard")} ${(b.hardCents / 100).toFixed(2)} ({b.hardPct}%)</>}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        )}
+                    </div>
                 )}
             </div>
 

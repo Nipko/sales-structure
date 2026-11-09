@@ -26,6 +26,12 @@ import { SubscriptionStatus } from '../billing/types/subscription-status.enum';
 import * as os from 'os';
 import * as fs from 'fs';
 import { CronLockService } from '../redis/cron-lock.service';
+import {
+    BUDGET_LEVEL_LABEL_ES, BUDGET_LEVELS_BY_SEVERITY, budgetIncidentKey, budgetLevel, budgetSeverity,
+    type TenantBudgetStatus,
+} from './llm-budget-level';
+
+export const LLM_BUDGET_STATUS_KEY = 'llm:budget:status';
 
 export interface AlertOptions {
     severity?: IncidentSeverity;
@@ -126,6 +132,7 @@ export class PlatformMonitorService implements OnModuleInit {
         await this.checkPgBouncerPool();
         await this.checkSentryErrors();
         await this.checkLlmProviders();
+        await this.checkLlmBudgets();
         // Backstop: auto-resolve incidents that simply stopped re-firing.
         await this.incidents.sweepStale(48);
     }
@@ -905,7 +912,6 @@ export class PlatformMonitorService implements OnModuleInit {
         // el resto de los crons del motor (cada 15 min) sería ruido sin novedad.
         await this.checkExpiringPaymentSources();
         await this.checkDeclineRateByMethod();
-        await this.checkLlmBudgets();
         await this.checkBackupHeartbeat();
     }
 
@@ -1779,7 +1785,16 @@ export class PlatformMonitorService implements OnModuleInit {
         }
     }
 
-    private async checkLlmBudgets() {
+    /**
+     * Presupuesto LLM por tenant (ADR-0026). Corre con los chequeos de 10 min:
+     * una vez al dia era tarde para un tope duro que deja mudo al agente.
+     * Niveles: 80 % y 100 % del tope blando (baja a modelos baratos), 90 % y
+     * 100 % del duro (deja de responder). Respeta `settings.quotaOverrides`
+     * (los aplica `getPlanFeatures`). Un incidente por nivel; al cambiar de
+     * nivel se cierra el anterior. Recordatorio diario mientras siga.
+     */
+    async checkLlmBudgets(): Promise<TenantBudgetStatus[]> {
+        const statuses: TenantBudgetStatus[] = [];
         try {
             const cfg = await this.alertConfig.get();
             const tenants = await this.prisma.tenant.findMany({
@@ -1787,31 +1802,66 @@ export class PlatformMonitorService implements OnModuleInit {
                 select: { id: true, name: true },
             });
             for (const t of tenants) {
-                const budget = await this.throttle.getPlanLimit(t.id, 'llmCostBudgetUsdCents'); // cents; Infinity if -1, 0 if unset
-                if (!Number.isFinite(budget) || budget <= 0) {
-                    await this.incidents.resolveByKey(`llm:budget:${t.id}`);
+                // cents; Infinity si -1 (ilimitado), 0 si no esta configurado
+                const soft = await this.throttle.getPlanLimit(t.id, 'llmCostBudgetUsdCents');
+                const hard = await this.throttle.getPlanLimit(t.id, 'llmHardBudgetUsdCents');
+                const usable = (n: number) => Number.isFinite(n) && n > 0;
+                const levelKeys = BUDGET_LEVELS_BY_SEVERITY.map(l => budgetIncidentKey(t.id, l));
+                if (!usable(soft) && !usable(hard)) {
+                    for (const key of [`llm:budget:${t.id}`, ...levelKeys]) await this.incidents.resolveByKey(key);
                     continue;
                 }
                 const spentCents = await this.throttle.getLlmSpendUsdCents(t.id); // USD cents, month-to-date
-                const pct = Math.round((spentCents / (budget as number)) * 100);
-                if (pct >= cfg.llmBudgetPct) {
-                    await this.alert(
-                        `llm:budget:${t.id}`,
-                        `Tenant ${t.name} al ${pct}% de su presupuesto de IA`,
-                        `El tenant <b>${t.name}</b> consumio <b>$${(spentCents / 100).toFixed(2)}</b> de su
-                         presupuesto mensual de IA de <b>$${((budget as number) / 100).toFixed(2)}</b> (${pct}%).<br><br>
-                         Al llegar al 100%, el runtime conserva las respuestas pero restringe el enrutamiento
-                         a los modelos economicos permitidos por el plan. Este umbral es una proteccion de margen,
-                         no un corte duro del servicio ni una garantia de gasto maximo.`,
-                        pct,
-                    );
-                } else {
-                    await this.incidents.resolveByKey(`llm:budget:${t.id}`);
+                const level = budgetLevel({ spentCents, softCents: soft, hardCents: hard, softWarnPct: cfg.llmBudgetPct });
+                const pct = (cap: number) => (usable(cap) ? Math.round((spentCents / cap) * 100) : null);
+                statuses.push({
+                    tenantId: t.id, tenantName: t.name, spentCents: Math.round(spentCents),
+                    softCents: usable(soft) ? soft : null, hardCents: usable(hard) ? hard : null,
+                    softPct: pct(soft), hardPct: pct(hard), level,
+                });
+                // La clave vieja (sin nivel) queda reemplazada por las de nivel.
+                await this.incidents.resolveByKey(`llm:budget:${t.id}`);
+                for (const l of BUDGET_LEVELS_BY_SEVERITY) {
+                    if (l !== level) await this.incidents.resolveByKey(budgetIncidentKey(t.id, l));
                 }
+                if (level === 'ok') continue;
+                const money = (c: number) => `$${(c / 100).toFixed(2)}`;
+                const caps = [
+                    usable(soft) ? `tope blando ${money(soft)} (${pct(soft)}%)` : null,
+                    usable(hard) ? `tope duro ${money(hard)} (${pct(hard)}%)` : null,
+                ].filter(Boolean).join(' · ');
+                const effect = level === 'hard_reached'
+                    ? '<b>El agente de este tenant ya no responde</b>: el guardian de gasto corta cada llamada al LLM hasta el proximo mes o hasta subir el tope.'
+                    : level === 'hard_near'
+                        ? 'Al llegar al tope duro <b>el agente deja de responder</b>.'
+                        : level === 'soft_reached'
+                            ? 'El router ya restringe este tenant a los modelos baratos (tier 3/4): responde, pero con menos calidad.'
+                            : 'Al llegar al tope blando el router lo restringe a los modelos baratos.';
+                const top = usable(hard) && (level === 'hard_near' || level === 'hard_reached') ? pct(hard) : pct(soft);
+                await this.alert(
+                    budgetIncidentKey(t.id, level),
+                    `Presupuesto IA de ${t.name}: ${BUDGET_LEVEL_LABEL_ES[level]} (${top ?? '-'}%)`,
+                    `El tenant <b>${this.escapeHtml(t.name)}</b> lleva <b>${money(spentCents)}</b> de gasto LLM este mes: ${caps}.<br>
+                     ${effect}<br><br>
+                     <b>Que hacer:</b> subir el tope del plan o un <code>quotaOverrides</code> del tenant, o revisar por que gasta tanto.`,
+                    top ?? 0,
+                    { severity: budgetSeverity(level), cooldownSec: 24 * 3600 },
+                );
             }
+            await this.redis.set(LLM_BUDGET_STATUS_KEY, JSON.stringify({ at: Date.now(), tenants: statuses }), 24 * 3600).catch(() => undefined);
         } catch (e: any) {
             this.logger.debug(`LLM budget check skipped: ${e.message}`);
         }
+        return statuses;
+    }
+
+    /** Ultima foto de presupuestos por tenant (la escribe el chequeo de 10 min). */
+    async getLlmBudgetStatus(): Promise<{ at: number | null; tenants: TenantBudgetStatus[] }> {
+        try {
+            const raw = await this.redis.get(LLM_BUDGET_STATUS_KEY);
+            if (raw) return JSON.parse(raw);
+        } catch { /* fall through */ }
+        return { at: null, tenants: [] };
     }
 
     private async checkBackupHeartbeat() {

@@ -147,7 +147,11 @@ export class HealthController {
     async llmProviderStatus() {
         const configured: Record<string, boolean> = {};
         for (const p of await this.llmRouter.getProviderHealth()) configured[p.provider] = p.configured;
-        return { success: true, data: await this.providerHealth.snapshot(configured) };
+        const [snapshot, budgets] = await Promise.all([
+            this.providerHealth.snapshot(configured),
+            this.monitor.getLlmBudgetStatus(),
+        ]);
+        return { success: true, data: { ...snapshot, budgets } };
     }
 
     @Get('storage')

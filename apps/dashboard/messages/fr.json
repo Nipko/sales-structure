@@ -10414,7 +10414,16 @@
     "llmStatus_degraded": "dégradé",
     "llmStatus_down": "en panne",
     "llmStatus_no_credits": "sans crédits",
-    "llmStatus_auth_invalid": "clé invalide"
+    "llmStatus_auth_invalid": "clé invalide",
+    "llmBudgetsTitle": "Budget IA par tenant (mois)",
+    "llmBudgetSoft": "souple",
+    "llmBudgetHard": "strict",
+    "llmBudgetNone": "Aucun tenant proche de ses plafonds",
+    "llmBudget_ok": "ok",
+    "llmBudget_soft_warn": "proche du plafond souple",
+    "llmBudget_soft_reached": "modèles économiques",
+    "llmBudget_hard_near": "proche du plafond strict",
+    "llmBudget_hard_reached": "agent sans réponse"
   },
   "integrationOutbox": {
     "title": "Rail d'intégrations",

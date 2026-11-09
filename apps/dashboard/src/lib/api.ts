@@ -1334,6 +1334,7 @@ export const api = {
             `/integrations/outbox/${encodeURIComponent(tenantId)}`,
         ),
     getStorageOverview: () => apiGet("/health/storage/overview"),
+    getLlmProviderStatus: () => apiGet("/health/llm-providers/status"),
     getStorageTenants: () => apiGet("/health/storage/tenants"),
     getStorageHistory: (days?: number, tenantId?: string) =>
         apiGet(`/health/storage/history?days=${days ?? 30}${tenantId ? `&tenantId=${encodeURIComponent(tenantId)}` : ""}`),

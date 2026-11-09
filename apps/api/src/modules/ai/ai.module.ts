@@ -7,6 +7,8 @@ import { GeminiProvider } from './providers/gemini.provider';
 import { DeepSeekProvider } from './providers/deepseek.provider';
 import { XAIProvider } from './providers/xai.provider';
 import { SettingsModule } from '../settings/settings.module';
+import { LlmProviderHealthService } from './health/llm-provider-health.service';
+import { LlmProviderProbeService } from './health/llm-provider-probe.service';
 
 @Module({
     imports: [SettingsModule],
@@ -18,12 +20,14 @@ import { SettingsModule } from '../settings/settings.module';
         XAIProvider,
         LLMRouterService,
         LlmSpendGuardService,
+        LlmProviderHealthService,
+        LlmProviderProbeService,
         {
             provide: 'LLM_PROVIDERS',
             useFactory: (openai: OpenAIProvider, anthropic: AnthropicProvider, gemini: GeminiProvider, deepseek: DeepSeekProvider, xai: XAIProvider) => [openai, anthropic, gemini, deepseek, xai],
             inject: [OpenAIProvider, AnthropicProvider, GeminiProvider, DeepSeekProvider, XAIProvider]
         }
     ],
-    exports: [LLMRouterService],
+    exports: [LLMRouterService, LlmProviderHealthService, LlmProviderProbeService],
 })
 export class AIModule { }

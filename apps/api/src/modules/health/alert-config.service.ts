@@ -106,7 +106,7 @@ export const ALERT_CONFIG_DEFAULTS: AlertConfig = {
     },
     queueFailed: 100,
     paymentFailures: 5,
-    llmBudgetPct: 90,
+    llmBudgetPct: 80,
     storageQuotaPct: 90,
     diskProjectionDays: 14,
     backupStaleHours: 26,

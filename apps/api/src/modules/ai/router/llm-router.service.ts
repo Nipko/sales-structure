@@ -1,5 +1,5 @@
 import { LlmSpendGuardService, LlmBudgetExceeded, LlmBudgetUnavailable } from './llm-spend-guard.service';
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import { Injectable, Logger, Inject, Optional } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ModelTier, RoutingFactors, RoutingDecision } from '@parallext/shared';
@@ -7,6 +7,9 @@ import { ILLMProvider, LLMRequestOptions, LLMResponse } from '../interfaces/illm
 import { LLMSourceAuthorityUnavailable, type LLMSourceAuthority } from '../interfaces/llm-source-authority';
 import { generateWithSourceAuthority } from './llm-source-attempt';
 import { RedisService } from '../../redis/redis.service';
+import {
+    ACCOUNT_FAILURE_BREAKER_SEC, LlmProviderHealthService, llmBreakerOpenKey,
+} from '../health/llm-provider-health.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
 import type { ServiceExecutionContext } from '../../../common/types/execution-context';
 import {
@@ -152,6 +155,7 @@ export class LLMRouterService {
         private llmKeys: LlmKeyService,
         private eventEmitter: EventEmitter2,
         private spendGuard?: LlmSpendGuardService,
+        @Optional() private providerHealth?: LlmProviderHealthService,
     ) { }
 
     getProvider(name: string): ILLMProvider {
@@ -169,7 +173,7 @@ export class LLMRouterService {
     }
 
     private breakerOpenKey(provider: string): string {
-        return `llm:health:${provider}:open`;
+        return llmBreakerOpenKey(provider);
     }
 
     /**
@@ -280,7 +284,16 @@ export class LLMRouterService {
      * open-state lives in Redis (TTL) so it's shared across processes; when the
      * TTL expires the next request naturally probes the provider (half-open).
      */
-    private async markProviderFailure(provider: string, err: any): Promise<void> {
+    private async markProviderFailure(provider: string, err: any, kind?: string): Promise<void> {
+        // Sin credito o clave invalida: no es pasajero ni se arregla reintentando.
+        // Fuera de rotacion de inmediato (10 min, renovable por la sonda), en vez
+        // de pagar un intento fallido en CADA turno — el 8-nov fueron >5.000.
+        if (kind === 'quota' || kind === 'auth') {
+            try {
+                await this.redis.set(this.breakerOpenKey(provider), String(Date.now()), ACCOUNT_FAILURE_BREAKER_SEC);
+            } catch (e: any) { this.logger.warn(`Breaker open write failed for ${provider}: ${e.message}`); }
+            return;
+        }
         if (!this.isBreakableError(err)) {
             this.logger.debug(`[CircuitBreaker] ${provider} error not breakable (status=${err?.status ?? err?.statusCode ?? 'n/a'}) — not counting`);
             return;
@@ -330,6 +343,7 @@ export class LLMRouterService {
         task: TaskType,
         allowedTiers: ModelTier[],
         executionContext?: ServiceExecutionContext,
+        skippedForHealthOut?: string[],
     ): Promise<ModelConfig[]> {
         const chain = FALLBACK_CHAINS[task];
         const allConfigs = chain
@@ -354,6 +368,14 @@ export class LLMRouterService {
         const available = eligible.filter(m =>
             configuredProviders.has(m.provider) && !unhealthy.has(m.provider),
         );
+        // Lo que quedo fuera por salud (breaker abierto, sin credito, lento):
+        // el turno que se sirve sin ellos es un turno de fallback, aunque
+        // ningun intento haya fallado en esta llamada.
+        if (skippedForHealthOut) {
+            skippedForHealthOut.push(...eligible
+                .filter(m => configuredProviders.has(m.provider) && unhealthy.has(m.provider))
+                .map(m => m.id));
+        }
 
         const primary = available.filter(m => allowedTiers.includes(m.tier));
         const escalation = available.filter(m => !allowedTiers.includes(m.tier));
@@ -437,7 +459,9 @@ export class LLMRouterService {
 
         if (options.task) {
             const allowedTiers = options.allowedTiers || ALL_TIERS;
-            let candidates = await this.buildCandidates(options.task, allowedTiers, options.executionContext);
+            const skippedForHealth: string[] = [];
+            let candidates = await this.buildCandidates(options.task, allowedTiers, options.executionContext, skippedForHealth);
+            const preferredModelId = candidates[0]?.id;
 
             if (candidates.length === 0) {
                 throw new Error('No LLM provider is configured — set at least one API key from the super admin dashboard');
@@ -528,7 +552,12 @@ export class LLMRouterService {
             }
 
             let lastError: Error | undefined;
+            let failedAttempts = 0;
+            // Una cuenta sin credito o con la clave mala no mejora con su
+            // siguiente modelo: el resto de este turno salta ese proveedor.
+            const accountFailed = new Set<string>();
             for (const candidate of candidates) {
+                if (accountFailed.has(candidate.provider)) continue;
                 const startTime = Date.now();
                 try {
                     const rawProvider = this.getProvider(candidate.provider);
@@ -548,6 +577,22 @@ export class LLMRouterService {
                     }
 
                     this.logger.log(`[LLM] ${options.task} via ${candidate.provider} (${candidate.id}) in ${durationMs}ms`);
+                    if (this.providerHealth) {
+                        const chain = FALLBACK_CHAINS[options.task];
+                        const servedPos = chain.indexOf(candidate.id);
+                        // Fallback = algo fallo antes en este turno, o un modelo que
+                        // la cadena pone ANTES del servido quedo fuera por salud.
+                        const fallback = failedAttempts > 0 || skippedForHealth.some(id => {
+                            const pos = chain.indexOf(id);
+                            return pos >= 0 && servedPos >= 0 && pos < servedPos;
+                        });
+                        if (failedAttempts > 0 || fallback) {
+                            this.logger.warn(`[LLM] FALLBACK ${options.task} served by ${candidate.provider}/${candidate.id}`
+                                + ` (preferred ${preferredModelId ?? '-'}; failed=${failedAttempts}; skipped=${skippedForHealth.join(',') || '-'})`);
+                        }
+                        this.providerHealth.recordSuccess(candidate.provider, candidate.id, 'traffic').catch(() => {});
+                        this.providerHealth.recordRouting(candidate.provider, fallback).catch(() => {});
+                    }
                     // Remember this provider+model for the conversation's next turn (cache
                     // warmth) — but NOT when it was an out-of-plan escalation, or the sticky
                     // would keep pinning a premium model ahead of healthy in-plan ones.
@@ -581,6 +626,9 @@ export class LLMRouterService {
                     return { ...response, routingDecision: decision };
                 } catch (err: any) {
                     const durationMs = Date.now() - startTime;
+                    if (err instanceof LlmBudgetExceeded && options.tenantId) {
+                        this.providerHealth?.recordBudgetExceeded(options.tenantId).catch(() => {});
+                    }
                     if (err instanceof LlmBudgetExceeded || err instanceof LlmBudgetUnavailable) throw err;
                     if (err instanceof LLMSourceAuthorityUnavailable) {
                         if (accountOperationalUsage && err.usage) this.trackStats(options.tenantId,candidate,durationMs,err.usage,false)
@@ -590,8 +638,16 @@ export class LLMRouterService {
                     if (accountOperationalUsage) {
                         this.trackStats(options.tenantId, candidate, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
                     }
+                    failedAttempts++;
+                    // La salud del proveedor es un hecho operativo, no estado de
+                    // negocio: se registra tambien en Agent Test, que paga y ve
+                    // los mismos errores reales. El breaker sigue sin tocarse ahi.
+                    const kind = this.providerHealth
+                        ? await this.providerHealth.recordFailure(candidate.provider, candidate.id, err, 'traffic').catch(() => undefined)
+                        : undefined;
+                    if (kind === 'quota' || kind === 'auth') accountFailed.add(candidate.provider);
                     if (!noPersistence) {
-                        await this.markProviderFailure(candidate.provider, err);
+                        await this.markProviderFailure(candidate.provider, err, kind);
                     }
                     lastError = err;
                     this.logger.warn(`[LLM] ${candidate.provider}/${candidate.id} failed: ${err.message} — trying next`);
@@ -648,6 +704,7 @@ export class LLMRouterService {
             const response = await generateWithSourceAuthority(provider, reqOptions, options.withSourceAuthority);
             const durationMs = Date.now() - startTime;
             this.logger.log(`[LLM] Direct via ${provider.providerName} (${modelConfig.id}) in ${durationMs}ms`);
+            this.providerHealth?.recordSuccess(modelConfig.provider, modelConfig.id, 'traffic').catch(() => {});
             if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, response.usage, false).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             }
@@ -657,6 +714,9 @@ export class LLMRouterService {
             return { ...response };
         } catch (e: any) {
             const durationMs = Date.now() - startTime;
+            if (e instanceof LlmBudgetExceeded && options.tenantId) {
+                this.providerHealth?.recordBudgetExceeded(options.tenantId).catch(() => {});
+            }
             if (e instanceof LlmBudgetExceeded || e instanceof LlmBudgetUnavailable) throw e;
             if (e instanceof LLMSourceAuthorityUnavailable) {
                 if (accountOperationalUsage && e.usage) this.trackStats(options.tenantId,modelConfig,durationMs,e.usage,false)
@@ -666,6 +726,7 @@ export class LLMRouterService {
             if (accountOperationalUsage) {
                 this.trackStats(options.tenantId, modelConfig, durationMs, undefined, true).catch(e => this.logger.warn(`AI stats tracking failed: ${e.message}`));
             }
+            this.providerHealth?.recordFailure(modelConfig.provider, modelConfig.id, e, 'traffic').catch(() => {});
             throw e;
         }
     }
@@ -1082,6 +1143,7 @@ export class LLMRouterService {
             completed = true;
         } catch (e) {
             errored = true;
+            this.providerHealth?.recordFailure(modelConfig.provider, modelConfig.id, e, 'traffic').catch(() => {});
             throw e;
         } finally {
             if (completed && streamReservation && this.spendGuard) await this.spendGuard.recordStream(streamReservation, modelConfig, reqOptions, outputBytes);

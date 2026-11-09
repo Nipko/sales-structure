@@ -34,9 +34,12 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { callCostUsd } from '../conversations/agent-turn-session';
 import { roleModel } from '../ai/router/llm-catalog';
 
-export const REHEARSAL_JUDGE_DEFAULT_MODEL = roleModel('judge_rehearsal');
+/** La cabeza del rol `judge_rehearsal` en la versión activa; se lee en cada llamada (ADR-0030). */
+export function rehearsalJudgeDefaultModel(): string {
+    return roleModel('judge_rehearsal');
+}
 export const REHEARSAL_JUDGE_MODEL_ENV = 'REHEARSAL_JUDGE_MODEL';
-export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, maxTokens: 400 });
+export const REHEARSAL_JUDGE_CALL = Object.freeze({ temperature: 0, maxTokens: 400 });
 
 export const REHEARSAL_JUDGE_PROMPT = [
     'Eres el verificador del ensayo de un agente de atención al cliente. Recibes la pregunta del cliente, la respuesta esperada (código, comportamiento y lista «Nunca»), los HECHOS del negocio y la conversación. Tu trabajo NO es exigir que la respuesta copie la esperada: es detectar ERRORES GRAVES. Una respuesta incompleta, breve o con otras palabras CUMPLE si no comete ninguno.',
@@ -123,12 +126,17 @@ export function judgeInput(c: RehearsalCase, replies: string[]): Record<string, 
 @Injectable()
 export class RehearsalJudge {
     private readonly logger = new Logger(RehearsalJudge.name);
-    readonly model: string;
+    private readonly configuredModel?: string;
     private readonly memo = new Map<string, JudgeVerdict>();
 
     constructor(@Optional() private readonly router?: LLMRouterService, @Optional() config?: ConfigService) {
         const configured = config?.get<string>(REHEARSAL_JUDGE_MODEL_ENV) ?? process.env[REHEARSAL_JUDGE_MODEL_ENV];
-        this.model = configured?.trim() || REHEARSAL_JUDGE_DEFAULT_MODEL;
+        this.configuredModel = configured?.trim() || undefined;
+    }
+
+    /** `REHEARSAL_JUDGE_MODEL` si está; si no, el rol del catálogo activo. */
+    get model(): string {
+        return this.configuredModel ?? rehearsalJudgeDefaultModel();
     }
 
     get available(): boolean {

@@ -1,7 +1,7 @@
 import { EvalService } from './eval.service';
 import { SimulationService } from './simulation.service';
 import { LLMSourceAuthorityUnavailable } from '../ai/interfaces/llm-source-authority';
-import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
+import { qualityRubricHash } from '../quality/quality-rubric';
 
 const snapshot: any = { tenantId: 'tenant', agentId: 'agent', version: 1, configHash: 'config', config: {language:'fr'},
     manifest: {revision:'source-revision'}, knowledgeInputs: {usage:{token:'snapshot-owner'}} };
@@ -51,7 +51,7 @@ describe('Eval snapshot source authority and ownership',()=>{
         const old = first.scenarios.map((row: any) => ({ ...row, rubricHash: 'previous-rubric' }));
         const next = await f.service.runGateV2('tenant', 'agent', { agentSnapshot: snapshot, previousResults: old });
         expect(f.quality.judgeTranscript).toHaveBeenCalledTimes(1);
-        expect(next.scenarios[0].rubricHash).toBe(QUALITY_RUBRIC_HASH);
+        expect(next.scenarios[0].rubricHash).toBe(qualityRubricHash());
         expect((f.quality.judgeTranscript.mock.calls as any[][])[0][4]).toMatchObject({ configuration: 'captured', source: 'simulation' });
     });
     it.each([false,true])('releases its own snapshot after callbacks unwind when the provider fails=%s',async fail=>{

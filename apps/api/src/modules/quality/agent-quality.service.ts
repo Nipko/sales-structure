@@ -1,4 +1,4 @@
-import { QUALITY_RUBRIC_HASH } from './quality-rubric';
+import { qualityRubricHash } from './quality-rubric';
 import { QUALITY_RUBRIC_VERSION } from './quality-evidence';
 import { ConflictException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import type {
@@ -868,7 +868,7 @@ export class AgentQualityService {
                             COUNT(*) FILTER (WHERE resolution_type = 'ai_resolved' AND resolution_verified = true)::int AS verified_success,
                             MIN(created_at) AS attributed_since
                        FROM latest_quality`,
-                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
+                    [agentId, agentVersion, qualityRubricHash()],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,
@@ -910,7 +910,7 @@ export class AgentQualityService {
                         )
                    ORDER BY created_at DESC
                       LIMIT 200`,
-                    [agentId, agentVersion, QUALITY_RUBRIC_HASH],
+                    [agentId, agentVersion, qualityRubricHash()],
                 ),
                 this.prisma.executeInTenantSchema<any[]>(
                     schemaName,

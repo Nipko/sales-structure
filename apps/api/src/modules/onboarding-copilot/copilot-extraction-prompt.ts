@@ -10,7 +10,9 @@ import type { CopilotSource } from '@parallext/business-spec';
 import { roleModel } from '../ai/router/llm-catalog';
 
 /** Modelo de la extracción: el mismo que ya usa el módulo de Assist para sus análisis en JSON (económico, JSON fiable). */
-export const COPILOT_EXTRACTION_MODEL = roleModel('aux_reasoning');
+export function copilotExtractionModel(): string {
+    return roleModel('aux_reasoning');
+}
 
 /** Límites de una ejecución (C0 §1.3.6; el dueño pidió modelo económico y tope de costo por tenant, §7.6). */
 export const COPILOT_LIMITS = {

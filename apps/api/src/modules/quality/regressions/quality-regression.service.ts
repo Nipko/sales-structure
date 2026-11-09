@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { QualityService } from '../quality.service';
-import { QUALITY_RUBRIC_HASH } from '../quality-rubric';
+import { qualityRubricHash } from '../quality-rubric';
 import { QUALITY_REGRESSION_SCHEMA } from './quality-regression-schema';
 import { releasesForMessages } from '../../learning/agent-evidence-provenance';
 import { assertRegressionCaseSource, readRegressionSource, type RegressionSourceKind, type RegressionQuery } from './quality-regression-source';
@@ -52,7 +52,7 @@ export class QualityRegressionService {
               AND NOT COALESCE(c.agent_attribution_conflicted,false) AND q.source_revision=c.qa_revision AND q.rubric_hash=$2
               AND (q.overall_score<6 OR CASE WHEN jsonb_typeof(q.flags)='array' THEN jsonb_array_length(q.flags)>0 ELSE false END)
               AND NOT EXISTS(SELECT 1 FROM customer_memory_erasure e WHERE e.contact_id=c.contact_id)
-            ORDER BY q.created_at DESC LIMIT 50`,[agentId,QUALITY_RUBRIC_HASH]);
+            ORDER BY q.created_at DESC LIMIT 50`,[agentId,qualityRubricHash()]);
         const tables=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT to_regclass('tool_execution_ledger')::text AS name`);
         if(tables[0]?.name){
             const failures=await this.prisma.executeInTenantSchema<any[]>(schema,`SELECT l.id,'tool_ledger' AS kind,l.conversation_id,l.created_at,

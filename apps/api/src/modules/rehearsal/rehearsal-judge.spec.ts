@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fromLegacyRows, generateRehearsal, type RehearsalCase } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
-import { judgeCacheKey, judgeInput, normalizeReply, parseJudgeVerdict, RehearsalJudge, REHEARSAL_JUDGE_DEFAULT_MODEL, REHEARSAL_JUDGE_PROMPT } from './rehearsal-judge';
+import { judgeCacheKey, judgeInput, normalizeReply, parseJudgeVerdict, RehearsalJudge, rehearsalJudgeDefaultModel, REHEARSAL_JUDGE_PROMPT } from './rehearsal-judge';
 
 /**
  * Juez de paráfrasis (R7, calibrado en E1.1, ADR 0014): recibe los hechos del caso (estado y valor del requisito, regla
@@ -24,10 +24,10 @@ describe('RehearsalJudge', () => {
         const router = routerReturning('{"pass": true, "reason": "cumple"}');
         const judge = new RehearsalJudge(router as any);
         const call = await judge.judge('t1', c, ['respuesta']);
-        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: REHEARSAL_JUDGE_DEFAULT_MODEL }, tokens: 77, costUsd: expect.any(Number), key: expect.stringMatching(/^[0-9a-f]{64}$/) });
+        expect(call).toEqual({ verdict: { pass: true, reason: 'cumple', model: rehearsalJudgeDefaultModel() }, tokens: 77, costUsd: expect.any(Number), key: expect.stringMatching(/^[0-9a-f]{64}$/) });
         expect(call!.costUsd).toBeGreaterThan(0);
         const req = router.execute.mock.calls[0][0];
-        expect(req).toMatchObject({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, jsonMode: true, tenantId: 't1', systemPrompt: REHEARSAL_JUDGE_PROMPT });
+        expect(req).toMatchObject({ model: rehearsalJudgeDefaultModel(), temperature: 0, jsonMode: true, tenantId: 't1', systemPrompt: REHEARSAL_JUDGE_PROMPT });
         const sent = JSON.parse(req.messages[0].content);
         expect(sent.facts.requirement).toMatchObject({ id: c.requirementIds[0], valueState: c.facts.requirement.valueState });
         expect(sent.facts.requirement.whenMissing.code).toBe(spec.requirements[c.requirementIds[0]].whenMissing.code);
@@ -55,7 +55,7 @@ describe('RehearsalJudge', () => {
         expect(judge.model).toBe('gpt-4.1');
         await judge.judge('t1', bank.cases[0], ['x']);
         expect(router.execute.mock.calls[0][0].model).toBe('gpt-4.1');
-        expect(new RehearsalJudge(router as any, { get: () => '  ' } as any).model).toBe(REHEARSAL_JUDGE_DEFAULT_MODEL);
+        expect(new RehearsalJudge(router as any, { get: () => '  ' } as any).model).toBe(rehearsalJudgeDefaultModel());
     });
 
     it('un banco congelado antes de E1.1 (sin hechos) lo dice explícitamente', () => {

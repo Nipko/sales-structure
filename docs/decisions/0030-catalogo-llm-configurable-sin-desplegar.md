@@ -1,6 +1,6 @@
 # 0030 — Catálogo LLM configurable sin desplegar, con promoción por medición
 
-- Estado: propuesta (diseño; la implementación va en PRs separados, por fases)
+- Estado: aceptada; fases 1 (#416) y 2 implementadas, fases 3–5 pendientes
 - Fecha: 2026-11-09 · Decide: dueño · Autor: Claude
 - Ámbito: `apps/api` (`ai/router`, `ai/health`, `ai/providers`, `settings`, los servicios con modelo fijo), `apps/dashboard` (`admin/settings/ai-config`), `apps/api/scripts/rehearsal`.
 - Relacionadas: [0026](0026-salud-de-proveedores-llm.md) (salud de proveedores), [0027](0027-costo-llm-cache-y-rechazos.md) (precios de caché), [0028](0028-piso-de-herramientas-dentro-del-plan.md) (piso de herramientas), [0029](0029-migracion-del-catalogo-llm-nov-2026.md) (migración del catálogo).
@@ -179,6 +179,47 @@ Cada fase es un PR separado, con CI en verde y sin cambiar el comportamiento has
 5. **Vigilancia diaria** de las listas de modelos.
 
 Orden recomendado: 1 → 2 → 4 → 3 → 5. Con las fases 1, 2 y 4, una migración como la de ADR-0029 ya se hace con llamadas al API, sin PR. El panel se puede agregar después.
+
+## Implementación de la fase 2 (9-nov-2026)
+
+Decisiones tomadas al implementarla, que precisan lo de arriba:
+
+- **Dónde vive.** `LlmCatalogService` (`ai/catalog/`) carga la versión y la pone a regir con `setActiveLlmCatalog()`. Los lectores siguen usando `activeLlmCatalog()`, que es síncrona, así que no cambian. El controlador es `ai/llm-catalog.controller.ts`, bajo `admin/llm-catalog`, solo para `super_admin`.
+- **Endpoints:**
+  - `GET /` (activa);
+  - `GET versions`;
+  - `GET versions/:v`;
+  - `POST drafts` (`reason`, `fromVersion?`, `snapshot?`);
+  - `PUT drafts/:v`;
+  - `POST drafts/:v/validate` (`unmeasured?`);
+  - `POST drafts/:v/publish` (`unmeasured?`, `reason?`);
+  - `POST versions/:v/restore` (`reason`).
+- **La semilla.** Se guarda como versión 1 la primera vez que arranca con la tabla vacía. Desde entonces, **editar `llm-catalog.ts` ya no cambia el catálogo de un entorno con versiones**: el cambio se publica por el API. El log avisa cuando la versión activa difiere de la semilla.
+- **Interruptor de emergencia.** `LLM_CATALOG_SOURCE=seed` hace que rija la semilla de código e ignora la base.
+- **Llamada real (regla 3).** Va por el adaptador de cada proveedor: un turno corto y, si `supportsTools`, una llamada a `record_probe` con argumentos válidos.
+  - Solo se llama a los modelos nuevos, a los que cambian de proveedor o de `supportsTools` y a los que pasan a encabezar una cadena o un rol. Los que no cambian ya los vigila la sonda de ADR-0026, y volver a llamarlos haría que la falla momentánea de un proveedor bloquee la publicación de emergencia que lo saca.
+  - Estas llamadas no pasan por el guardián de gasto: cuestan centavos y no son de ningún tenant.
+- **Regla de medición, mientras no existe la fase 4.** No hay tabla de mediciones todavía, así que todo cambio de cabeza bloquea, salvo dos casos:
+  - con «publicar sin medición», que exige un motivo y queda en `validation.unmeasured`;
+  - al volver a una versión que ya rigió (`restore`).
+- **Validar contra la base.** Validar y publicar comparan contra la versión activa leída de Postgres, no contra la de memoria. Si otra publicación entra entre la validación y la transacción, la publicación se rechaza con `catalog_active_changed`.
+- **Auditoría.** Cada publicación deja una fila `llm_catalog.published` en `audit_logs`, con `tenant_id` nulo.
+- **Constantes que se leían al cargar el módulo.** Ahora son funciones:
+  - `qualityJudgeCall()` y `qualityRubricHash()`;
+  - `rehearsalJudgeDefaultModel()` (`RehearsalJudge.model` es un getter);
+  - `evidenceVerifierModel()`;
+  - `copilotExtractionModel()`;
+  - `judgeModel()`.
+
+  Publicar otro `judge_quality` cambia el `rubric_hash`, como antes lo cambiaba un despliegue.
+- **Plan de certificación.** Registra `catalogVersion` fuera del `planHash`: es de dónde salieron los precios, no parte de lo que se autoriza.
+- **Validaciones nuevas en `catalogIntegrityProblems`:**
+  - fuente y fecha del precio;
+  - modelo retirado dentro de una cadena o un rol;
+  - modelo duplicado en una cadena;
+  - tier de la cabeza de `tool_calling`.
+
+  Un modelo retirado no exige familia conocida.
 
 ## Consecuencias
 

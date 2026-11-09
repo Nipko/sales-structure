@@ -15,7 +15,7 @@ import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PersonaService } from '../persona/persona.service';
 import { QualityService, JudgeResult } from '../quality/quality.service';
 import { qualityJudgeContext, qualityJudgeScopeHash } from '../quality/quality-judge-context';
-import { QUALITY_RUBRIC_HASH } from '../quality/quality-rubric';
+import { qualityRubricHash } from '../quality/quality-rubric';
 import { AgentTestService } from '../conversations/agent-test.service';
 import { CONVERSATIONAL_CHANNELS } from '@parallext/shared';
 import { AgentEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
@@ -528,7 +528,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
                 try {
                     const scenarioHash = revisionHash(scenarios[idx]);
                     await this.agentTest.assertSnapshotExecutable(snapshot, tenantId, agentId);
-                    const completed = previous.find(r => r.rubricHash === QUALITY_RUBRIC_HASH && r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
+                    const completed = previous.find(r => r.rubricHash === qualityRubricHash() && r.key === scenarios[idx].key && (r as any).scenarioHash === scenarioHash && isScoredScenario(r));
                     if (completed) {
                         if (isReplayDefinition(completed)) {
                             if (!replayRun) throw new SimulationReplayUnavailable();
@@ -654,7 +654,7 @@ Los mensajes deben sonar como personas reales de Latinoamérica escribiendo por 
             turns: Math.floor(transcript.length / 2),
             latencyMs: Date.now() - startedAt,
             judge,
-            rubricHash: QUALITY_RUBRIC_HASH,
+            rubricHash: qualityRubricHash(),
             evaluationScopeHash: qualityJudgeScopeHash(judgeContext),
             falseClaims: falseClaims.length ? falseClaims : undefined,
         };
@@ -776,7 +776,7 @@ Reglas:
             const baseResults: ScenarioResult[] = Array.isArray(base.results) ? base.results : [];
             const baseAvg = Number(base.avg_score) || 0;
             const scoreComparable = baseResults.filter(isScoredScenario).length > 0 && scored.length > 0
-                && [...baseResults.filter(isScoredScenario), ...scored].every(result => result.rubricHash === QUALITY_RUBRIC_HASH)
+                && [...baseResults.filter(isScoredScenario), ...scored].every(result => result.rubricHash === qualityRubricHash())
                 && scored.every(result => typeof result.evaluationScopeHash === 'string'
                     && baseResults.find(prior => prior.key === result.key)?.evaluationScopeHash === result.evaluationScopeHash);
             const baseByKey = new Map(baseResults.map((b) => [b.key, b]));

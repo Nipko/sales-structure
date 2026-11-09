@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { QUALITY_RUBRIC_HASH } from '../quality-rubric';
+import { qualityRubricHash } from '../quality-rubric';
 import { revisionHash as qualityHash } from '../../evaluation-revision/evaluation-revision';
 
 export type RegressionQuery=<T=any[]>(sql:string,params?:any[])=>Promise<T>;
@@ -33,7 +33,7 @@ export async function readRegressionSource(query:RegressionQuery,kind:Regression
         throw new ForbiddenException({error:'regression_source_erased'});
     if(source.agent_attribution_conflicted||source.agent_config_version==null)
         throw new ConflictException({error:'regression_source_attribution_unknown'});
-    if(kind==='quality_score'&&(String(source.source_revision)!==String(source.qa_revision)||source.rubric_hash!==QUALITY_RUBRIC_HASH))
+    if(kind==='quality_score'&&(String(source.source_revision)!==String(source.qa_revision)||source.rubric_hash!==qualityRubricHash()))
         throw new ConflictException({error:'regression_source_changed'});
     if(kind==='quality_score'&&!((source.overall_score!=null&&Number(source.overall_score)<6)||(Array.isArray(source.flags)&&source.flags.length)))
         throw new ConflictException({error:'regression_failure_evidence_required'});

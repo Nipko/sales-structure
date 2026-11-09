@@ -99,6 +99,7 @@ const PLATFORM_SCOPED: Readonly<Record<string, string>> = Object.freeze({
     'financials.controller.ts': 'platform mode: SaaS metrics over all tenants, super_admin only',
     'fiscal-admin.controller.ts': 'platform mode: DIAN invoices across tenants, super_admin only',
     'health.controller.ts': 'platform mode: the Ops Center. Liveness is public; everything else is super_admin',
+    'llm-catalog.controller.ts': 'platform mode: the LLM catalogue versions (models, prices, chains, roles) every tenant routes through, super_admin only',
     'managed.controller.ts': 'platform mode: the done-for-you tier\'s guarantee tracking, super_admin only',
     'meta-compliance.controller.ts': 'platform mode: Meta\'s compliance surface for the platform app, super_admin only',
     'platform-status.controller.ts': 'platform mode: incident banner state, read by every signed-in dashboard',

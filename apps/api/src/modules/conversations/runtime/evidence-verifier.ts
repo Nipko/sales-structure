@@ -21,7 +21,10 @@
 import type { TurnKnowledgeContract } from '@parallext/business-spec';
 import { activeLlmCatalog } from '../../ai/router/llm-catalog';
 
-export const EVIDENCE_VERIFIER_MODEL = activeLlmCatalog().chains.classify[0];
+/** Se lee en cada llamada: una publicación del catálogo cambia la cabeza sin reiniciar (ADR-0030). */
+export function evidenceVerifierModel(): string {
+    return activeLlmCatalog().chains.classify[0];
+}
 export const EVIDENCE_VERIFIER_MAX_TOKENS = 400;
 const EVIDENCE_MAX_CHARS = 9000;
 const REPLY_MAX_CHARS = 3000;
@@ -158,7 +161,7 @@ export function evidenceVerifierRequest(input: {
         evidence: clip(input.evidence.join('\n'), EVIDENCE_MAX_CHARS),
     };
     return {
-        task: 'classify', model: input.model ?? EVIDENCE_VERIFIER_MODEL, systemPrompt: EVIDENCE_VERIFIER_PROMPT,
+        task: 'classify', model: input.model ?? evidenceVerifierModel(), systemPrompt: EVIDENCE_VERIFIER_PROMPT,
         messages: [{ role: 'user', content: JSON.stringify(payload) }], temperature: 0, jsonMode: true, maxTokens: EVIDENCE_VERIFIER_MAX_TOKENS,
     };
 }

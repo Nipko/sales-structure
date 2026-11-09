@@ -17,7 +17,7 @@ import {
     operationalUsageAccountingEnabled,
     persistenceDisabled,
 } from '../../../common/types/execution-context';
-import { activeLlmCatalog, catalogModel, roleModel, type CatalogRole, type ModelConfig, type TaskType } from './llm-catalog';
+import { activeLlmCatalog, catalogModel, roleModel, TOOL_CALLING_LEAD_TIERS, type CatalogRole, type ModelConfig, type TaskType } from './llm-catalog';
 
 export type { ModelConfig, TaskType, CatalogRole } from './llm-catalog';
 
@@ -56,10 +56,7 @@ const ALL_TIERS: ModelTier[] = ['tier_1_premium', 'tier_2_standard', 'tier_3_eff
  * `budgetConstrained`), so a tenant that blew its LLM budget keeps replying on
  * the cheap models instead of being cut off.
  */
-const TOOL_CALLING_LEAD_TIERS: ReadonlySet<ModelTier> = new Set<ModelTier>([
-    'tier_1_premium',
-    'tier_2_standard',
-]);
+// `TOOL_CALLING_LEAD_TIERS` vive en llm-catalog.ts: también lo usa la validación de publicación.
 
 /**
  * Modelos del plan primero y, detrás, los de escalada (fuera del plan), cada

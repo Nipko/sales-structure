@@ -63,7 +63,10 @@ const MODEL_REGISTRY: ModelConfig[] = [
     { id: 'claude-sonnet-4-6', provider: 'anthropic', tier: 'tier_1_premium', costPer1kTokens: 0.009, costInPer1k: 0.003, costOutPer1k: 0.015, costCachedInPer1k: 0.0003, costCacheWritePer1k: 0.00375, maxContextTokens: 1000000, supportsTools: true },
     { id: 'gpt-4o', provider: 'openai', tier: 'tier_1_premium', costPer1kTokens: 0.00625, costInPer1k: 0.0025, costOutPer1k: 0.010, costCachedInPer1k: 0.00125, maxContextTokens: 128000, supportsTools: true },
     // Tier 2 — Standard (good quality, good value — pro plans)
-    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.00035, costInPer1k: 0.0002, costOutPer1k: 0.0005, costCachedInPer1k: 0.00005, maxContextTokens: 131072, supportsTools: true },
+    // xAI retiró este slug el 15-may-2026 y lo sirve con grok-4.3 (reasoning `none`) a tarifa de
+    // grok-4.3: $1,25 / $0,20 caché / $2,50 por M (docs.x.ai/developers/migration/may-15-retirement,
+    // verificado el 9-nov-2026). El catálogo seguía en $0,20/$0,50 y subestimaba ~5× (ADR-0027).
+    { id: 'grok-4-1-fast-non-reasoning', provider: 'xai', tier: 'tier_2_standard', costPer1kTokens: 0.0019, costInPer1k: 0.00125, costOutPer1k: 0.0025, costCachedInPer1k: 0.0002, maxContextTokens: 131072, supportsTools: true },
     { id: 'gpt-4.1-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.001, costInPer1k: 0.0004, costOutPer1k: 0.0016, costCachedInPer1k: 0.0001, maxContextTokens: 1000000, supportsTools: true },
     { id: 'gpt-4o-mini', provider: 'openai', tier: 'tier_2_standard', costPer1kTokens: 0.000375, costInPer1k: 0.00015, costOutPer1k: 0.0006, costCachedInPer1k: 0.000075, maxContextTokens: 128000, supportsTools: true },
     // Tier 3 — Efficient (fast, cheap — starter plans)

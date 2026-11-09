@@ -27,11 +27,13 @@ El 9-nov-2026 se encontraron dos fuentes de inflación:
    |---|---|---|---|
    | claude-sonnet-4-6 | 0,003 | 0,0003 | 0,00375 |
    | gpt-4o | 0,0025 | 0,00125 | — |
-   | grok-4-1-fast-non-reasoning | 0,0002 | 0,00005 | — |
+   | grok-4-1-fast-non-reasoning | 0,00125 | 0,0002 | — |
    | gpt-4.1-mini | 0,0004 | 0,0001 | — |
    | gpt-4o-mini | 0,00015 | 0,000075 | — |
    | gemini-2.5-flash | 0,0003 | 0,000075 | — |
    | deepseek-chat | 0,00027 | 0,00007 | — |
+
+   **Grok, corregido también:** xAI retiró `grok-4-1-fast-non-reasoning` el 15-may-2026 y desde entonces sirve ese nombre con grok-4.3 a $1,25 / $0,20 / $2,50 por M. Lo verifiqué el 9-nov en docs.x.ai. El catálogo seguía en $0,20 / $0,50, así que **subestimaba** unas 5 veces las 4.388 llamadas a grok de las dos últimas semanas. Este error iba en sentido contrario a los otros dos. Qué modelo debe ocupar ese lugar de la cadena es otra decisión.
 
    Si un modelo no declara precio de caché, la caché se cobra como entrada normal: nunca se inventa un descuento. Gemini 2.5 Flash usa el precio de caché más alto que publicó Google ($0,075/M). Si la tarifa vigente es más baja, el error queda del lado conservador.
 3. **Router, guardián y traza usan la misma cuenta** (`usageCostUsd` y `splitPromptTokens`). `modelCostMicro` recibe la entrada en caché y la escritura en caché como argumentos opcionales. `trackStats` agrega el contador diario `llm:stats:…:tokens_cached`. `callCostUsd`, el costo que muestran las pruebas del agente y las certificaciones, también descuenta la caché.

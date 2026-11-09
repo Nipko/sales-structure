@@ -5,7 +5,7 @@ Generado por `apps/api/scripts/artifacts/generate-certification-manifest.cjs`. *
 `requiredScenarios` que exige el reporte de certificación, y cuyas tarifas salen del catálogo del propio
 router. La cifra que se pide autorizar y la que se factura no pueden ser dos listas de precios distintas.
 
-Revisión: `3b2f232830a696f976dcec1e023be6c5840818c1`. **Este documento no contiene ni requiere ningún secreto**: las variables se
+Revisión: `b8c4a708f5e085ee5b594fd3fc7eadee9c381fc8`. **Este documento no contiene ni requiere ningún secreto**: las variables se
 nombran, no se leen.
 
 ## Qué se pide
@@ -19,9 +19,9 @@ por modelo (80 perfiles × 4 idiomas ×
 | Modelo | Proveedor | Tier | Variable | Llamadas | Techo de costo | Horas de modelo |
 |---|---|---|---|---:|---:|---:|
 | `gpt-4o-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 255.980 | US$442.60 | 427 |
-| `grok-4-1-fast-non-reasoning` | xai | tier_2_standard | `XAI_API_KEY` | 255.980 | US$493.40 | 427 |
 | `deepseek-chat` | deepseek | tier_4_budget | `DEEPSEEK_API_KEY` | 255.980 | US$685.40 | 427 |
 | `gpt-4.1-mini` | openai | tier_2_standard | `OPENAI_API_KEY` | 255.980 | US$944.80 | 427 |
+| `grok-4-1-fast-non-reasoning` | xai | tier_2_standard | `XAI_API_KEY` | 255.980 | US$2232.20 | 427 |
 | `gpt-4o` | openai | tier_1_premium | `OPENAI_API_KEY` | 255.980 | US$5160.20 | 427 |
 | `claude-sonnet-4-6` | anthropic | tier_1_premium | `ANTHROPIC_API_KEY` | 255.980 | US$6661.00 | 427 |
 
@@ -37,8 +37,8 @@ Quedan fuera del catálogo certificable, y se dice por qué en vez de omitirlos:
 ## Variables requeridas (nombres, sin valores)
 
 - `OPENAI_API_KEY`
-- `XAI_API_KEY`
 - `DEEPSEEK_API_KEY`
+- `XAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 
 Se necesita **una** de ellas: la del proveedor del modelo elegido. Ninguna va a un commit ni a un log.

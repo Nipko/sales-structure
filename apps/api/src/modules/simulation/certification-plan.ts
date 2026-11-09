@@ -2,7 +2,7 @@ import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES,
     listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
 import { revisionHash } from '../evaluation-revision/evaluation-revision';
 import { requiredScenarios } from './agent-certification';
-import { LLM_MODEL_CATALOGUE } from '../ai/router/llm-router.service';
+import { activeLlmCatalog, roleModel } from '../ai/router/llm-catalog';
 
 /**
  * What certifying the catalogue would actually cost, computed before anybody
@@ -123,12 +123,12 @@ export interface CertificationPlan {
 /**
  * The model that grades every attempt, and the bound it declares.
  *
- * `QualityService.judgeTranscript` pins `gpt-6-luna` and `maxTokens: 500`. It
+ * `QualityService.judgeTranscript` pins the `judge_quality` role and `maxTokens: 500`. It
  * is a model call the plan did not count at all, so a run asked permission for
  * two thirds of the calls it would make. Named here rather than guessed, and
  * refused loudly if the catalogue stops carrying it.
  */
-export const JUDGE_MODEL = 'gpt-6-luna';
+export const JUDGE_MODEL = roleModel('judge_quality');
 export const JUDGE_BOUND = Object.freeze({ inputPerTurn: 8000, outputPerTurn: 500 });
 
 export function planCertificationRun(input: CertificationPlanInput): CertificationPlan {
@@ -159,7 +159,7 @@ export function planCertificationRun(input: CertificationPlanInput): Certificati
     }
     if (!channels.length) refusals.push('channel_scope_required');
 
-    const rates = new Map(LLM_MODEL_CATALOGUE.map(model => [model.id, model]));
+    const rates = new Map(activeLlmCatalog().models.map(model => [model.id, model]));
     const requestedModels = [...new Set(input.models)];
     const models = requestedModels.filter(model => rates.has(model)).sort();
     for (const model of requestedModels) {

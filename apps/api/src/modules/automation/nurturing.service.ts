@@ -637,7 +637,7 @@ export class NurturingService {
 
         try {
             const response = await this.llmRouter.execute({
-                model: 'gpt-6-luna',
+                role: 'aux_reasoning',
                 messages: [{ role: 'user', content: followUpPrompt }],
                 systemPrompt: this.personaService.buildSystemPrompt(personaConfig),
                 temperature: 0.8,

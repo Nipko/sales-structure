@@ -42,6 +42,14 @@ import {
 import type { ResolvedVerticalAgentDefaults } from './vertical-agent-defaults.util';
 import { resolveOnboardingPersonaTemplate } from './onboarding-persona-resolver';
 import { applyNativeSubtypeBirthBehavior, applySubtypeRecipeIdentity } from './subtype-recipe-identity';
+import { activeLlmCatalog } from '../ai/router/llm-catalog';
+
+/** Etiqueta del tier en la persona por defecto: el primer modelo de ese tier en la cadena `conversation` (ADR-0030). */
+function tierLeadModel(tier: string): string[] {
+    const catalog = activeLlmCatalog();
+    const id = catalog.chains.conversation.find(m => catalog.models.find(c => c.id === m)?.tier === tier);
+    return id ? [id] : [];
+}
 
 const AGENT_TOOL_FLAGS = new Map<string, Set<string>>(
     AGENT_CONFIG_TOOL_FAMILIES.map(family => [family, new Set(['enabled'])]),
@@ -572,10 +580,10 @@ export class PersonaService {
                 maxTokens: 800,
                 routing: {
                     tiers: {
-                        tier_1_premium: { models: ['gpt-6-sol'], costLevel: 'high' },
-                        tier_2_standard: { models: ['gpt-6-luna'], costLevel: 'medium' },
-                        tier_3_efficient: { models: ['gemini-3.5-flash-lite'], costLevel: 'low' },
-                        tier_4_budget: { models: ['deepseek-flash'], costLevel: 'very_low' },
+                        tier_1_premium: { models: tierLeadModel('tier_1_premium'), costLevel: 'high' },
+                        tier_2_standard: { models: tierLeadModel('tier_2_standard'), costLevel: 'medium' },
+                        tier_3_efficient: { models: tierLeadModel('tier_3_efficient'), costLevel: 'low' },
+                        tier_4_budget: { models: tierLeadModel('tier_4_budget'), costLevel: 'very_low' },
                     },
                     factors: {},
                     fallback: 'auto_upgrade',

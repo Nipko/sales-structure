@@ -1,6 +1,6 @@
 import type { EvalNamespaceLease } from '../simulation/isolated-eval-namespace';
 import { randomUUID } from 'crypto';
-import { LLM_MODEL_CATALOGUE } from '../ai/router/llm-router.service';
+import { activeLlmCatalog } from '../ai/router/llm-catalog';
 import { usageCostUsd } from '../ai/router/llm-cost';
 import type { TestAgentToolCall, TurnContext } from '@parallext/shared';
 import type { ServiceExecutionContext } from '../../common/types/execution-context';
@@ -98,7 +98,7 @@ export class AgentTurnTrace {
 /** USD of one call at catalogue rates; a dated snapshot («gpt-4o-mini-2024-07-18») is priced as its base model. */
 export function callCostUsd(model: string | undefined, inputTokens: number, outputTokens: number, cachedInputTokens = 0, cacheWriteInputTokens = 0): number {
     const id = String(model ?? '').trim().toLowerCase();
-    const rate = [...LLM_MODEL_CATALOGUE].sort((a, b) => b.id.length - a.id.length)
+    const rate = [...activeLlmCatalog().models].sort((a, b) => b.id.length - a.id.length)
         .find(m => id === m.id || id.startsWith(`${m.id}-`) || id.endsWith(`/${m.id}`));
     return rate ? usageCostUsd(rate, { promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: 0,
         cachedPromptTokens: cachedInputTokens, cacheWritePromptTokens: cacheWriteInputTokens }) : 0;

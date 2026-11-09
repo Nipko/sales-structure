@@ -10,7 +10,7 @@
  * inconcluso (nunca aprobado).
  *
  * Su veredicto queda marcado (`decidedBy: 'judge'`) y **nunca** anula un fallo determinista: eso lo garantiza
- * `gradeCase`, no este archivo. Modelo configurable (`REHEARSAL_JUDGE_MODEL`, por defecto `deepseek-chat`), temperatura
+ * `gradeCase`, no este archivo. Modelo configurable (`REHEARSAL_JUDGE_MODEL`, por defecto el rol `judge_rehearsal` del catálogo), temperatura
  * 0, JSON; la llamada cuenta como uso de LLM del tenant (mismo router que el juez de calidad).
  *
  * E1.1b (ADR 0015): el juez ya no exige copiar la esperada; solo reprueba ERRORES GRAVES (afirmar o negar sin respaldo,
@@ -32,8 +32,9 @@ import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-conte
 import type { LLMSourceAuthority } from '../ai/interfaces/llm-source-authority';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { callCostUsd } from '../conversations/agent-turn-session';
+import { roleModel } from '../ai/router/llm-catalog';
 
-export const REHEARSAL_JUDGE_DEFAULT_MODEL = 'deepseek-flash';
+export const REHEARSAL_JUDGE_DEFAULT_MODEL = roleModel('judge_rehearsal');
 export const REHEARSAL_JUDGE_MODEL_ENV = 'REHEARSAL_JUDGE_MODEL';
 export const REHEARSAL_JUDGE_CALL = Object.freeze({ model: REHEARSAL_JUDGE_DEFAULT_MODEL, temperature: 0, maxTokens: 400 });
 

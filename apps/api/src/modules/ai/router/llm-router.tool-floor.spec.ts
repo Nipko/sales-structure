@@ -1,4 +1,5 @@
-import { LLM_MODEL_CATALOGUE, LLMRouterService, partitionByPlan } from './llm-router.service';
+import { activeLlmCatalog } from './llm-catalog';
+import { LLMRouterService, partitionByPlan } from './llm-router.service';
 
 /**
  * Which model leads a tool-calling turn, and who gets to change it.
@@ -242,7 +243,7 @@ describe('LLM router — the plan bounds the tool-calling floor (ADR-0028)', () 
             task: 'tool_calling', messages: [{ role: 'user', content: '¿tienen talla M?' }], systemPrompt: 'x',
             tools: TOOLS, allowedTiers: ['tier_2_standard', 'tier_3_efficient', 'tier_4_budget'], traceContext: { conversationId },
         });
-        expect(LLM_MODEL_CATALOGUE.find(m => m.id === calls[0].model)?.tier).toBe('tier_2_standard');
+        expect(activeLlmCatalog().models.find(m => m.id === calls[0].model)?.tier).toBe('tier_2_standard');
     });
 
     it('partitionByPlan is stable inside each group', () => {

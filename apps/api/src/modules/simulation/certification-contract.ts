@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES, listCanonicalSubtypeExperienceProfileIds } from '@parallext/shared';
-import { LLM_MODEL_CATALOGUE } from '../ai/router/llm-router.service';
+import { activeLlmCatalog } from '../ai/router/llm-catalog';
 import type { CertificationSubject } from './certification-ledger';
 
 /**
@@ -104,7 +104,7 @@ export function assertPlanCertificationRequest(body: PlanCertificationRequest): 
     if (languages.some(language => !(EVAL_LANGUAGES as readonly string[]).includes(language))) {
         throw new BadRequestException({ error: 'certification_language_invalid' });
     }
-    const catalogue = new Set(LLM_MODEL_CATALOGUE.map(model => model.id));
+    const catalogue = new Set(activeLlmCatalog().models.map(model => model.id));
     const models = [...new Set(body.models ?? [])];
     if (!models.length || models.some(model => !catalogue.has(model))) {
         throw new BadRequestException({ error: 'certification_model_unknown' });

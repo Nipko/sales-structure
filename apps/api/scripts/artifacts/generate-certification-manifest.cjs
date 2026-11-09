@@ -34,7 +34,8 @@ require(path.join(root, 'node_modules/tsconfig-paths')).register({
 const api = name => require(path.join(root, 'apps/api/src', name));
 
 const { planCertificationRun } = api('modules/simulation/certification-plan.ts');
-const { LLM_MODEL_CATALOGUE } = api('modules/ai/router/llm-router.service.ts');
+// La semilla de código (ADR-0030): el manifiesto describe el catálogo versionado en el repo, no la versión activa en producción.
+const LLM_MODEL_CATALOGUE = api('modules/ai/router/llm-catalog.ts').SEED_LLM_CATALOG.models;
 const { CERTIFICATION_LEDGER_DDL } = api('modules/simulation/certification-ledger.ts');
 const { CONVERSATIONAL_CHANNELS, EVAL_LANGUAGES } = require(path.join(root, 'packages/shared/src/index.ts'));
 
@@ -109,7 +110,7 @@ const manifest = {
     generatedFrom: [
         'modules/simulation/certification-plan.ts',
         'modules/simulation/certification-ledger.ts',
-        'modules/ai/router/llm-router.service.ts',
+        'modules/ai/router/llm-catalog.ts',
     ],
     gate: 'llm_credentials_and_budget',
     scope: {

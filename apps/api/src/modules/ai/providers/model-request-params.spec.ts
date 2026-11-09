@@ -1,6 +1,6 @@
 import {
     anthropicAcceptsSampling, anthropicRequestParams, anthropicThinkingParam, deepseekChatExtras, geminiThinkingConfig,
-    isOpenAIReasoningModel, openAIChatParams, xaiChatParams,
+    isOpenAIReasoningModel, modelFamily, openAIChatParams, xaiChatParams,
 } from './model-request-params';
 
 // Cada caso reproduce una respuesta real de la API del 9-nov-2026 (ADR-0029).
@@ -54,5 +54,30 @@ describe('model-request-params', () => {
     it('Gemini: 2.x apaga con presupuesto 0; 3.x rechaza el presupuesto y usa minimal', () => {
         expect(geminiThinkingConfig('gemini-2.5-flash')).toEqual({ thinkingBudget: 0 });
         expect(geminiThinkingConfig('gemini-3.5-flash-lite')).toEqual({ thinkingLevel: 'minimal' });
+    });
+
+    describe('modelFamily (ADR-0030)', () => {
+        it('reconoce las familias verificadas', () => {
+            expect(modelFamily('openai', 'gpt-6-luna')).toBe('openai_reasoning');
+            expect(modelFamily('openai', 'gpt-5.6-luna')).toBe('openai_reasoning');
+            expect(modelFamily('openai', 'gpt-4.1-mini')).toBe('openai_classic');
+            expect(modelFamily('openai', 'gpt-4o-mini')).toBe('openai_classic');
+            expect(modelFamily('anthropic', 'claude-haiku-5-5')).toBe('anthropic_no_sampling');
+            expect(modelFamily('anthropic', 'claude-sonnet-4-20250514')).toBe('anthropic_sampling');
+            expect(modelFamily('google', 'gemini-3.5-flash-lite')).toBe('gemini_3');
+            expect(modelFamily('google', 'gemini-2.5-flash')).toBe('gemini_2');
+            expect(modelFamily('xai', 'grok-4.3')).toBe('xai_reasoning');
+            expect(modelFamily('deepseek', 'deepseek-flash')).toBe('deepseek');
+        });
+        it('una familia nueva o un proveedor equivocado es unknown: requiere código', () => {
+            expect(modelFamily('openai', 'gpt-7-luna')).toBe('unknown');
+            expect(modelFamily('openai', 'gpt-60')).toBe('unknown');
+            expect(modelFamily('google', 'gemini-4-flash')).toBe('unknown');
+            expect(modelFamily('anthropic', 'claude-sonnet-6-0')).toBe('unknown');
+            expect(modelFamily('xai', 'grok-5')).toBe('unknown');
+            expect(modelFamily('deepseek', 'deepseek-v5')).toBe('unknown');
+            expect(modelFamily('openai', 'claude-haiku-5-5')).toBe('unknown');
+            expect(modelFamily('mistral', 'mistral-large')).toBe('unknown');
+        });
     });
 });

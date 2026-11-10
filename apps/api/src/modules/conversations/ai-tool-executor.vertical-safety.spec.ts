@@ -3,6 +3,7 @@ import { authorityFor } from './__fixtures__/tool-authority.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { EVAL_SANDBOX_CONTACT_ID } from './agent-test-tool-policy';
 import { enrollmentTerms } from '../education/enrollment-terms';
+import { OWN_RECORDS_EMPTY_MESSAGE } from './runtime/own-records-scope';
 
 describe('AIToolExecutorService vertical safety contracts', () => {
     const schemaName = 'tenant_vertical';
@@ -215,7 +216,7 @@ describe('AIToolExecutorService vertical safety contracts', () => {
             { authority: authorityFor('list_my_claims') },
         );
 
-        expect(result).toEqual({ claims: [] });
+        expect(result).toEqual({ claims: [], status: 'empty', scope: 'this_chat_contact', message: OWN_RECORDS_EMPTY_MESSAGE });
         expect(harness.prisma.$queryRawUnsafe).toHaveBeenCalledWith(
             expect.stringContaining('WHERE p.contact_id = $1::uuid'),
             contactId,

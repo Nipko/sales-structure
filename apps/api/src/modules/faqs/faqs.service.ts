@@ -303,7 +303,8 @@ export class FaqsService {
     async publishedForSelection(
         tenantId: string, max: number, executionContext?: ServiceExecutionContext, captured?: StructuredKnowledgeCapture,
     ): Promise<FAQ[]> {
-        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'faqs', 3, executionContext) : null;
+        // E2ag: la relación congelada va en $2 (la consulta solo lleva $1 = límite); con 3, el ensayo fallaba siempre aquí.
+        const frozen = captured ? structuredKnowledgeRelation(captured, tenantId, 'faqs', 2, executionContext) : null;
         const schemaName = frozen ? null : persistenceDisabled(executionContext)
             ? await this.tenantsService.getSchemaName(tenantId, executionContext)
             : await this.ensureSchema(tenantId);

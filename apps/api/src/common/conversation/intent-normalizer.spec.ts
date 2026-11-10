@@ -244,3 +244,25 @@ describe('whole-message consent evidence', () => {
         expect(classifyConfirmation(text, { effect: 'transactional', answeringExplicitQuestion: true })).toBe('confirmed');
     });
 });
+
+describe('E2ag C30 · pedir que lo pongan en contacto con alguien es pedir una persona', () => {
+    it.each([
+        '¿Me comunicas con alguien del equipo?',
+        '¿Me pasas con alguien?',
+        '¿Me pasa con alguien del equipo, por favor?',
+        'Necesito hablar con alguien del equipo',
+        'Pásame con alguien que me ayude',
+        'Can I talk to someone from the team?',
+        'Quero falar com alguém da equipe',
+    ])('%s', text => {
+        expect(normalizeCustomerIntent(text, { maxLength: Number.MAX_SAFE_INTEGER }).intent).toBe('request_human');
+    });
+    it.each([
+        '¿Qué pasa con alguien que llega tarde a la cita?',
+        '¿Alguien me puede decir el precio del corte?',
+        'No me pases con alguien, solo dime el horario.',
+        '¿El equipo trabaja los domingos?',
+    ])('no lo es: %s', text => {
+        expect(normalizeCustomerIntent(text, { maxLength: Number.MAX_SAFE_INTEGER }).intent).not.toBe('request_human');
+    });
+});

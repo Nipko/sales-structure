@@ -66,3 +66,21 @@ Con #405, P07-4 pasó 3 de 3 y los fallos bajaron de 40 a 30. Quedaron dos casos
 **E2ad:** C01 en dental siguió fallando 3 de 3 con gpt-4o-mini, y el guard no actuó ni una vez. Con las filas reales, la cadena (`catalogContentStatus` → `templateServicesOfTurn` → `pendingServicesNote`) agrega la nota. La causa era la condición de entrada: el guard se saltaba todo turno con `directive`, y con la reserva en modo ausente (C16) el motor deja un `directive` en cada turno de dental, «¿qué hacen?» incluido. Decisión: el guard ya no depende de `directive`. Solo deja intacto el texto del motor cuando se envía tal cual como respuesta (`engineReplyText`). El log pasa a `warn` para que se vea en los runners de medición.
 
 **E2ae (dental, tras #409):** el guard ya actúa en C01, pero solo 1 de 3 respuestas guardadas trae la nota. En los otros dos intentos el log muestra que el guard actuó y que la nota no llegó a la respuesta final: un paso posterior la descartó. El candidato es el verificador de evidencia (D1b), que quita frases sin respaldo; el log no dice cuál fue. Decisión: la nota se vuelve a aplicar sobre la respuesta compuesta después del verificador. Es idempotente, así que no se repite si ya está. Además, si la respuesta ya dice en cualquier parte que algo está pendiente de confirmar, no se agrega: «aunque están pendientes de confirmación:» seguido de una lista con viñetas ya lo dice, aunque esa frase no nombre los servicios.
+
+## Adenda 5 (E2ag, 2026-11-10): línea base con gpt-6-luna
+
+E2ag es la primera medición completa con el catálogo de la ADR 0029: el agente responde con gpt-6-luna y el verificador de evidencia usa gemini-3.5-flash-lite. En el ensayo, el campo `model` de cada caso guarda el modelo de la última llamada del turno, que suele ser el verificador. Las llamadas facturadas del periodo fueron 1.326 de gpt-6-luna y 1.559 de gemini-3.5-flash-lite: no hubo caída de proveedor.
+
+Frente a E2ad, en los 5 tenants comunes pass^3 bajó de 93 % a 87 %. Los 7 tenants quedaron en 770 de 835 aciertos (92 %). gpt-4o-mini no consultaba las lecturas propias ni prometía traspasos; gpt-6-luna sí lo hace, y eso destapó tres fallos de fondo:
+
+1. **C19/C20 (22 fallos).** «¿Cuántas reservas tengo?» llama a `list_my_*`, la lista vuelve vacía y el agente niega: «No tiene reservas registradas». Esas herramientas solo leen lo vinculado al contacto de este chat. Decisión: una lectura propia vacía lleva `scope: this_chat_contact` y una instrucción (`own-records-scope.ts`, aplicada en `AIToolExecutorService.execute`): no se niega, se dice que no se ve nada vinculado a este chat y se pide el dato con el que reservó o se ofrece una persona.
+2. **C30 (5 fallos).** «¿Me comunicas con alguien del equipo?» no contaba como pedido de una persona, porque no nombra ninguna palabra del paquete («asesor», «una persona»). La promesa de traspaso del modelo se leía como no pedida y, sin persona disponible, quedaba «No tengo ese dato confirmado en este momento.». Decisión: pedir que lo comuniquen, lo pasen o lo conecten con alguien, o hablar con alguien del equipo, es `request_human` (`PUT_THROUGH_TO_SOMEONE` en `intent-normalizer.ts`). «¿Qué pasa con alguien que llega tarde?» y «¿alguien me dice el precio?» no lo son.
+3. **C13/P02-5 (7 fallos).** `get_promotions` vacía decía «No active promotions at this time.», y el agente afirmaba que no hay promociones. Decisión: `get_promotions` y `list_active_offers` vacías dicen que no hay promociones publicadas, sin negar que existan (D1j).
+
+Además, `publishedForSelection`, la selección correctiva de FAQ (#303), pasaba la relación congelada como `$3` en una consulta que solo tenía `$2`. En el ensayo fallaba siempre (216 veces en E2ag); en producción no se usa la relación congelada. Ahora usa `$2`.
+
+Quedan abiertos, sin cambio en esta adenda:
+- disponibilidad de hotel afirmada sin fuente (C15, P05-5);
+- check-in sembrado (P05-2);
+- «dura 4 hours»: el modelo copia `durationType`;
+- «Reservaremos…» en C16, que sigue pendiente de la decisión del dueño sobre el modo de escritura.

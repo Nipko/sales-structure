@@ -828,7 +828,7 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
   // topK / relevance threshold / "search tool" are tuning knobs, not setup.
   // They live under "Avanzado" so the owner meets the on/off switch first.
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const rag = config.rag ?? { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 };
+  const rag = config.rag ?? { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 };
   const tools: NonNullable<PersonaConfig["tools"]> = config.tools ?? { appointments: { enabled: false, canBook: true, canCancel: true } };
   const kbToolEnabled = tools.knowledge?.enabled === true;
 
@@ -890,9 +890,9 @@ function KnowledgeSection({ config, onChange, t }: { config: PersonaConfig; onCh
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs text-neutral-600 dark:text-neutral-400">{t("similarityThreshold")}</label>
-              <span className="text-xs font-mono text-neutral-900 dark:text-neutral-100">{(rag.similarityThreshold ?? 0.75).toFixed(2)}</span>
+              <span className="text-xs font-mono text-neutral-900 dark:text-neutral-100">{(rag.similarityThreshold ?? 0.35).toFixed(2)}</span>
             </div>
-            <input type="range" min={0} max={1} step={0.05} value={rag.similarityThreshold ?? 0.75} onChange={e => onChange({ rag: { ...rag, similarityThreshold: parseFloat(e.target.value) } })} className="w-full accent-indigo-500" />
+            <input type="range" min={0} max={1} step={0.05} value={rag.similarityThreshold ?? 0.35} onChange={e => onChange({ rag: { ...rag, similarityThreshold: parseFloat(e.target.value) } })} className="w-full accent-indigo-500" />
             <p className="text-[10px] text-neutral-500 mt-1">{t("similarityHint")}</p>
           </div>
           </>}

@@ -590,7 +590,7 @@ export class PersonaService {
                 },
                 memory: { shortTerm: 20, longTerm: false, summaryAfter: 30 },
             },
-            rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+            rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
             hours: {
                 timezone: 'America/Bogota',
                 schedule: {},
@@ -603,6 +603,7 @@ export class PersonaService {
             tools: {
                 faqs: { enabled: true },
                 crm: { enabled: true },
+                policies: { enabled: true },
             },
         };
     }
@@ -1453,8 +1454,8 @@ export class PersonaService {
                     // rojo a un tenant cuyas preguntas frecuentes funcionaban
                     // perfecto. Los documentos y páginas web se activan después,
                     // cuando el tenant efectivamente carga alguno.
-                    tools: { faqs: { enabled: true } },
-                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { faqs: { enabled: true }, policies: { enabled: true } },
+                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1588,8 +1589,8 @@ export class PersonaService {
                         handoffTriggers: ['Question outside knowledge base', 'Customer disputes answer'],
                         requiredFields: {} },
                     // Ver la nota de `tpl_faq` en castellano: FAQs sí, RAG no.
-                    tools: { faqs: { enabled: true } },
-                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { faqs: { enabled: true }, policies: { enabled: true } },
+                    rag: { enabled: false, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1670,7 +1671,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1728,7 +1729,7 @@ export class PersonaService {
                             // prohibe explicitamente, asi que pedirlo aca dejaba al modelo
                             // eligiendo a quien obedecer turno a turno — y acumulaba cedulas
                             // sin cifrar en JSONB cuando ganaba la plantilla.
-                            'Confirma nombre y telefono del paciente antes de agendar. NUNCA pidas cedula ni documento de identidad',
+                            'Confirma nombre y telefono del paciente antes de agendar. No pidas cedula ni documento de identidad salvo que el negocio lo haya definido como dato para agendar (sus documentos o FAQs lo dicen)',
                             'Pregunta si tiene seguro/convenio y cuál — pero aclara que la cobertura la confirma la clínica',
                             'Para urgencias fuera de horario, da número de guardia (escalado) — nunca improvises',
                         ],
@@ -1759,9 +1760,10 @@ export class PersonaService {
                         appointments: { enabled: true, canBook: true, canCancel: true },
                         treatments: { enabled: true },
                         crm: { enabled: true },
+                        policies: { enabled: true },
                         knowledge: { enabled: true },
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -1793,7 +1795,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1855,7 +1857,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1892,7 +1894,7 @@ export class PersonaService {
                     // de productos que no podía consultar, así que solo podía
                     // inventarlos o mandar a todo el mundo a un humano.
                     tools: { catalog: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -1923,7 +1925,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -1951,7 +1953,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2003,9 +2005,10 @@ export class PersonaService {
                         realEstate: { enabled: true },
                         appointments: { enabled: true, canBook: true, canCancel: true },
                         crm: { enabled: true },
+                        policies: { enabled: true },
                         knowledge: { enabled: true },
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2038,7 +2041,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2066,7 +2069,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2097,7 +2100,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2125,7 +2128,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2160,9 +2163,10 @@ export class PersonaService {
                         tours: { enabled: true },
                         appointments: { enabled: false },
                         crm: { enabled: true },
+                        policies: { enabled: true },
                         knowledge: { enabled: true },
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2205,9 +2209,10 @@ export class PersonaService {
                         tours: { enabled: true },
                         appointments: { enabled: false },
                         crm: { enabled: true },
+                        policies: { enabled: true },
                         knowledge: { enabled: true },
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2238,7 +2243,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2284,8 +2289,8 @@ export class PersonaService {
                     // (bookingEnabled), pero esta plantilla —la default de la
                     // vertical— no traía la herramienta: la agenda sembrada quedaba
                     // muerta y la promesa del alta era imposible out of the box.
-                    tools: { crm: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2317,8 +2322,8 @@ export class PersonaService {
                         handoffTriggers: ['cancelación', 'cambio de beneficiario', 'reclamo de siniestro', 'fraude'],
                         requiredFields: {},
                     },
-                    tools: { crm: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: false } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: false } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2355,8 +2360,8 @@ export class PersonaService {
                             email: { required: true },
                         },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2386,8 +2391,8 @@ export class PersonaService {
                         handoffTriggers: ['cambio de estrategia', 'reclamo sobre el profesional', 'urgencia', 'audiencia próxima'],
                         requiredFields: {},
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2421,7 +2426,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { catalog: { enabled: true }, crm: { enabled: true }, offers: { enabled: true }, orders: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2451,7 +2456,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { orders: { enabled: true }, crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2488,8 +2493,8 @@ export class PersonaService {
                             phone: { required: false },
                         },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2520,7 +2525,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { knowledge: { enabled: true }, crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2581,9 +2586,10 @@ export class PersonaService {
                         appointments: { enabled: true, canBook: true, canCancel: true },
                         pets: { enabled: true },
                         crm: { enabled: true },
+                        policies: { enabled: true },
                         knowledge: { enabled: true },
                     },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2616,8 +2622,8 @@ export class PersonaService {
                         handoffTriggers: ['lesión', 'emergencia médica', 'reembolso', 'queja formal', 'cancelación definitiva'],
                         requiredFields: { name: { required: true }, phone: { required: true } },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2647,8 +2653,8 @@ export class PersonaService {
                         handoffTriggers: ['lesión durante clase', 'queja sobre instructor', 'reembolso', 'problema con la app'],
                         requiredFields: {},
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2690,8 +2696,8 @@ export class PersonaService {
                             email: { required: false },
                         },
                     },
-                    tools: { crm: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2720,8 +2726,8 @@ export class PersonaService {
                         handoffTriggers: ['siniestro activo', 'cambio de beneficiario', 'cancelación', 'queja formal', 'fraude'],
                         requiredFields: {},
                     },
-                    tools: { crm: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: false } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: false } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2771,8 +2777,8 @@ export class PersonaService {
                             phone: { required: true },
                         },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2801,8 +2807,8 @@ export class PersonaService {
                         handoffTriggers: ['daño causado por el técnico', 'queja formal', 'reembolso', 'reclamo legal'],
                         requiredFields: {},
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2839,8 +2845,8 @@ export class PersonaService {
                             phone: { required: true },
                         },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2871,7 +2877,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { catalog: { enabled: true }, crm: { enabled: true }, orders: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2909,8 +2915,8 @@ export class PersonaService {
                             email: { required: false },
                         },
                     },
-                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { appointments: { enabled: true, canBook: true, canCancel: true }, crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -2941,7 +2947,7 @@ export class PersonaService {
                         requiredFields: {},
                     },
                     tools: { crm: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];
@@ -2976,8 +2982,8 @@ export class PersonaService {
                             phone: { required: true },
                         },
                     },
-                    tools: { crm: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true }, appointments: { enabled: true, canBook: true, canCancel: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
             {
@@ -3006,8 +3012,8 @@ export class PersonaService {
                         handoffTriggers: ['queja formal', 'reembolso', 'caso legal', 'cliente enojado', 'problema no resuelto'],
                         requiredFields: {},
                     },
-                    tools: { crm: { enabled: true }, knowledge: { enabled: true } },
-                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.75 },
+                    tools: { crm: { enabled: true }, policies: { enabled: true }, knowledge: { enabled: true } },
+                    rag: { enabled: true, chunkSize: 512, chunkOverlap: 50, topK: 5, similarityThreshold: 0.35 },
                 },
             },
         ];

@@ -13,15 +13,31 @@
  * column-defaults.util.spec.ts comprueba que no diverjan.
  */
 
-export const CATALOG_COLUMN_DEFAULTS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+/** Default de columna: un número, un booleano o la lista vacía (`[]` de una columna JSONB). */
+export type ColumnDefault = number | boolean | readonly never[];
+
+export const CATALOG_COLUMN_DEFAULTS: Readonly<Record<string, Readonly<Record<string, ColumnDefault>>>> = {
     tour_packages: { min_party_size: 1, max_capacity: 10 },
     properties: { cleaning_fee: 0 },
+    // E2ah (inmobiliaria): «Parqueaderos: 0», «no cuenta con financiación», «no tiene amenidades» salían del default.
+    real_estate_listings: { parking_spots: 0, financing_available: false, amenities: [] },
 };
+
+/** ¿El valor guardado es el default de su columna? */
+export function isColumnDefault(raw: unknown, def: ColumnDefault): boolean {
+    if (Array.isArray(def)) {
+        const parsed = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+        return raw === null || raw === undefined || (Array.isArray(parsed) && parsed.length === 0);
+    }
+    if (typeof def === 'boolean') return raw === null || raw === undefined ? def === false : raw === def || String(raw) === String(def) || (def === false && raw === 'f');
+    const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+    return n === def;
+}
 
 export const CONFIRMED_FIELDS_KEY = 'confirmed_fields';
 
 /** Lo que la lectura le dice al modelo junto a `unconfirmedFields`. */
-export const UNCONFIRMED_FIELDS_NOTE = 'unconfirmedFields lists fields the business has not confirmed (the value shown before was a platform default, now null): never state, estimate or deny them (no group size, no "no cleaning fee"); say that detail is not confirmed and offer a person from the team to confirm it. Booking still checks the real limits.';
+export const UNCONFIRMED_FIELDS_NOTE = 'unconfirmedFields lists fields the business has not confirmed (the value shown before was a platform default, now null): never state, estimate or deny them (no group size, no "no cleaning fee", no "0 parking spots", no "no financing", no "no amenities"); say that detail is not confirmed and offer a person from the team to confirm it. Booking still checks the real limits.';
 
 const asObject = (v: unknown): Record<string, unknown> | null => {
     const parsed = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return null; } })() : v;
@@ -41,9 +57,7 @@ export function unconfirmedDefaultColumns(table: string, row: Record<string, any
     const confirmed = confirmedColumns(row);
     const out = new Set<string>();
     for (const [column, value] of Object.entries(defaults)) {
-        const raw = row[column];
-        const n = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
-        if (n === value && !confirmed.has(column)) out.add(column);
+        if (column in row && isColumnDefault(row[column], value) && !confirmed.has(column)) out.add(column);
     }
     return out;
 }

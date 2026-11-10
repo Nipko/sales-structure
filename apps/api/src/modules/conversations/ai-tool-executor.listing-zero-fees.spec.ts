@@ -14,7 +14,8 @@ describe('listing fees preserve published zero separately from unknown',()=>{
  ])('projects HOA %s and deposit %s accurately',async(hoa,deposit,expectedHoa,expectedDeposit)=>{
   const h=fixture(hoa,deposit),original={...h.listing};const result=await h.read();
   expect(result.hoaFee).toBe(expectedHoa);expect(result.deposit).toBe(expectedDeposit);
-  expect(result.financingAvailable).toBe(false);expect(h.listing).toEqual(original);
+  // E2ah: false sin confirmar es el default de columna, no un «no hay financiación».
+  expect(result.financingAvailable).toBeNull();expect(result.unconfirmedFields).toEqual(['financingAvailable']);expect(h.listing).toEqual(original);
   expect(h.getAvailableById).toHaveBeenCalledTimes(1);expect(h.getAvailableById).toHaveBeenCalledWith('tenant_qa',ID);
  });
  it.each(['not_found','unavailable'])('does not disclose fields of %s listing',async state=>{

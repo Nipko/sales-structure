@@ -45,6 +45,41 @@ export function openAIChatParams(model: string, opts: { temperature?: number; ma
     return { temperature, ...(max != null ? { max_tokens: max } : {}) };
 }
 
+/**
+ * OpenAI GPT-5.6 y posteriores (GPT-6.x incluido): la caché de prompts sólo se
+ * busca y se escribe en límites exactos — el final de ciertos mensajes y los
+ * `prompt_cache_breakpoint` — sin el redondeo a bloques de 128 tokens de los
+ * modelos anteriores (ADR-0032). Los anteriores (gpt-4.1, gpt-5.5…) no tienen
+ * el campo y siguen cacheando por prefijo.
+ */
+export function openAISupportsCacheBreakpoints(model: string): boolean {
+    const m = /^gpt-(\d+)(?:\.(\d+))?(?:-|$)/.exec(model);
+    if (!m) return false;
+    const major = Number(m[1]);
+    const minor = m[2] != null ? Number(m[2]) : 0;
+    return major > 5 || (major === 5 && minor >= 6);
+}
+
+/**
+ * Contenido del mensaje system de OpenAI. Con un prefijo estable conocido
+ * (contrato + persona) y un modelo con breakpoints, el texto se parte en dos
+ * bloques y el primero lleva `prompt_cache_breakpoint`: así ese prefijo se
+ * escribe y se relee entre turnos y conversaciones aunque el bloque <turn> que
+ * le sigue cambie en cada llamada. Los dos bloques concatenados son el texto
+ * original, carácter por carácter.
+ */
+export function openAISystemContent(
+    model: string, systemPrompt: string, cacheableChars: number | undefined, breakpoints = true,
+): string | Array<{ type: 'text'; text: string; prompt_cache_breakpoint?: { mode: 'explicit' } }> {
+    if (!breakpoints || !openAISupportsCacheBreakpoints(model)) return systemPrompt;
+    const cut = Number(cacheableChars);
+    if (!Number.isInteger(cut) || cut <= 0 || cut >= systemPrompt.length) return systemPrompt;
+    return [
+        { type: 'text', text: systemPrompt.slice(0, cut), prompt_cache_breakpoint: { mode: 'explicit' } },
+        { type: 'text', text: systemPrompt.slice(cut) },
+    ];
+}
+
 /** xAI: grok-4.3 y posteriores razonan por defecto; el slug retirado ya llegaba con `none`. */
 export function xaiChatParams(model: string, opts: { temperature?: number; maxTokens?: number }): Record<string, unknown> {
     const reasons = /^grok-4\.(?:[3-9]|\d{2})/.test(model);

@@ -131,6 +131,26 @@ describe('Caché de prompts en el costo LLM (ADR-0027)', () => {
             ['incrby', expect.stringMatching(/:openai:cost_centi_usd$/), 10],
             ['incrby', expect.stringMatching(/^llm:cost:tenant-1:/), 10],
             ['incrby', expect.stringMatching(/:openai:tokens_cached$/), 100_000],
+            ['incrby', expect.stringMatching(/:openai:tokens_cache_write$/), 0],
+        ]));
+    });
+
+    it('el router cuenta aparte las escrituras de caché de GPT-6 (ADR-0032)', async () => {
+        const calls: Array<[string, ...unknown[]]> = [];
+        const transaction: any = {
+            incrby: (k: string, v: number) => { calls.push(['incrby', k, v]); return transaction; },
+            sadd: () => transaction,
+            expire: (k: string, v: number) => { calls.push(['expire', k, v]); return transaction; },
+            exec: jest.fn().mockResolvedValue([]),
+        };
+        const router = new LLMRouterService([], { getClient: () => ({ multi: () => transaction }) } as any, {} as any, {} as any);
+        await (router as any).trackStats('tenant-1', model('gpt-6-luna'), 10,
+            { promptTokens: 10_000, completionTokens: 0, totalTokens: 10_000, cachedPromptTokens: 6_000, cacheWritePromptTokens: 3_990 }, false);
+        expect(calls).toEqual(expect.arrayContaining([
+            ['incrby', expect.stringMatching(/:openai:tokens_in$/), 10_000],
+            ['incrby', expect.stringMatching(/:openai:tokens_cached$/), 6_000],
+            ['incrby', expect.stringMatching(/:openai:tokens_cache_write$/), 3_990],
+            ['expire', expect.stringMatching(/:openai:tokens_cache_write$/), 90 * 24 * 3600],
         ]));
     });
 });

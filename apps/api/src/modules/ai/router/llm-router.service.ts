@@ -732,7 +732,12 @@ export class LLMRouterService {
         const baseKey = `llm:stats:${tenantId}:${date}:${modelConfig.provider}`;
         const tokensIn = usage?.promptTokens || 0;
         const tokensOut = usage?.completionTokens || 0;
-        const tokensCached = usage ? splitPromptTokens(usage).cached : 0;
+        const split = usage ? splitPromptTokens(usage) : undefined;
+        const tokensCached = split?.cached ?? 0;
+        // GPT-5.6+/GPT-6 bill every uncached input token as a cache write at
+        // 1.25× (ADR-0032): counted apart so the hit rate and the write share
+        // can be read per tenant and day.
+        const tokensCacheWrite = split?.cacheWrite ?? 0;
         // Cost in centi-USD (USD * 10000) so we can use integer INCRBY.
         // Fresh input, cached input and output each have their own rate
         // (ADR-0027): the cached share used to be billed at full price.
@@ -755,6 +760,7 @@ export class LLMRouterService {
             .incrby(`${baseKey}:tokens_in`, tokensIn)
             .incrby(`${baseKey}:tokens_out`, tokensOut)
             .incrby(`${baseKey}:tokens_cached`, tokensCached)
+            .incrby(`${baseKey}:tokens_cache_write`, tokensCacheWrite)
             .incrby(`${baseKey}:cost_centi_usd`, costCentiUsd)
             .incrby(monthlyCostKey, costCentiUsd)
             .incrby(`${baseKey}:latency_sum_ms`, latencyMs)
@@ -763,7 +769,7 @@ export class LLMRouterService {
             .sadd(providersForDateKey, modelConfig.provider);
         if (errored) transaction.incrby(`${baseKey}:errors`, 1);
 
-        const dayKeys = ['calls', 'tokens_in', 'tokens_out', 'tokens_cached', 'cost_centi_usd', 'latency_sum_ms'];
+        const dayKeys = ['calls', 'tokens_in', 'tokens_out', 'tokens_cached', 'tokens_cache_write', 'cost_centi_usd', 'latency_sum_ms'];
         if (errored) dayKeys.push('errors');
         for (const suffix of dayKeys) transaction.expire(`${baseKey}:${suffix}`, ttl);
         transaction.expire(tenantsForDateKey, ttl);

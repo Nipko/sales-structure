@@ -17,8 +17,8 @@ export interface LLMRequestOptions {
     /**
      * Length (chars) of the byte-stable prefix of systemPrompt (contract + persona)
      * that is identical across turns and safe to cache. Providers that support
-     * prompt caching (Anthropic via cache_control; OpenAI auto-caches stable
-     * prefixes) may use it; others ignore it. The full systemPrompt is unchanged.
+     * prompt caching (Anthropic via cache_control; OpenAI GPT-5.6+ via
+     * prompt_cache_breakpoint, ADR-0032) may use it; others ignore it. The full systemPrompt is unchanged.
      */
     cacheableSystemPromptChars?: number;
     temperature?: number;

@@ -1,6 +1,6 @@
 import {
     anthropicAcceptsSampling, anthropicRequestParams, anthropicThinkingParam, deepseekChatExtras, geminiThinkingConfig,
-    isOpenAIReasoningModel, modelFamily, openAIChatParams, xaiChatParams,
+    isOpenAIReasoningModel, modelFamily, openAIChatParams, openAISupportsCacheBreakpoints, openAISystemContent, xaiChatParams,
 } from './model-request-params';
 
 // Cada caso reproduce una respuesta real de la API del 9-nov-2026 (ADR-0029).
@@ -18,6 +18,45 @@ describe('model-request-params', () => {
         });
         it('los modelos clásicos siguen con max_tokens y sin reasoning_effort', () => {
             expect(openAIChatParams('gpt-4.1-mini', { temperature: 0, maxTokens: 24 })).toEqual({ temperature: 0, max_tokens: 24 });
+        });
+    });
+
+    // ADR-0032: GPT-5.6+ sólo cachea en límites exactos (fin de mensaje o breakpoint).
+    describe('OpenAI: breakpoint de caché en el prefijo estable', () => {
+        const prompt = '<contract>reglas</contract>\n\n<persona>Valeria</persona>\n\n<turn><now>2026-11-10T10:00</now></turn>';
+        const cut = prompt.indexOf('\n\n<turn>');
+
+        it('sólo GPT-5.6 en adelante (GPT-6 incluido) tiene breakpoints', () => {
+            for (const model of ['gpt-6-luna', 'gpt-6-sol', 'gpt-5.6-luna', 'gpt-5.10', 'gpt-6-luna-2026-05-18', 'gpt-7']) {
+                expect(openAISupportsCacheBreakpoints(model)).toBe(true);
+            }
+            for (const model of ['gpt-5.5', 'gpt-5', 'gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o-mini', 'o4-mini', 'grok-4.3']) {
+                expect(openAISupportsCacheBreakpoints(model)).toBe(false);
+            }
+        });
+
+        it('parte el system en el prefijo estable con breakpoint y el <turn> sin él; juntos son el mismo texto', () => {
+            const content = openAISystemContent('gpt-6-luna', prompt, cut);
+            expect(content).toEqual([
+                { type: 'text', text: '<contract>reglas</contract>\n\n<persona>Valeria</persona>', prompt_cache_breakpoint: { mode: 'explicit' } },
+                { type: 'text', text: '\n\n<turn><now>2026-11-10T10:00</now></turn>' },
+            ]);
+            expect((content as Array<{ text: string }>).map(part => part.text).join('')).toBe(prompt);
+        });
+
+        it('el mismo prefijo da el mismo primer bloque aunque cambie el <turn>', () => {
+            const other = prompt.replace('10:00', '10:05');
+            expect((openAISystemContent('gpt-6-luna', other, cut) as unknown[])[0])
+                .toEqual((openAISystemContent('gpt-6-luna', prompt, cut) as unknown[])[0]);
+        });
+
+        it('sin corte válido, con un modelo anterior o con breakpoints apagados queda el texto tal cual', () => {
+            expect(openAISystemContent('gpt-6-luna', prompt, undefined)).toBe(prompt);
+            expect(openAISystemContent('gpt-6-luna', prompt, 0)).toBe(prompt);
+            expect(openAISystemContent('gpt-6-luna', prompt, prompt.length)).toBe(prompt);
+            expect(openAISystemContent('gpt-6-luna', prompt, 12.5)).toBe(prompt);
+            expect(openAISystemContent('gpt-4.1-mini', prompt, cut)).toBe(prompt);
+            expect(openAISystemContent('gpt-6-luna', prompt, cut, false)).toBe(prompt);
         });
     });
 

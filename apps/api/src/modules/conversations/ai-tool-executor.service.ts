@@ -125,6 +125,7 @@ import { markCatalogEmpty } from './catalog-empty.util';
 import { catalogPriceStatus } from './catalog-price-status';
 import { LISTING_SUBJECT_NOTE } from './runtime/service-not-listing';
 import { applyUnconfirmedMarks, catalogContentStatus, unconfirmedCatalogMarks, unconfirmedNotes } from './catalog-content-status';
+import { unconfirmedDefaultColumns } from '../../common/utils/column-defaults.util';
 import { notForSaleMatch, NOT_FOR_SALE_MATCH_LIMIT, NOT_FOR_SALE_MATCHES_NOTE, productAvailabilityScope, readsNotForSaleMatches } from './sold-out-visibility';
 import { listTotal } from './list-total';
 import { PACKAGE_DEPARTURES_IN_SEARCH_MAX, PACKAGE_DEPARTURES_PER_PACKAGE, PACKAGE_FIELD_AUTHORITY, PACKAGE_LANGUAGES_NOTE, PACKAGE_SEATS_NOTE, packageDuration, packageLanguages } from './package-structured-fields';
@@ -141,6 +142,21 @@ import {
  * del negocio). Sin confirmar llegan `null` y nombrados en `unconfirmedFields` (catalog-content-status.ts).
  */
 const PROPERTY_DEFAULT_FIELDS: Readonly<Record<string, string>> = { cleaningFee: 'cleaning_fee' };
+/** E2ah: campo proyectado de un inmueble → columna con default que el negocio no confirmó (se lee como «no consta»). */
+const LISTING_PROJECTED_DEFAULT_FIELDS: Readonly<Record<string, string>> = {
+    parkingSpots: 'parking_spots', financingAvailable: 'financing_available', amenities: 'amenities',
+};
+/** Pone en null los campos con default sin confirmar y los nombra en `unconfirmedFields` (sin tocar contentStatus). */
+function markListingDefaults<T extends Record<string, any>>(record: T, row: Record<string, any>): T {
+    const defaults = unconfirmedDefaultColumns('real_estate_listings', row);
+    const fields = Object.entries(LISTING_PROJECTED_DEFAULT_FIELDS)
+        .filter(([field, column]) => field in record && defaults.has(column)).map(([field]) => field);
+    if (!fields.length) return record;
+    const out: Record<string, any> = { ...record };
+    for (const f of fields) out[f] = null;
+    out.unconfirmedFields = fields;
+    return out as T;
+}
 const PACKAGE_DEFAULT_FIELDS: Readonly<Record<string, string>> = { minPartySize: 'min_party_size', maxCapacity: 'max_capacity' };
 
 /**
@@ -5334,7 +5350,7 @@ export class AIToolExecutorService {
             });
             const found = listings || [];
             const closest = await this.closestListings(schemaName, criteria, found);
-            const project = (l: any) => ({
+            const project = (l: any) => markListingDefaults({
                 id: l.id,
                 name: l.name,
                 transactionType: l.transaction_type,
@@ -5351,9 +5367,10 @@ export class AIToolExecutorService {
                 city: l.city,
                 description: l.description,
                 status: l.status,
-            });
+            }, l);
+            const projected = found.map(project);
             return {
-                listings: found.map(project),
+                listings: projected,
                 // Near misses are an answer too: «no tengo uno confirmado en la zona
                 // norte, pero tengo este…», never a false «no hay».
                 ...(closest.length > 0 ? {
@@ -5371,6 +5388,7 @@ export class AIToolExecutorService {
                 } : {}),
                 // Production 24-oct: «Je n'ai pas la surface confirmée» / «price not confirmed» for a listing with 80 m² and 250.000 EUR.
                 ...(found.length || closest.length ? { fieldAuthority: LISTING_FIELD_AUTHORITY, subjectNote: LISTING_SUBJECT_NOTE } : {}),
+                ...unconfirmedNotes(projected),
             };
         } catch (e: any) {
             return this.safeToolFailure('search_listings', e, 'read');
@@ -5423,7 +5441,7 @@ export class AIToolExecutorService {
             if (read.state === 'not_found') return { error: 'listing_not_found' };
             if (read.state === 'unavailable') return this.listingUnavailable();
             const l = read.listing;
-            return {
+            const details = markListingDefaults({
                 id: l.id,
                 name: l.name,
                 transactionType: l.transaction_type,
@@ -5451,7 +5469,8 @@ export class AIToolExecutorService {
                 externalUrl: l.external_url,
                 status: l.status,
                 fieldAuthority: LISTING_FIELD_AUTHORITY,
-            };
+            }, l);
+            return { ...details, ...unconfirmedNotes([details]) };
         } catch (e: any) {
             return this.safeToolFailure('get_listing_details', e, 'read');
         }

@@ -195,9 +195,10 @@ export function legacyRowProvenance(table: string, row: Row, ctx: LegacyContext)
  * sigue aplicando el límite al reservar. Guardar el formulario con el campo lo confirma aunque el valor sea el mismo:
  * el escritor estampa `metadata.confirmed_fields.<columna>` (tours.service, properties.service).
  */
-export const COLUMN_DEFAULTS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+export const COLUMN_DEFAULTS: Readonly<Record<string, Readonly<Record<string, number | boolean | readonly never[]>>>> = {
     tour_packages: { min_party_size: 1, max_capacity: 10 },
     properties: { cleaning_fee: 0 },
+    real_estate_listings: { parking_spots: 0, financing_available: false, amenities: [] },
 };
 /** Clave de `metadata` donde el formulario deja las columnas que el negocio confirmó (`{ <columna>: <ISO> }`). */
 export const CONFIRMED_FIELDS_KEY = 'confirmed_fields';
@@ -218,7 +219,12 @@ export function unconfirmedColumnDefaults(table: string, row: Row): string[] {
     const defaults = COLUMN_DEFAULTS[table];
     if (!defaults) return [];
     const confirmed = confirmedFieldsOf(row);
-    return Object.entries(defaults).filter(([col, def]) => num(row[col]) === def && !confirmed.has(col)).map(([col]) => col);
+    const isDefault = (raw: unknown, def: number | boolean | readonly never[]): boolean => {
+        if (Array.isArray(def)) { const v = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw; return raw === null || raw === undefined || (Array.isArray(v) && v.length === 0); }
+        if (typeof def === 'boolean') return raw === null || raw === undefined ? def === false : raw === def || String(raw) === String(def) || (def === false && raw === 'f');
+        return num(raw) === def;
+    };
+    return Object.entries(defaults).filter(([col, def]) => col in row && isDefault(row[col], def) && !confirmed.has(col)).map(([col]) => col);
 }
 
 /** Procedencia real si la fila la tiene vigente; si no, las reglas L. */

@@ -17,6 +17,19 @@ describe('opción B (dueño, 2026-11-06): defaults de columna sin confirmar', ()
         expect([...unconfirmedDefaultColumns('services', { price: 0 })]).toEqual([]);
     });
 
+    it('E2ah: inmueble con parqueaderos 0, sin financiación y sin amenidades por default no niega nada', () => {
+        const row = { parking_spots: 0, financing_available: false, amenities: [], metadata: {} };
+        expect([...unconfirmedDefaultColumns('real_estate_listings', row)].sort()).toEqual(['amenities', 'financing_available', 'parking_spots']);
+        expect([...unconfirmedDefaultColumns('real_estate_listings', { parking_spots: 2, financing_available: true, amenities: '["gym"]' })]).toEqual([]);
+        expect([...unconfirmedDefaultColumns('real_estate_listings', { ...row, metadata: { confirmed_fields: { parking_spots: 'x', financing_available: 'x' } } })]).toEqual(['amenities']);
+        // Una lectura que no trae la columna no la marca (search_listings no proyecta financing_available).
+        expect([...unconfirmedDefaultColumns('real_estate_listings', { parking_spots: 0 })]).toEqual(['parking_spots']);
+        const at = new Date('2026-11-10T10:00:00.000Z');
+        expect(confirmedFieldsStamp('real_estate_listings', { parkingSpots: 0, financingAvailable: false, amenities: [] },
+            { parkingSpots: 'parking_spots', financingAvailable: 'financing_available', amenities: 'amenities' }, at))
+            .toEqual({ parking_spots: at.toISOString(), financing_available: at.toISOString(), amenities: at.toISOString() });
+    });
+
     it('guardar el formulario con el campo lo confirma aunque traiga el mismo valor', () => {
         const at = new Date('2026-11-06T10:00:00.000Z');
         const fields = { maxCapacity: 'max_capacity', minPartySize: 'min_party_size', name: 'name' };

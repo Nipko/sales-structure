@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "revision": "67ba8f75c895f4868147a6afe2b8d2f8228744d9",
+  "revision": "48f625bc984e96ced463285be0ad1f25c4efe05d",
   "generatedFrom": [
     "modules/simulation/certification-plan.ts",
     "modules/simulation/certification-ledger.ts",

@@ -1,6 +1,12 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { foldedContainsSql, foldedLikePattern } from '../../common/utils/sql-accent-fold.util';
+import { CONFIRMED_FIELDS_KEY, confirmedFieldsStamp, metadataWithConfirmedFieldsSql } from '../../common/utils/column-defaults.util';
+
+/** Campo del cuerpo → columna con default (opción B): guardarlo en el formulario lo confirma aunque sea el mismo valor. */
+export const LISTING_DEFAULT_FIELDS: Readonly<Record<string, string>> = {
+    parkingSpots: 'parking_spots', financingAvailable: 'financing_available', amenities: 'amenities',
+};
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -145,6 +151,7 @@ export class ListingsService {
             throw new BadRequestException('name and transactionType are required');
         }
         const tx = data.transactionType === 'sale' ? 'sale' : 'rent';
+        const confirmedFields = confirmedFieldsStamp('real_estate_listings', data, LISTING_DEFAULT_FIELDS);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -176,7 +183,8 @@ export class ListingsService {
                 data.externalUrl || null,
                 data.status || 'available',
                 data.assignedAgentId || null,
-                JSON.stringify(data.metadata || {}),
+                JSON.stringify(Object.keys(confirmedFields).length
+                    ? { ...(data.metadata || {}), [CONFIRMED_FIELDS_KEY]: confirmedFields } : (data.metadata || {})),
             ],
         );
         return rows?.[0];
@@ -213,7 +221,7 @@ export class ListingsService {
             idx++;
         }
         const jsonFields: Record<string, string> = {
-            amenities: 'amenities', metadata: 'metadata',
+            amenities: 'amenities',
         };
         for (const [jsKey, dbKey] of Object.entries(jsonFields)) {
             if (data[jsKey] !== undefined) {
@@ -221,6 +229,16 @@ export class ListingsService {
                 params.push(JSON.stringify(data[jsKey]));
                 idx++;
             }
+        }
+        // Opción B: el metadata nuevo conserva confirmed_fields y suma las columnas con default que trae el cuerpo.
+        const confirmedFields = confirmedFieldsStamp('real_estate_listings', data, LISTING_DEFAULT_FIELDS);
+        const stamped = Object.keys(confirmedFields).length > 0;
+        if (data.metadata !== undefined || stamped) {
+            const replacement = data.metadata !== undefined ? `$${idx++}` : null;
+            if (replacement) params.push(JSON.stringify(data.metadata || {}));
+            const stamp = stamped ? `$${idx++}` : null;
+            if (stamp) params.push(JSON.stringify(confirmedFields));
+            sets.push(`"metadata" = ${metadataWithConfirmedFieldsSql(replacement, stamp)}`);
         }
         // Las fotos pasan por la misma normalización que en el alta: editar un
         // inmueble no puede ser la puerta por la que entra lo que el alta
@@ -326,7 +344,7 @@ export class ListingsService {
             schemaName,
             `SELECT id, name, transaction_type, property_kind, price, currency,
                     bedrooms, bathrooms, area_m2, parking_spots, stratum,
-                    address, neighborhood, city, description, images, status
+                    address, neighborhood, city, description, images, status, metadata
              FROM real_estate_listings
              WHERE ${conds.join(' AND ')}
              ORDER BY created_at DESC

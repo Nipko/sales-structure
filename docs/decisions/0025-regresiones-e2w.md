@@ -84,3 +84,28 @@ Quedan abiertos, sin cambio en esta adenda:
 - check-in sembrado (P05-2);
 - «dura 4 hours»: el modelo copia `durationType`;
 - «Reservaremos…» en C16, que sigue pendiente de la decisión del dueño sobre el modo de escritura.
+
+## Adenda 6 (E2ah, 2026-11-10): resultado de #419
+
+Es la medición de 7 tenants con el mismo banco que E2ag, después de desplegar #419.
+
+| Indicador | E2ag | E2ah |
+|---|---|---|
+| Aciertos | 92 % (770/835) | 94 % (786/834) |
+| pass^3 | 87 % (240/275) | 91 % (249/274) |
+
+Por intención, las tres correcciones funcionaron:
+- **C19:** 48 % → 76 %.
+- **C20:** 76 % → 100 %.
+- **C30:** 76 % → 100 %.
+- **C13:** 81 % → 100 %.
+
+Subieron hotel (85 % → 92 %), viajes (88 % → 94 %), electrónica (94 % → 98 %) y comida (93 % → 98 %).
+
+Regresión nueva: **inmobiliaria bajó de 97 % a 90 %**. El agente lee los campos vacíos de la propiedad como una negación:
+- «no tiene amenidades registradas»;
+- «Parqueaderos: 0»;
+- «financiación no disponible».
+
+Además, en C06 dijo dos veces que no hay catálogo cuando sí hay una propiedad confirmada. Es la misma clase de error que «lecturas vacías que niegan», ahora en los campos de una ficha; queda como siguiente corrección. C16 sigue en 67 %.
+

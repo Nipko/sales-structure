@@ -4,6 +4,8 @@ import {
 } from '../router/llm-catalog';
 import { qualityRubricHash } from '../../quality/quality-rubric';
 import { LLM_CATALOG_VERSION_KEY, LlmCatalogService, modelsToProbe } from './llm-catalog.service';
+import { measurementKey } from './llm-measurement.service';
+import type { MeasurementLite } from './promotion-rule';
 
 /** Base en memoria que entiende las sentencias de `LlmCatalogService` (el SQL real lo cubre el ensayo de la migración). */
 function fakeDb() {
@@ -94,14 +96,20 @@ function provider(name: string, behaviour: 'ok' | 'no_tool' | 'error' = 'ok') {
     };
 }
 
-function harness(opts: { configured?: string[]; providers?: any[] } = {}) {
+function measured(modelId: string, bench: MeasurementLite['bench'], pass: number, n: number, daysAgo = 1): MeasurementLite {
+    return { modelId, bench, n, pass, passRate: Math.round((pass / n) * 10_000) / 10_000, measuredAt: new Date(Date.now() - daysAgo * 86_400_000), catalogVersion: 1 };
+}
+
+function harness(opts: { configured?: string[]; providers?: any[]; measurements?: MeasurementLite[] } = {}) {
     const db = fakeDb();
     const redis = fakeRedis();
     const configured = new Set(opts.configured ?? ['openai', 'google', 'xai', 'deepseek']);
     const keys = { isConfigured: jest.fn(async (p: string) => configured.has(p)) };
     const providers = opts.providers ?? ['openai', 'anthropic', 'google', 'xai', 'deepseek'].map(p => provider(p));
-    const service = new LlmCatalogService(db.db, redis as any, keys as any, providers as any, { get: () => undefined } as any);
-    return { service, db, redis, providers, keys };
+    const table = new Map((opts.measurements ?? []).map(m => [measurementKey(m.modelId, m.bench), m]));
+    const measurements = { latest: jest.fn(async () => table) };
+    const service = new LlmCatalogService(db.db, redis as any, keys as any, providers as any, measurements as any, { get: () => undefined } as any);
+    return { service, db, redis, providers, keys, measurements };
 }
 
 /** El contenido de la semilla con un cambio aplicado, como lo mandaría el panel. */
@@ -207,17 +215,56 @@ describe('LlmCatalogService (ADR-0030 fase 2)', () => {
             }
         });
 
-        it('cambiar una cabeza exige medición salvo «publicar sin medición»', async () => {
+        it('cambiar la cabeza de una cadena sin medición bloquea, salvo «publicar sin medición»', async () => {
+            const { service } = harness();
+            await service.loadActive('startup');
+            const draft = await service.createDraft({ reason: 'x', snapshot: edited(c => { c.chains.conversation = ['gpt-5.6-luna', ...c.chains.conversation.filter(m => m !== 'gpt-5.6-luna')]; }) }, ACTOR);
+            const blocked = await service.validateDraft(draft.version);
+            expect(blocked.blocking).toEqual(expect.arrayContaining([
+                'measurement_missing:rehearsal_7t:gpt-5.6-luna', 'measurement_missing:signed_confirmation:gpt-5.6-luna',
+            ]));
+            expect(blocked.headChanges).toEqual(['chain:conversation:gpt-6-luna->gpt-5.6-luna']);
+            const forced = await service.validateDraft(draft.version, { unmeasured: true });
+            expect(forced).toMatchObject({ valid: true, unmeasured: true });
+            expect(forced.warnings).toContain('unmeasured:measurement_missing:rehearsal_7t:gpt-5.6-luna');
+            // La nueva cabeza se prueba con una llamada real aunque ya estuviera en el catálogo.
+            expect(forced.probes.map(p => p.model)).toEqual(['gpt-5.6-luna']);
+        });
+
+        it('con mediciones que igualan a la cabeza, el cambio pasa sin «publicar sin medición»', async () => {
+            const measurements = [
+                measured('gpt-6-luna', 'rehearsal_7t', 251, 267), measured('gpt-6-luna', 'signed_confirmation', 28, 28),
+                measured('gpt-6-sol', 'rehearsal_7t', 268, 276), measured('gpt-6-sol', 'signed_confirmation', 28, 28),
+            ];
+            const { service } = harness({ measurements });
+            await service.loadActive('startup');
+            const draft = await service.createDraft({ reason: 'sol mide mejor', snapshot: edited(c => {
+                c.chains.tool_calling = ['gpt-6-sol', ...c.chains.tool_calling.filter(m => m !== 'gpt-6-sol')];
+            }) }, ACTOR);
+            const validation = await service.validateDraft(draft.version);
+            expect(validation).toMatchObject({ valid: true, unmeasured: false, headChanges: ['chain:tool_calling:gpt-6-luna->gpt-6-sol'] });
+            expect(validation.promotion).toEqual([
+                expect.objectContaining({ bench: 'rehearsal_7t', candidate: expect.objectContaining({ model: 'gpt-6-sol', passRate: 0.971 }), head: expect.objectContaining({ model: 'gpt-6-luna', passRate: 0.9401 }) }),
+                expect.objectContaining({ bench: 'signed_confirmation' }),
+            ]);
+        });
+
+        it('cambiar un rol auxiliar no exige medición (no hay banco), sólo avisa', async () => {
             const { service } = harness();
             await service.loadActive('startup');
             const draft = await service.createDraft({ reason: 'x', snapshot: edited(c => { c.roles.aux_reasoning = ['gpt-5.6-luna', 'gpt-6-luna']; }) }, ACTOR);
-            const blocked = await service.validateDraft(draft.version);
-            expect(blocked.blocking).toContain('head_change_requires_measurement:role:aux_reasoning:gpt-6-luna->gpt-5.6-luna');
-            const forced = await service.validateDraft(draft.version, { unmeasured: true });
-            expect(forced).toMatchObject({ valid: true, unmeasured: true });
-            expect(forced.warnings).toContain('unmeasured_head_change:role:aux_reasoning:gpt-6-luna->gpt-5.6-luna');
-            // La nueva cabeza se prueba con una llamada real aunque ya estuviera en el catálogo.
-            expect(forced.probes.map(p => p.model)).toEqual(['gpt-5.6-luna']);
+            const validation = await service.validateDraft(draft.version);
+            expect(validation).toMatchObject({ valid: true, unmeasured: false });
+            expect(validation.warnings).toContain('role_head_change_without_bench:role:aux_reasoning:gpt-6-luna->gpt-5.6-luna');
+        });
+
+        it('si la tabla de mediciones no responde, el cambio cuenta como sin medición', async () => {
+            const { service, measurements } = harness();
+            measurements.latest.mockRejectedValueOnce(new Error('relation does not exist'));
+            await service.loadActive('startup');
+            const draft = await service.createDraft({ reason: 'x', snapshot: edited(c => { c.chains.classify = ['gpt-5.6-luna', ...c.chains.classify.filter(m => m !== 'gpt-5.6-luna')]; }) }, ACTOR);
+            const validation = await service.validateDraft(draft.version);
+            expect(validation.blocking).toContain('measurement_missing:classify_verifier:gpt-5.6-luna');
         });
 
         it('cada cadena necesita dos proveedores con clave (lección del 8-nov)', async () => {

@@ -1,6 +1,6 @@
 # 0030 — Catálogo LLM configurable sin desplegar, con promoción por medición
 
-- Estado: aceptada; fases 1 (#416) y 2 implementadas, fases 3–5 pendientes
+- Estado: aceptada; fases 1 (#416), 2 (#417) y 4 implementadas, fases 3 y 5 pendientes
 - Fecha: 2026-11-09 · Decide: dueño · Autor: Claude
 - Ámbito: `apps/api` (`ai/router`, `ai/health`, `ai/providers`, `settings`, los servicios con modelo fijo), `apps/dashboard` (`admin/settings/ai-config`), `apps/api/scripts/rehearsal`.
 - Relacionadas: [0026](0026-salud-de-proveedores-llm.md) (salud de proveedores), [0027](0027-costo-llm-cache-y-rechazos.md) (precios de caché), [0028](0028-piso-de-herramientas-dentro-del-plan.md) (piso de herramientas), [0029](0029-migracion-del-catalogo-llm-nov-2026.md) (migración del catálogo).
@@ -220,6 +220,27 @@ Decisiones tomadas al implementarla, que precisan lo de arriba:
   - tier de la cabeza de `tool_calling`.
 
   Un modelo retirado no exige familia conocida.
+
+## Implementación de la fase 4 (9-nov-2026)
+
+- **Tabla.** `public.llm_model_measurements` guarda modelo, banco, `n`, `pass` y `pass_rate`, que calcula el servicio, no quien llama. También guarda el costo por caso, `catalog_version` (la versión, borrador o activa, contra la que se midió), `api_commit`, `run_ref` y notas. Nada se borra.
+- **Quién escribe:**
+  - `measure.cjs --record` registra el ensayo como `rehearsal_7t`. No registra si quedan menos de 150 casos válidos.
+  - `record-measurement.cjs` registra la confirmación firmada, el verificador de `classify` o una medición ya hecha.
+  - `POST admin/llm-catalog/measurements` lo hace por el API.
+- **Medir un borrador.** `measure.cjs --draft <v>` hace que ese proceso use la versión pedida. La API y el worker siguen con la publicada.
+  - Sin `--draft`, el proceso fija la versión activa para que no cambie a mitad de la medición.
+  - `--candidate <modelo>` es el líder (lo mismo que `LLM_MEASUREMENT_LEAD_MODEL`) y tiene que estar en `conversation` y `tool_calling`.
+- **Criterio del ensayo.** Cuenta como acierto `answered` o `missing_data`. Los errores de infraestructura no entran en `n`. Es el criterio de `compare2.py`, con el que se eligió el catálogo de ADR-0029.
+- **Regla de promoción** (`promotion-rule.ts`), que se aplica al validar:
+  - `conversation` y `tool_calling`: el candidato necesita `rehearsal_7t` con tasa ≥ la de la cabeza − 0,01 y `signed_confirmation` con tasa ≥ la de la cabeza.
+  - `classify`: `classify_verifier` sin regresión frente a la cabeza.
+  - **Antigüedad.** La medición del candidato vale 14 días. La de la cabeza sirve de referencia sin importar su edad. Si la cabeza no tiene medición, basta la del candidato y queda un aviso.
+  - **Versión medida.** No se exige que la medición sea contra la versión activa exacta: cada corrección de precio la invalidaría. `catalog_version` queda para trazabilidad.
+  - **Roles.** No hay banco para ellos:
+    - un juez nuevo (`judge_quality` o `judge_rehearsal`) exige «publicar sin medición», porque cambia la vara con que se mide todo lo demás;
+    - los roles auxiliares solo dejan un aviso.
+  - **Dónde queda.** La validación guarda en `promotion` las mediciones que usó. Si la tabla no responde, todo cambio de cabeza cuenta como sin medición.
 
 ## Consecuencias
 

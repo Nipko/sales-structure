@@ -9,6 +9,17 @@
  * Corre `--concurrency` tenants a la vez (2 por defecto: con 7 a la vez, las lecturas de herramientas superaban su
  * límite de 3 s); las repeticiones de cada tenant van en serie (el servicio admite una corrida activa por tenant).
  * No consume el cupo diario del dueño (`internalMeasurement`).
+ *
+ * Medir un modelo para el catálogo (ADR-0030 fase 4):
+ *
+ *   node scripts/rehearsal/measure.cjs --schemas ... --k 1 --draft 5 --candidate gpt-6-luna-mini --record
+ *
+ * - `--draft <versión>`: este proceso usa esa versión del catálogo (un borrador sin publicar, por ejemplo). La API y
+ *   el worker siguen con la publicada. Sin `--draft`, fija la activa para que no cambie a mitad de la medición.
+ * - `--candidate <modelo>`: el modelo que responde primero en `conversation` y `tool_calling` (lo mismo que
+ *   `LLM_MEASUREMENT_LEAD_MODEL`). Tiene que estar en esas cadenas de la versión medida.
+ * - `--record`: al terminar guarda el resumen como medición `rehearsal_7t` del candidato (o de la cabeza de
+ *   `conversation`) en `llm_model_measurements`. No registra con menos de `--min-n` casos válidos (150).
  */
 'use strict';
 const fs = require('node:fs');
@@ -53,6 +64,12 @@ async function measureTenant(svc, prisma, schema, k, seed, log) {
 }
 
 async function main() {
+    const candidate = arg('--candidate');
+    // Lo lee el router al cargar el módulo: tiene que estar antes de requerir AppModule.
+    if (candidate) process.env.LLM_MEASUREMENT_LEAD_MODEL = candidate;
+    const draft = arg('--draft');
+    const record = process.argv.includes('--record');
+    const minN = Number(arg('--min-n', '150'));
     const schemas = String(arg('--schemas', '')).split(',').map(s => s.trim()).filter(Boolean);
     const k = Number(arg('--k', '3'));
     const seed = arg('--seed', 'e1');
@@ -72,6 +89,20 @@ async function main() {
     const prisma = app.get(PrismaService);
     const log = m => console.log(`[${new Date().toISOString()}] ${m}`);
 
+    const { LlmCatalogService } = require('../../dist/modules/ai/catalog/llm-catalog.service');
+    const { LlmMeasurementService } = require('../../dist/modules/ai/catalog/llm-measurement.service');
+    const { summarizeRehearsalRuns } = require('../../dist/modules/ai/catalog/promotion-rule');
+    const { activeLlmCatalog } = require('../../dist/modules/ai/router/llm-catalog');
+    const catalogSvc = app.get(LlmCatalogService);
+    let catalog;
+    if (draft) catalog = await catalogSvc.pinForMeasurement(Number(draft));
+    else { catalogSvc.stopFollowing(); catalog = activeLlmCatalog(); }
+    if (candidate && !['conversation', 'tool_calling'].every(task => catalog.chains[task].includes(candidate))) {
+        throw new Error(`--candidate ${candidate} no está en conversation y tool_calling de la versión ${catalog.version}`);
+    }
+    const measuredModel = candidate || catalog.chains.conversation[0];
+    log(`catálogo v${catalog.version}, modelo medido ${measuredModel}`);
+
     const startedAt = new Date().toISOString();
     const concurrency = Math.max(1, Number(arg('--concurrency', '2')));
     const queue = [...schemas];
@@ -82,8 +113,23 @@ async function main() {
             results.push(await measureTenant(svc, prisma, s, k, seed, log).catch(e => ({ schema: s, error: String(e?.message ?? e) })));
         }
     }));
-    fs.writeFileSync(out, JSON.stringify({ startedAt, finishedAt: new Date().toISOString(), k, seed, results }, null, 1));
+    const finishedAt = new Date().toISOString();
+    fs.writeFileSync(out, JSON.stringify({ startedAt, finishedAt, k, seed, catalogVersion: catalog.version, model: measuredModel, results }, null, 1));
     log(`listo: ${out}`);
+    const summary = summarizeRehearsalRuns(results);
+    log(`resumen ${measuredModel}: ${summary.pass}/${summary.n} = ${summary.passRate} (errores ${summary.errors})`);
+    if (record) {
+        if (summary.n < minN) {
+            log(`NO se registra: ${summary.n} casos válidos < --min-n ${minN}`);
+        } else {
+            const row = await app.get(LlmMeasurementService).record({
+                modelId: measuredModel, bench: 'rehearsal_7t', n: summary.n, pass: summary.pass, costPerCaseUsd: summary.costPerCaseUsd,
+                catalogVersion: Number(catalog.version) || null, apiCommit: process.env.GIT_SHA || null, runRef: out,
+                notes: `schemas=${schemas.join(',')} k=${k} seed=${seed} errors=${summary.errors}`, measuredAt: finishedAt,
+            });
+            log(`medición registrada ${row.id}`);
+        }
+    }
     await app.close();
     process.exit(0);
 }

@@ -5,10 +5,12 @@ import { RedisService } from '../../redis/redis.service';
 import { LlmKeyService } from '../../settings/llm-key.service';
 import type { ILLMProvider } from '../interfaces/illm-provider.interface';
 import {
-    activeLlmCatalog, CATALOG_ROLES, CATALOG_TASKS, catalogContent, catalogHeadChanges, catalogIntegrityProblems, catalogModel,
+    activeLlmCatalog, CATALOG_ROLES, CATALOG_TASKS, catalogContent, catalogIntegrityProblems, catalogModel,
     parseLlmCatalogSnapshot, sameCatalogContent, SEED_LLM_CATALOG, setActiveLlmCatalog,
     type LlmCatalogSnapshot, type ModelConfig,
 } from '../router/llm-catalog';
+import { LlmMeasurementService, measurementKey } from './llm-measurement.service';
+import { describeHeadChange, headChangeList, promotionCheck, type HeadChange, type MeasurementLite, type PromotionEvidence } from './promotion-rule';
 
 /** Número de la versión activa. Publicar lo cambia; cada proceso lo mira como mucho cada 10 s (ADR-0030 §2). */
 export const LLM_CATALOG_VERSION_KEY = 'llm:catalog:active_version';
@@ -52,6 +54,8 @@ export interface CatalogValidation {
     /** Se publicó un cambio de cabeza sin medición (emergencia). El panel lo muestra en rojo. */
     unmeasured: boolean;
     probes: CatalogProbe[];
+    /** Mediciones de candidato y cabeza que usó la regla de promoción, por cambio y banco. */
+    promotion?: PromotionEvidence[];
 }
 
 export interface ValidateOptions {
@@ -95,6 +99,7 @@ export class LlmCatalogService implements OnModuleInit, OnModuleDestroy {
         private readonly redis: RedisService,
         private readonly llmKeys: LlmKeyService,
         @Inject('LLM_PROVIDERS') private readonly providers: ILLMProvider[],
+        private readonly measurements: LlmMeasurementService,
         @Optional() private readonly config?: ConfigService,
     ) { }
 
@@ -267,8 +272,9 @@ export class LlmCatalogService implements OnModuleInit, OnModuleDestroy {
      * 1, 2, 5, 6, 7 → `catalogIntegrityProblems`;
      * 3 → una llamada real a cada modelo nuevo, con cambios que afectan la llamada, o que pasa a encabezar algo;
      * 4 → cada cadena con al menos dos proveedores con clave configurada.
-     * Cambiar una cabeza exige medición: hasta la fase 4 no hay tabla de mediciones,
-     * así que sólo pasa con «publicar sin medición» o al volver a una versión anterior.
+     * Cambiar una cabeza exige medición (regla de promoción, fase 4): sin una medición
+     * que iguale a la cabeza actual sólo pasa con «publicar sin medición» o al volver
+     * a una versión anterior.
      */
     async validate(candidate: LlmCatalogSnapshot, options: ValidateOptions = {}): Promise<CatalogValidation> {
         const current = await this.currentFromDb();
@@ -286,14 +292,19 @@ export class LlmCatalogService implements OnModuleInit, OnModuleDestroy {
             if (providers.size < 2) blocking.push(`chain_configured_providers:${task}:${providers.size}`);
         }
 
-        const headChanges = catalogHeadChanges(current, candidate);
+        const changes = headChangeList(current, candidate);
+        const headChanges = changes.map(describeHeadChange);
         let unmeasured = false;
-        if (headChanges.length && !options.restoring) {
-            if (options.unmeasured) {
+        let promotion: PromotionEvidence[] = [];
+        if (changes.length && !options.restoring) {
+            const result = await this.promotion(changes);
+            promotion = result.evidence;
+            warnings.push(...result.warnings);
+            if (result.problems.length && options.unmeasured) {
                 unmeasured = true;
-                warnings.push(...headChanges.map(c => `unmeasured_head_change:${c}`));
+                warnings.push(...result.problems.map(p => `unmeasured:${p}`));
             } else {
-                blocking.push(...headChanges.map(c => `head_change_requires_measurement:${c}`));
+                blocking.push(...result.problems);
             }
         }
 
@@ -319,7 +330,41 @@ export class LlmCatalogService implements OnModuleInit, OnModuleDestroy {
             headChanges,
             unmeasured,
             probes,
+            promotion,
         };
+    }
+
+    /** La regla de promoción con las últimas mediciones; sin la tabla, todo cambio queda «sin medición». */
+    private async promotion(changes: HeadChange[]) {
+        const ids = changes.flatMap(c => [c.from, c.to]).filter((id): id is string => !!id);
+        let latest = new Map<string, MeasurementLite>();
+        try {
+            latest = await this.measurements.latest(ids);
+        } catch (e: any) {
+            this.logger.warn(`Measurements unavailable, every head change counts as unmeasured: ${e?.message}`);
+        }
+        return promotionCheck(changes, (model, bench) => latest.get(measurementKey(model, bench)));
+    }
+
+    /**
+     * Para el runner de medición (`measure.cjs --draft`): deja de seguir la versión
+     * publicada y pone a regir en ESTE proceso la versión pedida (borrador incluido).
+     * La API y el worker no se enteran.
+     */
+    async pinForMeasurement(version: number): Promise<LlmCatalogSnapshot> {
+        this.onModuleDestroy();
+        this.timer = undefined;
+        const row = await this.getVersion(version);
+        const snapshot = parseOrThrow(row.snapshot, String(row.version));
+        setActiveLlmCatalog(snapshot);
+        this.loadedVersion = row.version;
+        return snapshot;
+    }
+
+    /** Sólo deja de seguir la versión publicada (medir la activa sin que cambie a mitad). */
+    stopFollowing(): void {
+        this.onModuleDestroy();
+        this.timer = undefined;
     }
 
     /** Llamada real con el adaptador del proveedor: un turno corto y, si el modelo tiene herramientas, una llamada a herramienta. */

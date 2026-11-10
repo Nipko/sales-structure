@@ -241,6 +241,29 @@ model LlmCatalogVersion {
   @@schema("public")
 }
 
+// Mediciones QA de modelos LLM (ADR-0030 fase 4; migración 20261109140000_add_llm_model_measurements).
+// Las lee la regla de promoción del catálogo; la app usa $queryRaw desde `LlmMeasurementService`.
+model LlmModelMeasurement {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modelId         String   @map("model_id") @db.VarChar(100)
+  bench           String   @db.VarChar(32)
+  n               Int
+  pass            Int
+  passRate        Decimal  @map("pass_rate") @db.Decimal(6, 4)
+  costPerCaseUsd  Decimal? @map("cost_per_case_usd") @db.Decimal(12, 6)
+  catalogVersion  Int?     @map("catalog_version")
+  apiCommit       String?  @map("api_commit") @db.VarChar(64)
+  runRef          String?  @map("run_ref") @db.VarChar(500)
+  notes           String?
+  recordedBy      String?  @map("recorded_by") @db.Uuid
+  measuredAt      DateTime @map("measured_at") @db.Timestamptz(6)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([modelId, bench, measuredAt(sort: Desc)], map: "llm_model_measurements_model_bench_idx")
+  @@map("llm_model_measurements")
+  @@schema("public")
+}
+
 // ---- Channel Accounts (WhatsApp numbers, IG accounts, etc.) ----
 model ChannelAccount {
   id            String   @id @default(uuid())

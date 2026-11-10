@@ -6,20 +6,22 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { auditActor } from '../../common/utils/audit-actor.util';
 import { catalogContent, SEED_LLM_CATALOG, sameCatalogContent } from './router/llm-catalog';
 import { LlmCatalogService } from './catalog/llm-catalog.service';
+import { LlmMeasurementService, type MeasurementInput } from './catalog/llm-measurement.service';
 
 /**
  * Catálogo LLM versionado (ADR-0030 fase 2). Sólo super_admin: una publicación
  * cambia el modelo de todos los tenants en ≤10 s.
  *
  * Flujo: crear borrador (copia de la activa) → editar su snapshot → validar →
- * publicar. Volver atrás: `restore` sobre una versión ya publicada.
+ * publicar. Volver atrás: `restore` sobre una versión ya publicada. Las mediciones
+ * (`measurements`) alimentan la regla de promoción de la validación (fase 4).
  */
 @Controller('admin/llm-catalog')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
 @Roles('super_admin')
 @ApiBearerAuth()
 export class LlmCatalogController {
-    constructor(private readonly catalog: LlmCatalogService) { }
+    constructor(private readonly catalog: LlmCatalogService, private readonly measurements: LlmMeasurementService) { }
 
     /** La versión que rige en este proceso. */
     @Get()
@@ -72,5 +74,20 @@ export class LlmCatalogController {
     @Post('versions/:version/restore')
     async restore(@Param('version', ParseIntPipe) version: number, @Body() body: { reason?: string }, @Req() req: any) {
         return { success: true, data: await this.catalog.restore(version, body?.reason ?? '', auditActor(req?.user)) };
+    }
+
+    /** Query: `modelId?`, `bench?`, `limit?`. Más recientes primero. */
+    @Get('measurements')
+    async listMeasurements(@Query('modelId') modelId?: string, @Query('bench') bench?: string, @Query('limit') limit?: string) {
+        return { success: true, data: await this.measurements.list({ modelId, bench, limit: Number(limit) || 100 }) };
+    }
+
+    /**
+     * Body: `{ modelId, bench, n, pass, costPerCaseUsd?, catalogVersion?, apiCommit?, runRef?, notes?, measuredAt? }`.
+     * `bench`: `rehearsal_7t` | `signed_confirmation` | `classify_verifier`.
+     */
+    @Post('measurements')
+    async recordMeasurement(@Body() body: MeasurementInput, @Req() req: any) {
+        return { success: true, data: await this.measurements.record(body ?? ({} as MeasurementInput), auditActor(req?.user).userId) };
     }
 }

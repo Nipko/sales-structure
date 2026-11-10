@@ -100,6 +100,20 @@ describe('lectura de la procedencia real', () => {
         expect(fromLegacyRows(after).items.appointment[0]).toMatchObject({ contentStatus: 'confirmed', legacyRule: 'L1' });
     });
 
+    it('dental-listo: «Precio confirmado» de la pantalla de servicios (price_status=confirmed, sin price_type) es precio fijo', () => {
+        const { after } = migrate(dental());
+        const svc = after.services[0];
+        svc.updated_at = '2026-11-10T03:40:00.000Z';
+        svc.price_status = 'confirmed';
+        svc.price_type = null;
+        svc.price = 80000;
+        expect(fromLegacyRows(after).items.appointment[0]).toMatchObject({ contentStatus: 'confirmed', priceStatus: 'confirmed', priceType: 'fijo' });
+        svc.price = 0;
+        expect(fromLegacyRows(after).items.appointment[0]).toMatchObject({ priceStatus: 'confirmed', priceType: null });
+        svc.price_type = 'desde';
+        expect(fromLegacyRows(after).items.appointment[0]).toMatchObject({ priceType: 'desde' });
+    });
+
     it('el content_status solo (default de columna `confirmed`) no es procedencia: sin origin decide L3', () => {
         const rows = dental();
         rows.services = rows.services.map(s => ({ ...s, content_status: 'confirmed' }));

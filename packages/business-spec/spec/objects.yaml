@@ -168,7 +168,7 @@ template:
     example: {readable: true, identity_level: canal, fields_visible: [referencia, fecha, estado, total, payment_status]}
   criticality: {level: necesario, rule: R4, conditional: "bloqueante (R3) en dominios health, mental_health, insurance, finance, legal (identidad y campos visibles)", when: [{if: "domain_any([health, mental_health, insurance, finance, legal])", level: bloqueante, rule: R3}]}
   when_missing: {code: HUM, behavior: "readable = false o identidad insuficiente: «no puedo ver tus {reservas} desde aquí» + verificación o HUM. Sin registros: «no veo ninguna a este contacto» + PREG (¿otro dato?).", never: ["contar o fechar desde el historial del chat (P7)", "decir 'usted pagó' si payment_status ≠ pagado"]}
-  sources: {allowed: [derived, integration]}
+  sources: {allowed: [owner_form, derived, integration]}
   collection: {channels: [form], ui_today: nuevo, storage_today: "herramientas list_my_* (12) por vertical + identidad A1/A2/A4", storage_status: parcial}
   readiness: {predicate_kind: custom, predicate: "readable declarado; si true: status_vocabulary completo e identity_level ≥ mínimo del dominio", gap_message: "Revisa qué puede ver un cliente de sus {reservas} y cómo se identifica."}
   qa_truth: "C19/C20: la esperada sale del registro leído en el turno (conteo, orden por fecha, estado, pago); con identidad insuficiente, el paso de verificación."

@@ -7,7 +7,7 @@
  * y ningún editor la escriba sin ella (C0 §2.9, K4; estado por regla en docs/domain/business-readiness-runtime.md).
  */
 import {
-    PROVENANCE_TABLES, applyRequirementValues, realRowProvenance, toMs, type RowProvenance,
+    PRICE_TYPES, PROVENANCE_TABLES, applyRequirementValues, realRowProvenance, toMs, type RowProvenance,
 } from './provenance';
 import { emptySnapshot } from './snapshot';
 import type {
@@ -176,7 +176,9 @@ export function legacyRowProvenance(table: string, row: Row, ctx: LegacyContext)
     let p: Partial<RowProvenance>;
     if (ps === 'example') p = { priceStatus: 'example', priceType: null, legacyRule: 'L1' };
     else if (cfg.legacyPriceStatus && ps === 'quote') p = { priceStatus: 'confirmed', priceType: 'a_cotizar', legacyRule: 'L1' };
-    else if (cfg.legacyPriceStatus && ps === 'confirmed') p = { priceStatus: 'confirmed', priceType: null, legacyRule: 'L1' };
+    // Dental-listo (2026-11-10): `confirmed` lo escribe hoy «Precio confirmado» en la pantalla de servicios sin tocar
+    // `price_type`; con precio > 0 es un precio fijo (como L7). Sin esto ningún servicio cumplía OBJ.*.CATALOG.
+    else if (cfg.legacyPriceStatus && ps === 'confirmed') p = { priceStatus: 'confirmed', priceType: PRICE_TYPES.includes(row.price_type as PriceType) ? row.price_type as PriceType : price !== null && price > 0 ? 'fijo' : null, legacyRule: 'L1' };
     else if (price !== null && price > 0) p = { priceStatus: 'confirmed', priceType: 'fijo', origin: 'legacy_inferred', legacyRule: 'L7' };
     else p = {};
     return {

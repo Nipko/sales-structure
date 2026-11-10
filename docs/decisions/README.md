@@ -32,6 +32,7 @@ Registro de decisiones aprobadas del proyecto (frente K1). Una decisión por arc
 | [0028](0028-piso-de-herramientas-dentro-del-plan.md) | El piso de herramientas respeta los tiers del plan; solo un turno con una escritura en juego puede subir a tier_1/2, y la afinidad ya no fija modelos de fuera del plan | aprobada | 2026-11-09 |
 | [0029](0029-migracion-del-catalogo-llm-nov-2026.md) | Catálogo LLM migrado antes del apagado de GPT-4 (14-ene-2027): gpt-6-luna lidera, gemini-3.5-flash-lite encabeza `classify`, adaptadores sin razonamiento y modelos fijos reemplazados, elegidos con el banco QA propio | aprobada | 2026-11-09 |
 | [0030](0030-catalogo-llm-configurable-sin-desplegar.md) | Catálogo LLM versionado en base de datos: modelos, precios, cadenas y roles se publican desde el panel sin desplegar; liderar una cadena exige medición QA; código solo para proveedores o familias nuevas | aceptada (fases 1, 2 y 4) | 2026-11-09 |
+| [0031](0031-dental-listo-como-dueno.md) | Dental QA de «no listo» a «listo con límites» desde el panel: ≈ 12–13 min tras #420; copiloto con 78 % de precisión (meta 90 %) y fricciones de onboarding priorizadas | aceptada | 2026-11-10 |
 
 **Registros previos al formato ADR** ([`previas/`](previas/)): retiro de Mercado Pago como PSP de plataforma, Email fuera del self-service, ledger de decisiones de producto (24-ago-2026), registro de decisiones de verticales y decisiones de onboarding (D1–D26). Siguen vigentes salvo que un ADR los reemplace; se convertirán a ADR numerados cuando se toquen.
 

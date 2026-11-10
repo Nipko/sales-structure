@@ -1,4 +1,5 @@
 import { withRuntimeSchemaLock } from '../../common/utils/runtime-schema-lock';
+import { scopeOwnRecordsResult } from './runtime/own-records-scope';
 import { customerFacingPrice, servicePriceNote, servicePriceStatus } from '../appointments/service-price-status';
 import { buildAppointmentNotes, classifyContactPhone, isPlatformIdChannel, normaliseNotesLanguage, type NotesLanguage } from '../appointments/appointment-notes';
 import { enrollmentTermsHash, enrollmentTermsReviewResult } from '../education/enrollment-terms';
@@ -526,11 +527,14 @@ export class AIToolExecutorService {
         opts: AIToolExecuteOptions,
     ): Promise<any> {
         const recorder = this.toolUsage;
-        if (!recorder) return this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts);
+        if (!recorder) return scopeOwnRecordsResult(toolName,
+            await this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts));
         const startedAt = performance.now();
         let result: any;
         try {
-            result = await this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts);
+            // E2ag C19/C20: una lista propia vacía dice que solo se buscó en este chat (own-records-scope.ts).
+            result = scopeOwnRecordsResult(toolName,
+                await this.executeUnobserved(schemaName, tenantId, contactId, toolName, args, conversationId, opts));
         } catch (error) {
             this.observeToolUsage(recorder, tenantId, toolName, opts, startedAt, classifyToolException());
             throw error;

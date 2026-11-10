@@ -136,6 +136,19 @@ function maskProperNames(text: string, personWords: readonly string[]): string {
 }
 
 /**
+ * E2ag C30: «¿Me comunicas con alguien del equipo?», «¿me pasas con alguien?», «necesito hablar con alguien del equipo» no
+ * nombran una palabra de persona del paquete («asesor», «una persona»…) y no contaban como pedido. Con gpt-6-luna el agente
+ * prometía el traspaso, el turno lo leía como no pedido y la respuesta quedaba en «No tengo ese dato confirmado». Pedir que lo
+ * pongan en contacto CON alguien (del equipo) es pedir una persona; «alguien me puede decir el precio» no lo es.
+ */
+const PUT_THROUGH_TO_SOMEONE = /\b(?:comunic\w*|comuniqu\w*|me\s+pas(?:a|e|as|es)|pas(?:ar|ame|arme|anos|arnos)|conect\w*|transfi\w*|transfer\w*|hablar|hablarle|habla|charlar|conversar|contactar\w*|falar|talk|speak|connect\w*|put me through)\s+(?:me\s+|nos\s+)?(?:con|com|with|to)\s+(?:alguien|alguem|someone|somebody|el equipo|su equipo|o time|the team|your team|un humano|una persona real)\b/;
+
+function asksToBePutThrough(raw: unknown): boolean {
+    const text = normalizeForIntent(String(raw ?? '').replace(STRUCTURED_REFERENCE, ' ')).replace(HUMAN_REQUEST_REFUSAL, ' ');
+    return PUT_THROUGH_TO_SOMEONE.test(text);
+}
+
+/**
  * The request-for-a-person alias the message asks for: a person word, and a verb that asks to be put through. Names are
  * masked first, and a want-verb that governs another action («lo quiero comprar») does not count.
  */
@@ -335,6 +348,9 @@ export function normalizeCustomerIntent(
             ...base, intent: 'request_human', confidence: humanAlias.confidence,
             matched: humanAlias.value, packId: pack?.id,
         };
+    }
+    if (asksToBePutThrough(raw)) {
+        return { ...base, intent: 'request_human', confidence: 'high', matched: 'alguien', packId: pack?.id };
     }
 
     if (isInformationSeekingMessage(raw)) return base;

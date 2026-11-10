@@ -109,3 +109,37 @@ Regresión nueva: **inmobiliaria bajó de 97 % a 90 %**. El agente lee los campo
 
 Además, en C06 dijo dos veces que no hay catálogo cuando sí hay una propiedad confirmada. Es la misma clase de error que «lecturas vacías que niegan», ahora en los campos de una ficha; queda como siguiente corrección. C16 sigue en 67 %.
 
+
+## Adenda 7 (E2ai y E2aj, 2026-11-10): ficha inmobiliaria y datos del dueño hacia el agente
+
+**E2ai** se midió después de #422. La ficha inmobiliaria ya no niega con defaults de columna: parqueaderos 0, financiación `false` y amenidades vacías sin confirmar llegan como desconocidos (`unconfirmedFields`), igual que en la opción B de la preparación. Inmobiliaria subió de 90 % a 95 % (pass^3 88 % → 92 %).
+
+El dental bajó de 95 % a 81 %. E2ai sumó casos AFIRMA del dental (128 → 188 intentos AFIRMA en total) porque el dueño confirmó datos en el panel, y esos datos no llegaban al agente. Hubo tres causas:
+
+1. **Políticas.** Ninguna plantilla activaba la familia `policies`, así que `get_policy` no se ofrecía y el agente no leía `CORE.POLICY.*`.
+2. **Documentos.** Todas las plantillas sembraban `rag.similarityThreshold: 0.75`. Las puntuaciones reales del documento de la clínica estaban entre 0,55 y 0,68, y `search_knowledge_base` volvía vacía.
+3. **Regla de plantilla.** «NUNCA pidas cédula» llevaba al agente a negar un requisito que el negocio sí declara.
+
+Decisión (#423):
+- `policies: { enabled: true }` va en todas las plantillas.
+- El umbral es 0,35, el mismo `KB_RELEVANCE_THRESHOLD` de la plataforma.
+- En el dental, la regla de documento cede ante lo que declaran los documentos o las FAQ del negocio.
+
+Los agentes ya creados se actualizaron en la base: el umbral en los 24 y `policies` en 22 (los dos de `tenant_ioffi` no tienen bloque de herramientas). Hay respaldo previo en el VPS. Las demás plantillas con «NUNCA pidas cédula» (seguros, inmobiliaria, tienda y cotizaciones) no cambian: eso es una decisión de privacidad aparte.
+
+**E2aj** se midió después de #423. Al final de la medición se agotó el crédito de la cuenta de OpenAI. El dental era el último tenant y 69 de sus 120 intentos dieron 429, así que no se puede decir si se recuperó.
+
+| Indicador (6 tenants sin dental) | E2ai | E2aj |
+|---|---|---|
+| Aciertos | 95 % (676/711) | 94 % (669/710) |
+| pass^3 | 90 % (208/231) | 91 % (209/230) |
+
+- Inmobiliaria llegó a 98 %, con C06 al 100 %.
+- Electrónica bajó de 97 % a 93 %, con 8 tiempos agotados de `automatic_search_faqs`.
+- En los intentos del dental que sí se calificaron:
+  - `get_policy` ya responde la cancelación;
+  - persisten la omisión del documento en los datos para la cita (P08-4/5);
+  - «no tengo el dato» sobre medios de pago confirmados (C14);
+  - una negativa de teleconsulta sin respaldo (P08-9).
+
+Queda pendiente repetir el dental cuando haya crédito.

@@ -1,4 +1,5 @@
-import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout, canDetachToolAfterTimeout } from './tool-timeout-policy';
+import { AUTOMATIC_FAQ_TIMEOUT_MS, AUTOMATIC_READ_TIMEOUT_MS, awaitAutomaticFaqLookup, awaitToolWithSafeTimeout, canDetachToolAfterTimeout } from './tool-timeout-policy';
+import { FAQ_SELECTOR_TIMEOUT_MS } from '../faqs/faq-semantic-selector';
 import { getToolPolicy, type ToolPolicy } from './tool-policy-registry';
 
 const policy = (overrides: Partial<ToolPolicy> = {}): ToolPolicy => ({
@@ -78,5 +79,10 @@ describe('tool timeout policy', () => {
     it('cannot detach a FAQ lookup that could record views or a ledger', () => {
         const operation = new Promise(() => undefined);
         expect(awaitAutomaticFaqLookup(operation, 25, { mode: 'live', persistence: 'enabled' })).toBe(operation);
+    });
+
+    it('E2aj: the automatic FAQ deadline leaves the corrective selector its whole budget on top of the reads', () => {
+        expect(AUTOMATIC_FAQ_TIMEOUT_MS).toBe(FAQ_SELECTOR_TIMEOUT_MS + AUTOMATIC_READ_TIMEOUT_MS);
+        expect(AUTOMATIC_FAQ_TIMEOUT_MS - FAQ_SELECTOR_TIMEOUT_MS).toBeGreaterThanOrEqual(AUTOMATIC_READ_TIMEOUT_MS);
     });
 });

@@ -96,6 +96,26 @@ Con la sesión de super_admin, entré al tenant `spark-qa-dental-03` con «Acomp
 - Usar `screenTargetsFor` en el cajón de precio y enlazar Citas › Servicios.
 - Hacer que la pantalla de servicios escriba `price_type` y deje de depender de L1.
 
+## Adenda (2026-11-10): fricciones corregidas (#431)
+
+Se corrigieron 9 de las 10 fricciones:
+- REGION declara el país del tenant;
+- el copiloto normaliza los tramos y descarta contactos con el nombre del canal como valor;
+- los formularios ya no muestran notación de la especificación ni placeholders sin resolver;
+- «Editar y aprobar» abre con la propuesta;
+- el precio solo enlaza la pantalla del tenant;
+- el horario humano parte del horario del negocio;
+- los campos de la solicitud se ven desde el inicio;
+- los conteos coinciden.
+
+**Decisión: modo de reserva por defecto en salud.** Sin `WRITE_MODE` declarado, un tenant `health` o `mental_health` usa «solicitud», no confirmación directa. Sale de `facts.ts`, así que el panel, el aviso y el contrato del turno coinciden.
+
+Consecuencias:
+- En el dental golden, disponibilidad y cancelación pasan de bloqueantes a necesarias: 20 aplicables y 16 que fallan, antes 22 y 18.
+- La herramienta de reserva no consulta el modo. El agente puede decir «solicitud» aunque la cita quede registrada directamente; promete de menos, no de más.
+
+La fricción 10 (descripción, incluye/no incluye y preparación en el formulario de servicio) se resuelve en #434, con columnas nuevas en `services`.
+
 ## Decisión: recall del copiloto (hechos del documento)
 
 - El copiloto propone también los requisitos que son **hechos que un negocio escribe en sus documentos**: `CORE.IDENTITY.REGION`, `CORE.HANDOFF.HOURS_SLA`, `CORE.LANGUAGES.SERVED`, `CORE.PAYMENT.TIMING_DEPOSIT`, `CORE.PAYMENT.FINANCING`, `CORE.PAYMENT.INVOICING`, `CORE.PRIVACY.NOTICE`, `CORE.CONTACT.SPECIAL`, `OBJ.*.CHANGE_RULES`, `DOM.HEALTH.EMERGENCY_PROTOCOL`, `DOM.HEALTH.CLINICAL_SCOPE` y `DOM.VETERINARY.EMERGENCY`.

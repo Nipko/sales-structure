@@ -59,6 +59,11 @@ const EDITOR_FORM: EditorForm = {
     paymentPolicy: "none",
     depositPercent: null,
     depositAmount: null,
+    description: "",
+    includesText: "",
+    excludesText: "",
+    preparation: "",
+    noPreparation: false,
 };
 
 describe("a service card without an amount", () => {

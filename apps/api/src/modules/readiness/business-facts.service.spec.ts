@@ -111,6 +111,29 @@ describe('BusinessFactsService.write', () => {
     });
 });
 
+describe('REGION declara el país del tenant (ADR 0031, fricción 1)', () => {
+    const REGION = { operating_country: 'CO', timezone: 'America/Bogota', currency: 'COP', default_locale: 'es-CO' };
+
+    it('un REGION confirmado escribe operating_country, zona horaria y moneda por la puerta de Localización', async () => {
+        const db = fakeDb();
+        const regional = { declare: jest.fn(async (_t: string, field: string, value: string) => ({ field, value })) };
+        const service = new BusinessFactsService(db.prisma as any, { spec, invalidate: jest.fn() } as any, { emit: jest.fn() } as any, undefined, regional as any);
+        await service.write(TENANT, { requirementId: 'CORE.IDENTITY.REGION', value: REGION }, OWNER);
+        expect(regional.declare.mock.calls.map(c => [c[1], c[2]])).toEqual([['operating_country', 'CO'], ['timezone', 'America/Bogota'], ['currency', 'COP']]);
+        expect(regional.declare).toHaveBeenCalledWith(TENANT, 'operating_country', 'CO', OWNER.kind === 'user' ? OWNER.userId : '');
+    });
+
+    it('otros requisitos o valores no confirmados no tocan el tenant; un fallo al declarar no deshace el valor', async () => {
+        const db = fakeDb();
+        const regional = { declare: jest.fn(async () => { throw new Error('boom'); }) };
+        const service = new BusinessFactsService(db.prisma as any, { spec, invalidate: jest.fn() } as any, { emit: jest.fn() } as any, undefined, regional as any);
+        await service.write(TENANT, { requirementId: 'CORE.PAYMENT.METHODS', value: { methods: ['efectivo'] } }, OWNER);
+        expect(regional.declare).not.toHaveBeenCalled();
+        await expect(service.write(TENANT, { requirementId: 'CORE.IDENTITY.REGION', value: REGION }, OWNER)).resolves.toMatchObject({ version: 1 });
+        expect(regional.declare).toHaveBeenCalledTimes(3);
+    });
+});
+
 describe('aceptación de valores por defecto (C0 §2.5)', () => {
     it('escribe origin=default_accepted con la spec_version vigente; no pisa lo configurado; rechaza ids que no son default', async () => {
         const { service, db } = make();

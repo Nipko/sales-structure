@@ -19,6 +19,7 @@ import {
     MIGRATION_ORIGINS, formFor, projectToLegacy, validateRequirementValue, type CompiledSpec, type LegacyProjection, type StoredStatus, type ValueIssue,
 } from '@parallext/business-spec';
 import { PrismaService } from '../prisma/prisma.service';
+import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { BusinessFactsReader } from './business-facts.reader';
 import { ReadinessService } from './readiness.service';
 import {
@@ -89,6 +90,7 @@ export class BusinessFactsService {
         private readonly readiness: ReadinessService,
         @Optional() private readonly events?: EventEmitter2,
         @Optional() private readonly reader?: BusinessFactsReader,
+        @Optional() private readonly regional?: RegionalProfileService,
     ) {}
 
     protected now(): Date {
@@ -150,8 +152,31 @@ export class BusinessFactsService {
         }
         if (!rows[0]) throw conflict();
         const view = toView(rows[0]);
+        await this.declareRegion(tenantId, requirementId, scopeKey, input.value, status, origin, actor);
         this.emitWritten(tenantId, view, projection?.storage);
         return view;
+    }
+
+    /**
+     * ADR 0031 fricción 1: el país se declaraba en dos lugares. El cajón `CORE.IDENTITY.REGION` guardaba aquí, pero el
+     * pack de país (y el agente) lo resuelven de `tenants.operating_*`, que solo escribía Configuración › Localización.
+     * Un REGION confirmado escribe también esas columnas por la misma puerta que Localización
+     * (`RegionalProfileService.declare`), para que el panel y el agente no discrepen (ADR 0007/0009).
+     */
+    private async declareRegion(tenantId: string, requirementId: string, scopeKey: string, value: unknown, status: StoredStatus, origin: string, actor: BusinessFactActor): Promise<void> {
+        if (requirementId !== 'CORE.IDENTITY.REGION' || scopeKey !== '' || status !== 'confirmed' || MIGRATION_ORIGINS.has(origin)) return;
+        if (!this.regional || !value || typeof value !== 'object') return;
+        const v = value as Record<string, unknown>;
+        const declaredBy = actor.kind === 'user' ? actor.userId ?? 'desconocido' : `business-facts:${actor.name}`;
+        const fields: [string, unknown][] = [['operating_country', v.operating_country], ['timezone', v.timezone], ['currency', v.currency]];
+        for (const [field, raw] of fields) {
+            if (typeof raw !== 'string' || !raw.trim()) continue;
+            try {
+                await this.regional.declare(tenantId, field, raw, declaredBy);
+            } catch (err) {
+                this.logger.warn(`REGION confirmado pero ${field}=${raw} no se pudo declarar en el tenant ${tenantId}: ${(err as Error).message}`);
+            }
+        }
     }
 
     /**

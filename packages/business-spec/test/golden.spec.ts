@@ -17,10 +17,13 @@ import { evaluate } from '../src/engine/evaluate';
 import { fromLegacyRows } from '../src/legacy-status';
 import { FIXTURES, NOW, fixtureRows, fixtureSnapshot, spec } from './helpers';
 
+// ADR 0031 fricción 9: en salud el modo por defecto es «solicitud»; la disponibilidad y la política de cancelación
+// bloquean solo cuando el agente confirma directo, así que con el modo por defecto pasan a necesarias (20 bloqueantes,
+// 16 fallan). Si el dueño declara confirmación directa vuelven a bloquear.
 const DENTAL_BLOCKING = [
     'CORE.IDENTITY.REGION', 'CORE.LOCATIONS.LIST', 'CORE.HOURS.REGULAR', 'CORE.OFFER.ITEMS', 'CORE.OFFER.PRICE_MODEL',
-    'CORE.PAYMENT.METHODS', 'CORE.POLICY.CANCELLATION_CHANGES', 'CORE.PRIVACY.NOTICE', 'CORE.HANDOFF.HOURS_SLA',
-    'CORE.SAFETY.EMERGENCY_BASE', 'OBJ.APPOINTMENT.CATALOG', 'OBJ.APPOINTMENT.AVAILABILITY_SOURCE', 'OBJ.APPOINTMENT.WRITE_MODE',
+    'CORE.PAYMENT.METHODS', 'CORE.PRIVACY.NOTICE', 'CORE.HANDOFF.HOURS_SLA',
+    'CORE.SAFETY.EMERGENCY_BASE', 'OBJ.APPOINTMENT.CATALOG', 'OBJ.APPOINTMENT.WRITE_MODE',
     'OBJ.APPOINTMENT.CHANGE_RULES', 'OBJ.APPOINTMENT.ACCOUNT_READ', 'DOM.HEALTH.EMERGENCY_PROTOCOL', 'DOM.HEALTH.CLINICAL_SCOPE',
     'DOM.HEALTH.SENSITIVE_DATA',
 ];
@@ -35,12 +38,14 @@ const FOOD_BLOCKING_PASS = ['CORE.IDENTITY.NAME', 'CORE.IDENTITY.DESCRIPTION', '
 const passing = (r: ReturnType<typeof evaluate>, ids: string[]) => ids.filter(id => r.requirements.find(x => x.id === id)?.result === 'cumple');
 
 describe('golden: validación manual dental y comida', () => {
-    it('dental (P08 · appointment · health): no listo, 22 bloqueantes aplicables, los mismos 18 fallan', () => {
+    it('dental (P08 · appointment · health): no listo, 20 bloqueantes aplicables, 16 fallan (modo solicitud por defecto)', () => {
         const r = evaluate(spec, fixtureSnapshot('spark-qa-dental-03'));
         expect(r.config).toMatchObject({ profileId: 'P08', subtype: 'salud/dental', domains: ['health'] });
-        expect(r.config.objects).toEqual([{ object: 'appointment', variant: null, writeMode: 'direct_commit', writeModeDeclared: false }]);
+        // ADR 0031 fricción 9: en salud, sin modo declarado, el agente deja una solicitud (no confirma la cita)
+        expect(r.config.objects).toEqual([{ object: 'appointment', variant: null, writeMode: 'request_to_business', writeModeDeclared: false }]);
+        expect(r.qualityWarnings.find(w => w.id === 'OBJ.APPOINTMENT.WRITE_MODE')?.message).toMatch(/ya deja solicitudes de citas/);
         expect(r.verdict).toBe('no_listo');
-        expect(r.counts).toMatchObject({ applicable: 57, blocking: 22, blockingFailing: 18 });
+        expect(r.counts).toMatchObject({ applicable: 57, blocking: 20, blockingFailing: 16 });
         expect([...r.blockingGaps].sort()).toEqual([...DENTAL_BLOCKING].sort());
         expect(passing(r, DENTAL_BLOCKING_PASS)).toEqual(DENTAL_BLOCKING_PASS);
         const emergency = r.requirements.find(x => x.id === 'CORE.SAFETY.EMERGENCY_BASE');

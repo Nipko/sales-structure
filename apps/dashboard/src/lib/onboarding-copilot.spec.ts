@@ -24,8 +24,12 @@ describe("propuestas del copiloto (R6)", () => {
         expect(formatProposalValue({ methods: ["efectivo", "Nequi"], notes: "sin recargo", by_appointment_only: true })).toEqual([
             "methods: efectivo, Nequi", "notes: sin recargo", "by_appointment_only: ✓",
         ]);
-        expect(formatProposalValue({ days: { mon: [{ from: "08:00", to: "18:00" }] } })).toEqual(['days: {"mon":[{"from":"08:00","to":"18:00"}]}']);
-        expect(formatProposalValue([{ topic: "competencia" }])).toEqual(['{"topic":"competencia"}']);
+        // ADR 0031 fricción 3: sin JSON crudo; horario por día y contacto por canal, con las etiquetas del cajón
+        expect(formatProposalValue({ days: { mon: [{ from: "08:00", to: "18:00" }] } })).toEqual(["mon: 08:00–18:00"]);
+        expect(formatProposalValue([{ topic: "competencia" }])).toEqual(["topic: competencia"]);
+        const labels = { field: (k: string) => ({ always_open: "Abierto 24/7" }[k] ?? k), day: (d: string) => ({ mon: "Lunes", sun: "Domingo" }[d] ?? d), option: (v: string) => ({ whatsapp: "WhatsApp" }[v] ?? v), closed: "Cerrado" };
+        expect(formatProposalValue({ always_open: false, days: { sun: [], mon: [["08:00", "18:00"]] } }, labels)).toEqual(["Abierto 24/7: ✗", "Lunes: 08:00–18:00", "Domingo: Cerrado"]);
+        expect(formatProposalValue({ points: [{ kind: "whatsapp", value: "+573001234567" }] }, labels)).toEqual(["WhatsApp: +573001234567"]);
         expect(formatProposalValue(null)).toEqual([]);
     });
 });

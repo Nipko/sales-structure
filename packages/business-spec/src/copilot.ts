@@ -13,6 +13,7 @@
 import { canonicalJson } from './hash';
 import { extractFigures, isTextWithoutData } from './status';
 import type { CompiledSpec } from './types';
+import { weeklyHoursProblems } from './engine/evaluators/core';
 import { isIsoDuration, isValueRequirement, validateRequirementValue, type ValueIssue } from './validate-value';
 
 /** Una cita que respalda una propuesta: la referencia de la fuente y el texto copiado de ella. */
@@ -34,7 +35,7 @@ export interface CopilotSource {
 
 export type CopilotRejectionCode =
     | 'unknown_requirement' | 'not_copilot_source' | 'invalid_value' | 'no_evidence' | 'unknown_source'
-    | 'quote_too_short' | 'quote_not_verbatim' | 'figure_without_quote';
+    | 'quote_too_short' | 'quote_not_verbatim' | 'figure_without_quote' | 'placeholder_value' | 'invalid_hours';
 
 export interface CopilotRejection {
     code: CopilotRejectionCode;
@@ -47,6 +48,8 @@ export interface CopilotCheck {
     issues: ValueIssue[];
     /** Las citas verificadas, con la fuente resuelta (vacío si la propuesta se descarta). */
     evidence: (CopilotEvidence & { origin: string; url: string | null; label: string })[];
+    /** El valor llevado a la forma del requisito (`normalizeCopilotValue`): es el que se guarda como propuesta. */
+    value?: unknown;
 }
 
 /** Límites de una cita: corta no prueba nada («sí»), larga es copiar la página. */
@@ -150,8 +153,17 @@ export function checkCopilotProposal(
     if (!spec.requirements[id]) return reject('unknown_requirement', `requisito desconocido: ${id}`);
     if (!isCopilotRequirement(spec, id)) return reject('not_copilot_source', `${id} no admite propuestas del copiloto`);
 
-    issues = validateRequirementValue(spec, id, { value: proposal.value, status: 'confirmed', origin: 'copilot', scopeKey: '' });
+    // ADR 0031 fricción 2: el valor se lleva a la forma del requisito ANTES de validar (horario en tuplas, días con otro
+    // nombre…), y un punto de contacto cuyo valor es el nombre del canal («WhatsApp») no es un dato: se descarta.
+    const normalized = normalizeCopilotValue(spec, id, proposal.value);
+    const value = normalized.value;
+    if (normalized.droppedPlaceholders.length && contactPointsOf(value).length === 0) {
+        return reject('placeholder_value', `sin datos reales: ${normalized.droppedPlaceholders.join(', ')}`);
+    }
+    issues = validateRequirementValue(spec, id, { value, status: 'confirmed', origin: 'copilot', scopeKey: '' });
     if (issues.length) return reject('invalid_value', issues.map(i => i.message).join('; '));
+    const hours = copilotHoursProblems(spec, id, value);
+    if (hours.length) return reject('invalid_hours', hours.join('; '));
 
     const evidence = Array.isArray(proposal.evidence) ? proposal.evidence : [];
     if (!evidence.length) return reject('no_evidence', 'sin cita no hay propuesta');
@@ -168,9 +180,136 @@ export function checkCopilotProposal(
         if (!quoteAppearsIn(source.text, quote)) return reject('quote_not_verbatim', `la cita no aparece tal cual en ${ref}`);
         verified.push({ source_ref: ref, quote, origin: source.origin, url: source.url ?? null, label: source.label });
     }
-    const missing = figuresWithoutQuote(proposal.value, verified.map(e => e.quote));
+    const missing = figuresWithoutQuote(value, verified.map(e => e.quote));
     if (missing.length) return reject('figure_without_quote', `cifras sin cita: ${missing.join(', ')}`);
-    return { ok: true, rejections, issues, evidence: verified };
+    return { ok: true, rejections, issues, evidence: verified, value };
+}
+
+// ─────────────────────── forma del valor (ADR 0031, fricción 2) ───────────────────────
+
+type Obj = Record<string, unknown>;
+const isObj = (v: unknown): v is Obj => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+const WEEK_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+const DAY_ALIASES: Record<string, string> = {
+    monday: 'mon', lunes: 'mon', tuesday: 'tue', martes: 'tue', wednesday: 'wed', miercoles: 'wed',
+    thursday: 'thu', jueves: 'thu', friday: 'fri', viernes: 'fri', saturday: 'sat', sabado: 'sat', sunday: 'sun', domingo: 'sun',
+};
+const fold = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+const dayKey = (k: string): string | null => {
+    const f = fold(k);
+    if ((WEEK_DAYS as readonly string[]).includes(f)) return f;
+    return DAY_ALIASES[f] ?? null;
+};
+/** `8:00` → `08:00`, `9` → `09:00`; lo que no parece una hora sale igual (y el motor lo marcará). */
+const hhmm = (raw: unknown): unknown => {
+    const m = typeof raw === 'string' ? raw.trim().match(/^(\d{1,2})(?:[:.h](\d{2}))?$/i) : null;
+    if (!m) return raw;
+    const h = Number(m[1]);
+    return h <= 24 ? `${String(h).padStart(2, '0')}:${m[2] ?? '00'}` : raw;
+};
+const isPair = (v: unknown): v is [string, string] => Array.isArray(v) && v.length === 2 && v.every(x => typeof x === 'string');
+
+/** Un tramo en la forma `{open, close}`: acepta `["08:00","18:00"]`, `"08:00-18:00"` y `{from, to}`. */
+function normalizeSpan(span: unknown): unknown {
+    if (isPair(span)) return { open: hhmm(span[0]), close: hhmm(span[1]) };
+    if (typeof span === 'string') {
+        const parts = span.split(/\s*(?:-|–|—|\ba\b|\bto\b)\s*/i).filter(Boolean);
+        return parts.length === 2 ? { open: hhmm(parts[0]), close: hhmm(parts[1]) } : span;
+    }
+    if (isObj(span)) {
+        const { from, to, start, end, ...rest } = span;
+        return { ...rest, open: hhmm(rest.open ?? from ?? start), close: hhmm(rest.close ?? to ?? end) };
+    }
+    return span;
+}
+
+/** `weekly_hours` en la forma del requisito: `{always_open?, days: {mon: [{open, close}]…}}`. */
+export function normalizeWeeklyHours(value: unknown): unknown {
+    if (!isObj(value)) return value;
+    const out: Obj = {};
+    const rawDays: Obj = isObj(value.days) ? { ...value.days } : {};
+    for (const [k, v] of Object.entries(value)) {
+        if (k === 'days') continue;
+        if (dayKey(k)) rawDays[k] = v; else out[k] = v;
+    }
+    const days: Obj = {};
+    for (const [k, spans] of Object.entries(rawDays)) {
+        const closed = spans === null || spans === false || (typeof spans === 'string' && /^(cerrado|closed)$/i.test(spans.trim()));
+        const list = closed ? [] : Array.isArray(spans) && !isPair(spans) ? spans : [spans];
+        days[dayKey(k) ?? k] = list.map(normalizeSpan);
+    }
+    if (Object.keys(days).length || 'days' in value) out.days = days;
+    return out;
+}
+
+/** Dónde hay `weekly_hours` en el requisito: la raíz (`data.type`) o campos del objeto (`human_hours: weekly_hours …`). */
+function weeklyHoursPaths(spec: CompiledSpec, requirementId: string): { root: boolean; fields: string[] } {
+    const data = spec.requirements[requirementId]?.data;
+    const structure = data?.structure;
+    const fields = isObj(structure)
+        ? Object.entries(structure).filter(([, d]) => /^weekly_hours\b/.test(String(d ?? '').trim())).map(([k]) => k.replace(/\?$/, ''))
+        : [];
+    return { root: String(data?.type ?? '') === 'weekly_hours', fields };
+}
+
+const CHANNEL_WORDS = new Set([
+    'phone', 'telefono', 'tel', 'celular', 'movil', 'whatsapp', 'whats app', 'wa', 'email', 'e-mail', 'correo', 'correo electronico', 'mail',
+    'web', 'website', 'sitio web', 'pagina web', 'social', 'redes', 'redes sociales', 'instagram', 'facebook', 'tiktok', 'twitter', 'linkedin',
+]);
+
+const contactPointsOf = (v: unknown): Obj[] => {
+    const list = Array.isArray(v) ? v : isObj(v) && Array.isArray(v.points) ? v.points : [];
+    return (list as unknown[]).filter(isObj);
+};
+
+/** Un punto de contacto cuyo valor está vacío o es el nombre del canal o su etiqueta («WhatsApp»): no es un dato. */
+export function isPlaceholderContactPoint(point: unknown): boolean {
+    if (!isObj(point)) return false;
+    const value = fold(String(point.value ?? ''));
+    if (!value) return true;
+    return CHANNEL_WORDS.has(value) || value === fold(String(point.kind ?? '')) || (point.label != null && value === fold(String(point.label)));
+}
+
+/** Los puntos de contacto del valor que solo repiten el nombre del canal (para rechazar una aprobación). */
+export function placeholderContactPoints(value: unknown): string[] {
+    return contactPointsOf(value).filter(isPlaceholderContactPoint).map(p => `${String(p.kind ?? 'contacto')}: «${String(p.value ?? '')}»`);
+}
+
+/**
+ * Lleva una propuesta del copiloto a la forma que valida el requisito (ADR 0031, fricción 2):
+ * - horarios (`weekly_hours`, en la raíz o en un campo): tramos `["08:00","18:00"]` o `"8:00-18:00"` → `{open, close}`,
+ *   días en inglés o en español → `mon…sun`, días sueltos en la raíz → `days`;
+ * - contacto: se quitan los puntos cuyo valor es el nombre del canal («WhatsApp») y se informan en `droppedPlaceholders`.
+ * Puro e idempotente: un valor ya bien formado sale igual.
+ */
+export function normalizeCopilotValue(spec: CompiledSpec, requirementId: string, value: unknown): { value: unknown; droppedPlaceholders: string[] } {
+    let out = value;
+    const hours = weeklyHoursPaths(spec, requirementId);
+    if (hours.root) out = normalizeWeeklyHours(out);
+    if (hours.fields.length && isObj(out)) {
+        const copy: Obj = { ...out };
+        for (const f of hours.fields) if (f in copy) copy[f] = normalizeWeeklyHours(copy[f]);
+        out = copy;
+    }
+    const droppedPlaceholders: string[] = [];
+    if (requirementId === 'CORE.CONTACT.CHANNELS') {
+        const points = contactPointsOf(out);
+        if (points.some(isPlaceholderContactPoint)) {
+            droppedPlaceholders.push(...placeholderContactPoints(out));
+            const kept = points.filter(p => !isPlaceholderContactPoint(p));
+            out = Array.isArray(out) ? kept : { ...(out as Obj), points: kept };
+        }
+    }
+    return { value: out, droppedPlaceholders };
+}
+
+/** Tramos que el motor marcaría «tramo inválido» o «cierre antes de apertura» (los días sin declarar los completa el dueño). */
+export function copilotHoursProblems(spec: CompiledSpec, requirementId: string, value: unknown): string[] {
+    const hours = weeklyHoursPaths(spec, requirementId);
+    const targets: unknown[] = [];
+    if (hours.root) targets.push(value);
+    if (isObj(value)) for (const f of hours.fields) if (value[f] !== undefined) targets.push(value[f]);
+    return targets.filter(isObj).flatMap(t => weeklyHoursProblems(t as Record<string, any>)).filter(p => !/sin declarar$/.test(p));
 }
 
 /** Dos valores iguales (sin importar el orden de las claves). */

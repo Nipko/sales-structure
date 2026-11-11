@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, History, Inbox, ListChecks, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
@@ -23,6 +24,7 @@ import { GoLiveCard } from "@/components/readiness/GoLiveCard";
 import { RequirementDrawer } from "@/components/readiness/RequirementDrawer";
 import {
     buildReadinessPanel,
+    shownGapCount,
     type GapAction,
     type PanelGap,
     type ReadinessCurrentResponse,
@@ -110,6 +112,7 @@ export default function ReadinessPage() {
     const locale = useLocale();
     const { activeTenantId, isLoading: tenantLoading } = useTenant();
     const { role, impersonating } = useRole();
+    const { verticalConfig } = useAuth();
     const [current, setCurrent] = useState<ReadinessCurrentResponse | null>(null);
     const [history, setHistory] = useState<ReadinessHistoryEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -134,9 +137,12 @@ export default function ReadinessPage() {
         void api.getCopilotProposals(activeTenantId, "open")
             .then(p => setCopilotCount(p.success && p.data ? copilotBadgeCount(p.data.counts) : 0))
             .catch(() => setCopilotCount(0));
-        const [res, hist] = await Promise.all([api.getReadiness(activeTenantId, refresh), api.getReadinessHistory(activeTenantId)]);
+        // el historial se pide DESPUÉS de evaluar: pedido a la vez, la primera carga mostraba «Historial (0)» porque la
+        // evaluación de esta visita todavía no estaba guardada (ADR 0031, fricción 8)
+        const res = await api.getReadiness(activeTenantId, refresh);
         if (res.success && res.data) setCurrent(res.data);
         else setError(res.error || t("error"));
+        const hist = await api.getReadinessHistory(activeTenantId);
         if (hist.success && Array.isArray(hist.data)) setHistory(hist.data);
         setLoading(false);
     }, [activeTenantId, t]);
@@ -149,7 +155,7 @@ export default function ReadinessPage() {
         if (id) setDrawer({ id, screen: null });
     }, []);
 
-    const model = useMemo(() => (current ? buildReadinessPanel(current, { role, impersonating }) : null), [current, role, impersonating]);
+    const model = useMemo(() => (current ? buildReadinessPanel(current, { role, impersonating, verticalConfig }) : null), [current, role, impersonating, verticalConfig]);
     const formatDate = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 
     if (tenantLoading) return <p role="status">{t("loading")}</p>;
@@ -200,7 +206,7 @@ export default function ReadinessPage() {
                                 <p className="text-lg font-semibold">{t(`verdict.${model.verdict}.title`)}</p>
                                 <p className="text-sm">{t(`verdict.${model.verdict}.description`)}</p>
                                 <p className="mt-1 text-xs opacity-80">
-                                    {t("summary", { blocking: model.counts.blockingFailing, necessary: model.counts.necessaryFailing, coverage: model.recommendedPct })}
+                                    {t("summary", { blocking: model.shown.blocking, necessary: model.shown.necessary, coverage: model.recommendedPct })}
                                     {" · "}{t("evaluatedAt", { date: formatDate(model.evaluatedAt) })}
                                 </p>
                             </div>
@@ -284,7 +290,7 @@ export default function ReadinessPage() {
                                 <History size={14} className="text-neutral-400" aria-hidden="true" />
                                 <span>{formatDate(h.createdAt)}</span>
                                 <span className="font-medium">{t(`verdict.${h.verdict}.title`)}</span>
-                                <span className="text-neutral-500">{t("history.counts", { blocking: h.counts.blockingFailing, necessary: h.counts.necessaryFailing })}</span>
+                                <span className="text-neutral-500">{t("history.counts", { blocking: shownGapCount(h.blockingGaps ?? [], current?.result), necessary: h.counts.necessaryFailing })}</span>
                             </li>
                         ))}
                     </ol>

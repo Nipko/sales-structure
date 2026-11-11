@@ -103,6 +103,8 @@ export interface RequirementDetailResponse {
     form: FormDescriptor;
     current: { state: string; record: StoredValueRecord | null; conflicts: StoredValueRecord[] };
     fact: BusinessFact | null;
+    /** Campos «por defecto = <requisito>» con el valor confirmado de ese requisito (p. ej. el horario de atención humana). */
+    prefill?: Record<string, unknown>;
 }
 
 /** `PUT …/business-facts/:id`. */
@@ -194,6 +196,27 @@ function pickObject(fields: FormField[], v: Obj): Obj {
     return out;
 }
 
+/** ¿Un campo sin declarar? (vacío, o un horario con todos los días cerrados, que es como abre un formulario nuevo). */
+const undeclared = (v: unknown): boolean => {
+    if (isBlank(v)) return true;
+    if (!isObj(v)) return false;
+    const days = isObj(v.days) ? v.days : null;
+    return v.always_open !== true && Boolean(days) && Object.values(days!).every(d => !Array.isArray(d) || d.length === 0)
+        && Object.keys(v).every(k => k === "days" || k === "always_open" || isBlank(v[k]));
+};
+
+/**
+ * El valor de partida con los campos «por defecto = <requisito>» que la API trae ya confirmados (ADR 0031, fricción 6):
+ * solo completa lo que falta, nunca pisa lo que el dueño (o la propuesta) ya dice.
+ */
+export function withPrefill(start: unknown, prefill: Record<string, unknown> | undefined): unknown {
+    if (!prefill || !Object.keys(prefill).length) return start;
+    if (start !== null && start !== undefined && !isObj(start)) return start;
+    const out: Obj = { ...(start ?? {}) };
+    for (const [k, v] of Object.entries(prefill)) if (undeclared(out[k])) out[k] = v;
+    return out;
+}
+
 /**
  * Valor inicial del formulario. `current` es lo que lee el motor ahora (puede ser heredado de una pantalla vieja):
  * así confirmar un dato heredado es revisarlo y guardar.
@@ -203,6 +226,8 @@ export function initialFormValue(form: FormDescriptor, current: unknown): unknow
         return Array.isArray(current) ? current.map(item => (isObj(item) && form.fields.length ? pickObject(form.fields, item) : item)) : [];
     }
     if (form.root === "json") return current ?? {};
+    // una lista suelta guardada antes para un formulario de un solo campo lista (contacto: `[...]` → `{points: [...]}`)
+    if (Array.isArray(current) && form.fields.length === 1 && form.fields[0].kind === "list") return pickObject(form.fields, { [form.fields[0].key]: current });
     return pickObject(form.fields, isObj(current) ? current : {});
 }
 

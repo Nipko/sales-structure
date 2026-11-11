@@ -45,8 +45,18 @@ function EvidenceList({ items, label }: { items: CopilotEvidence[]; label: strin
     );
 }
 
+/** Una clave de catálogo i18n solo si no rompe la ruta de next-intl (sin puntos, espacios ni barras). */
+const SAFE_KEY = /^[\p{L}\p{N}_]+$/u;
+
 function ValueLines({ value }: { value: unknown }) {
-    const lines = formatProposalValue(value);
+    // las mismas etiquetas que el cajón: la tarjeta no muestra claves técnicas ni JSON (ADR 0031, fricción 3)
+    const tf = useTranslations("readinessForms");
+    const lines = formatProposalValue(value, {
+        field: k => (SAFE_KEY.test(k) && tf.has(`fields.${k}`) ? tf(`fields.${k}`) : k.replace(/_/g, " ")),
+        day: d => (SAFE_KEY.test(d) && tf.has(`days.${d}`) ? tf(`days.${d}`) : d),
+        option: v => (SAFE_KEY.test(v) && tf.has(`options.${v}`) ? tf(`options.${v}`) : v),
+        closed: tf("hours.closed"),
+    });
     return (
         <ul className="mt-1 space-y-0.5 text-sm text-neutral-900 dark:text-neutral-100">
             {lines.map((line, i) => <li key={i} className="break-words">{line}</li>)}

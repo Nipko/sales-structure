@@ -13,7 +13,7 @@
  */
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { sameCopilotValue } from '@parallext/business-spec';
+import { normalizeCopilotValue, placeholderContactPoints, sameCopilotValue } from '@parallext/business-spec';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureContentProposalSchema } from '../copilot/agent-configuration-proposal-schema';
 import { proposalHash } from '../copilot/agent-proposal-digest';
@@ -162,9 +162,20 @@ export class CopilotProposalsService {
         if (view.kind === 'question') throw new BadRequestException('una pregunta se responde con el formulario del requisito, no se aprueba');
         if (view.status !== 'proposed') throw new ConflictException({ error: 'copilot_proposal_not_open', status: view.status });
         const edited = body && 'value' in body && body.value !== undefined;
-        const value = edited ? body.value : view.value;
-        if (value === undefined || value === null) {
+        const raw = edited ? body.value : view.value;
+        if (raw === undefined || raw === null) {
             throw new BadRequestException('esta propuesta tiene varias versiones: elige una o escribe el valor');
+        }
+        // ADR 0031 fricción 2: la propuesta (o lo editado) se lleva a la forma del requisito antes de escribir. Un horario
+        // en tuplas `[["08:00","18:00"]]` quedaba guardado y el motor lo marcaba «tramo inválido» hasta re-guardarlo.
+        const value = normalizeCopilotValue(this.readiness.spec, view.requirementId, raw).value;
+        // Un contacto cuyo valor es el nombre del canal («WhatsApp») no es un dato: se pide el valor real.
+        const placeholders = view.requirementId === 'CORE.CONTACT.CHANNELS' ? placeholderContactPoints(raw) : [];
+        if (placeholders.length) {
+            throw new BadRequestException({
+                message: `escribe el dato real de cada canal (no el nombre del canal): ${placeholders.join(', ')}`,
+                issues: placeholders.map(p => ({ path: 'points', code: 'placeholder', message: `${p} no es un dato de contacto` })),
+            });
         }
 
         // Se toma la propuesta ANTES de escribir (como el apply de Assist): dos aprobaciones a la vez no escriben dos veces.
@@ -269,6 +280,11 @@ export class CopilotProposalsService {
     private view(row: any): CopilotProposalView {
         const input = (row.input && typeof row.input === 'object' ? row.input : {}) as CopilotProposalInput;
         const requirementId = String(row.requirement_id ?? '');
+        // «Editar y aprobar» abre el formulario con este valor: una propuesta guardada antes de normalizar (horario en
+        // tuplas) se muestra ya en la forma del requisito (ADR 0031, fricciones 2 y 4). El contacto se muestra tal cual:
+        // un «WhatsApp» sin número lo tiene que ver el dueño para corregirlo.
+        const shape = (v: unknown) => (v === null || v === undefined || requirementId === 'CORE.CONTACT.CHANNELS'
+            ? v : normalizeCopilotValue(this.readiness.spec, requirementId, v).value);
         return {
             id: String(row.id),
             kind: KIND_OF[row.operation] ?? 'question',
@@ -276,9 +292,9 @@ export class CopilotProposalsService {
             requirementTitle: this.readiness.spec.requirements[requirementId]?.title ?? null,
             targetRef: String(row.target_ref ?? ''),
             status: row.status,
-            value: input.value ?? null,
+            value: shape(input.value) ?? null,
             current: input.current ?? null,
-            alternatives: Array.isArray(input.alternatives) ? input.alternatives : [],
+            alternatives: Array.isArray(input.alternatives) ? input.alternatives.map(a => ({ ...a, value: shape(a?.value) })) : [],
             question: input.question ?? null,
             evidence: Array.isArray(row.evidence) ? row.evidence : [],
             runId: row.extraction_run_id ?? null,

@@ -8,7 +8,9 @@
  * Los tipos son la parte del `ReadinessResult` que lee el panel (readiness-panel.spec.ts comprueba que el
  * resultado real del motor encaja en ellos).
  */
+import { canAccessDashboardNavigationPath } from "@/lib/navigation-access";
 import { canAccessPath, type Role } from "@/lib/roles";
+import type { DashboardVerticalConfigLike } from "@/lib/vertical-dashboard-resolver";
 
 export type ReadinessVerdict = "no_listo" | "limitado" | "listo";
 export type ReadinessLevel = "bloqueante" | "necesario" | "recomendado";
@@ -131,6 +133,11 @@ export interface ReadinessPanelModel {
     coverage: PanelArea[];
     recommendedPct: number;
     counts: ReadinessResultView["counts"];
+    /**
+     * Huecos que muestran las listas (un hueco que nace de otro se cuenta una vez, en su raíz). El resumen usa estos
+     * números para no decir «18 bloqueantes» sobre una lista de 17 (ADR 0031, fricción 8).
+     */
+    shown: { blocking: number; necessary: number; recommended: number };
 }
 
 const pct = (ok: number, total: number) => (total ? Math.round((ok / total) * 100) : 100);
@@ -139,7 +146,18 @@ const pct = (ok: number, total: number) => (total ? Math.round((ok / total) * 10
 export interface PanelViewer {
     role: Role | null | undefined;
     impersonating: boolean;
+    /** Vertical del tenant: con él, un enlace a una pantalla que el vertical esconde busca la equivalente (ADR 0031). */
+    verticalConfig?: DashboardVerticalConfigLike | null;
 }
+
+/**
+ * Pantallas que un vertical puede esconder y la que hace lo mismo en él (ADR 0031, fricción 5). El catálogo sin agenda
+ * (`/admin/service-catalog`) es de los verticales que venden paquetes; un consultorio con agenda edita sus servicios en
+ * Citas › Servicios disponibles, y el enlace al catálogo lo mandaba al inicio.
+ */
+export const SCREEN_ALTERNATES: Readonly<Record<string, readonly string[]>> = {
+    "/admin/service-catalog": ["/admin/appointments?tab=services"],
+};
 
 /**
  * La ruta navegable de un `uiTarget`. Una ruta con segmento dinámico (`/admin/listings/[listingId]`) nombra la
@@ -154,8 +172,14 @@ export function navigableTarget(uiTarget: string): string {
 export function gapAction(uiTarget: string | null | undefined, viewer: PanelViewer): ScreenAction {
     if (!uiTarget) return { kind: "none" };
     const href = navigableTarget(uiTarget);
-    const path = href.split(/[?#]/)[0];
-    return canAccessPath(path, viewer.role, viewer.impersonating) ? { kind: "link", href } : { kind: "ask_admin", href };
+    const pathOf = (h: string) => h.split(/[?#]/)[0];
+    if (!canAccessPath(pathOf(href), viewer.role, viewer.impersonating)) return { kind: "ask_admin", href };
+    if (viewer.verticalConfig && viewer.role) {
+        const visible = [href, ...(SCREEN_ALTERNATES[pathOf(href)] ?? [])]
+            .find(h => canAccessDashboardNavigationPath(pathOf(h), viewer.role as Role, viewer.impersonating, viewer.verticalConfig));
+        if (visible) return { kind: "link", href: visible };
+    }
+    return { kind: "link", href };
 }
 
 /** Acción del hueco: el cajón si el requisito tiene formulario; si no, su pantalla. */
@@ -186,6 +210,9 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         };
     };
     const list = (ids: string[]) => ids.map(toGap).filter((g): g is PanelGap => g !== null);
+    const blocking = list(r.blockingGaps);
+    const necessary = list(r.necessaryGaps);
+    const recommended = list(r.recommendedGaps);
     const coverage = Object.entries(r.coverage.byArea)
         .map(([area, c]) => ({ area, ok: c.ok, total: c.total, pct: pct(c.ok, c.total) }))
         .sort((a, b) => a.pct - b.pct || a.area.localeCompare(b.area));
@@ -193,9 +220,9 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         verdict: r.verdict,
         evaluatedAt: response.evaluatedAt,
         specVersion: r.specVersion,
-        blocking: list(r.blockingGaps),
-        necessary: list(r.necessaryGaps),
-        recommended: list(r.recommendedGaps),
+        blocking,
+        necessary,
+        recommended,
         limitedIntents: r.limitedIntents.map(({ id, title }) => ({ id, title })),
         quality: r.qualityWarnings.map(w => {
             const req = byId.get(w.id);
@@ -205,7 +232,22 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         coverage,
         recommendedPct: r.coverage.r5Pct,
         counts: r.counts,
+        shown: { blocking: blocking.length, necessary: necessary.length, recommended: recommended.length },
     };
+}
+
+/**
+ * Bloqueantes de una evaluación del historial contados como en la lista: sin los que se muestran en su raíz según la
+ * evaluación actual (el historial guarda los ids, no la causa raíz). Así la fila más reciente coincide con el resumen.
+ */
+export function shownGapCount(ids: readonly string[], current: ReadinessResultView | null | undefined): number {
+    if (!current) return ids.length;
+    const byId = new Map(current.requirements.map(r => [r.id, r]));
+    const listed = new Set(ids);
+    return ids.filter(id => {
+        const root = byId.get(id)?.gap?.rootCause;
+        return !(root && listed.has(root) && byId.get(root)?.gap);
+    }).length;
 }
 
 /** Enlace al panel con el cajón de ese requisito abierto (`/admin/readiness?open=ID`). */

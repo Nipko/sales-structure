@@ -445,7 +445,9 @@ const ADJUSTMENTS: Readonly<Record<string, Adjust>> = {
     },
     'OBJ.*.WRITE_MODE': (d, req, spec) => {
         const active = { field: 'mode', notIn: ['none'] };
-        const request = { field: 'mode', in: ['request_to_business'] };
+        // ADR 0031 fricción 7: el plazo y el mensaje de la solicitud se ven desde que abre el formulario (modo sin elegir);
+        // antes aparecían solo después del primer «Guardar». Se ocultan cuando el dueño elige otro modo.
+        const request = { field: 'mode', notIn: ['direct_commit', 'none'] };
         patch(d, 'mode', { required: true });
         // R4 (ADR 0010): lista CERRADA, el diccionario del objeto (objects.yaml `customer_fields`)
         const dictionary = (req.object && spec?.objects[req.object]?.customerFields) || BOOKING_FIELDS;

@@ -164,7 +164,7 @@ describe('formularios de R3: 13 bloqueantes del núcleo y WRITE_MODE / CHANGE_RU
         const keys = d.fields.map(f => f.key);
         if (id.endsWith('.WRITE_MODE')) {
             expect(keys).toEqual(expect.arrayContaining(['mode', 'required_fields', 'confirmation_terms', 'business_confirm_sla', 'consent_required']));
-            expect(d.fields.find(f => f.key === 'business_confirm_sla')?.when).toEqual({ field: 'mode', in: ['request_to_business'] });
+            expect(d.fields.find(f => f.key === 'business_confirm_sla')?.when).toEqual({ field: 'mode', notIn: ['direct_commit', 'none'] });
         } else {
             const terms = d.fields.find(f => f.key === 'terms');
             expect(keys).toEqual(expect.arrayContaining(['agent_can_modify', 'agent_can_cancel', 'terms']));

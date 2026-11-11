@@ -97,6 +97,16 @@ describe("formularios de R3", () => {
         expect(formIssues(d, { mode: "none" })).toEqual([]);
         const request = formIssues(d, { mode: "request_to_business", required_fields: ["nombre"], confirmation_terms: ["total"] }).map(i => i.path);
         expect(request).toEqual(["business_confirm_sla", "request_message"]);
+        expect(formIssues(d, { mode: "direct_commit", required_fields: ["nombre"], confirmation_terms: ["total"] })).toEqual([]);
+    });
+
+    it("WRITE_MODE: el plazo y el mensaje se ven desde que abre el formulario (ADR 0031, fricción 7)", () => {
+        const d = descriptor("OBJ.APPOINTMENT.WRITE_MODE");
+        const field = (key: string) => d.fields.find(f => f.key === key)!;
+        const blank = initialFormValue(d, null) as Record<string, unknown>;
+        expect(isVisible(field("business_confirm_sla"), blank)).toBe(true);
+        expect(isVisible(field("request_message"), blank)).toBe(true);
+        expect(isVisible(field("business_confirm_sla"), { mode: "direct_commit" })).toBe(false);
     });
 
     it("CHANGE_RULES: usar la política general o declarar plazo y cargo propios", () => {

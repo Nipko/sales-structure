@@ -53,3 +53,13 @@ La salud del proveedor es un hecho operativo, no estado de negocio. Por eso se r
 - **Canal nuevo (webhook genérico, Slack)**: Telegram y email ya existen, están configurados en el VPS y pasan por el mismo deduplicador de incidentes. Un tercer canal era más superficie sin más alcance.
 - **Guardar Admin keys de OpenAI o Management keys de xAI para leer el saldo**: dan acceso a facturación y a la gestión de claves. Su riesgo es mayor que el beneficio de saber unos minutos antes que se acaba el saldo.
 - **Sonda cada minuto**: no detecta antes de lo que ya detecta el tráfico real, y multiplica el costo y el ruido.
+
+## Adenda 1 — Histéresis al recuperarse (10-nov-2026)
+
+**Qué pasó.** El 10-nov, entre las 08:52 y las 09:01 UTC, se agotó el crédito de la segunda cuenta de OpenAI. Mientras se agotaba, los 429 de «sin créditos» llegaron mezclados con éxitos de peticiones que seguían en curso. Cada éxito daba a OpenAI por recuperado: cerraba el incidente y borraba el control de duplicados. El 429 siguiente abría un incidente nuevo y mandaba el aviso otra vez. Así quedaron 60 incidentes abiertos y cerrados en 10 minutos. El aviso definitivo quedó abierto a las 09:01:59, y los recordatorios cada 6 h funcionaron.
+
+**Decisión.** Si un proveedor está en un estado grave (`down`, `no_credits` o `auth_invalid`), un éxito solo lo da por recuperado cuando llega al menos `RECOVERY_QUIET_MS` (2 min) después del último error. Un éxito dentro de esa ventana actualiza `lastSuccessAt`, pero no cambia el estado, no cierra el incidente y no rearma el aviso. La regla vive en `nextProviderState`, una función pura. Así aplica igual en la API, el worker y los runners, que comparten el estado en Redis.
+
+**Por qué 2 minutos.** Alcanza para que terminen las peticiones en curso y es más corto que una pasada de la sonda (5 min). Tras una recarga, la siguiente sonda exitosa ya cae fuera de la ventana y recupera de inmediato. Si la sonda llega antes, igual libera el breaker y el primer turno con éxito después de la ventana da el alta.
+
+**Descartado.** Contar N éxitos seguidos: con poco tráfico, la recuperación se retrasaría sin límite. Enfriar solo el monitor (cooldown al cerrar el incidente) ocultaría el síntoma, pero el estado seguiría oscilando en `/health/llm-providers/status` y en la tarjeta del superadmin.

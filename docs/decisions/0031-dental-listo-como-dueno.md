@@ -95,3 +95,12 @@ Con la sesión de super_admin, entré al tenant `spark-qa-dental-03` con «Acomp
 - Limpiar el texto de desarrollador de los formularios y precargar la propuesta en «Editar y aprobar».
 - Usar `screenTargetsFor` en el cajón de precio y enlazar Citas › Servicios.
 - Hacer que la pantalla de servicios escriba `price_type` y deje de depender de L1.
+
+## Decisión: recall del copiloto (hechos del documento)
+
+- El copiloto propone también los requisitos que son **hechos que un negocio escribe en sus documentos**: `CORE.IDENTITY.REGION`, `CORE.HANDOFF.HOURS_SLA`, `CORE.LANGUAGES.SERVED`, `CORE.PAYMENT.TIMING_DEPOSIT`, `CORE.PAYMENT.FINANCING`, `CORE.PAYMENT.INVOICING`, `CORE.PRIVACY.NOTICE`, `CORE.CONTACT.SPECIAL`, `OBJ.*.CHANGE_RULES`, `DOM.HEALTH.EMERGENCY_PROTOCOL`, `DOM.HEALTH.CLINICAL_SCOPE` y `DOM.VETERINARY.EMERGENCY`.
+- Siguen cerrados los que son **decisiones de operación o de privacidad del dueño**: `OBJ.*.WRITE_MODE`, `OBJ.*.ACCOUNT_READ`, `OBJ.*.AVAILABILITY_SOURCE`, `DOM.*.SENSITIVE_DATA`, `CORE.SAFETY.*`, `CORE.PRIVACY.CUSTOMER_MEMORY` y `CORE.HANDOFF.ALWAYS_HUMAN`.
+- Cuando un requisito mezcla hechos y decisiones, el copiloto solo propone los campos de hecho (`COPILOT_FACT_SHAPES`): ni el pack de país, ni «directo» en CHANGE_RULES, ni las señales de alarma o el descargo clínico de la plataforma.
+- Guardarraíles iguales (cita literal, cifras citadas, aprobación por ítem) más: país, zona, moneda e idioma validados contra Intl (lo que no valida se rechaza) y el país debe aparecer en una cita.
+- Aprobar escribe por `BusinessFactsService.write`: una REGION del copiloto declara el país del tenant igual que el cajón.
+- El copiloto no pregunta por requisitos confirmados ni por los que la misma ejecución propuso.

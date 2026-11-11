@@ -10,6 +10,16 @@
 
 export interface ToolRead { name?: string; result?: any }
 
+/**
+ * C14 (dental): the owner confirmed CORE.PAYMENT.METHODS in the readiness panel, the prompt carried it, the model answered
+ * «sí, aceptamos tarjeta débito y crédito» and this guard replaced it with «no consta», because only tool reads counted as
+ * backing. The owner-confirmed facts of the turn (`TurnContext.confirmedFacts`: confirmed and unexpired only, never a seeded
+ * value) are the business's own record, so they back a method like any read does.
+ */
+export function confirmedFactsAsReads(facts: ReadonlyArray<{ id: string; title: string; text: string }> | null | undefined): ToolRead[] {
+    return facts?.length ? [{ name: 'confirmed_business_facts', result: facts.map(f => ({ id: f.id, title: f.title, text: f.text })) }] : [];
+}
+
 const PAYMENT_ASK = /(?<!\p{L})(?:medios?\s+de\s+pago|formas?\s+de\s+pago|m[eé]todos?\s+de\s+pago|c[oó]mo\s+(?:se\s+)?(?:puedo\s+)?pag(?:o|ar)|aceptan\s+(?:tarjeta|efectivo|transferencia)|payment\s+methods?|ways?\s+to\s+pay|how\s+(?:can\s+I\s+|do\s+I\s+)?pay|(?:accept|take)\s+(?:cards?|cash)|formas?\s+de\s+pagamento|meios?\s+de\s+pagamento|como\s+(?:posso\s+)?pagar|aceitam\s+(?:cart[aã]o|pix|dinheiro)|moyens?\s+de\s+paiement|modes?\s+de\s+paiement|comment\s+(?:puis-je\s+)?payer|acceptez-vous\s+(?:la\s+)?carte)(?!\p{L})/iu;
 
 const METHOD = /(?<!\p{L})(?:efectivo|tarjetas?|transferencias?(?:\s+bancarias?)?|pse|nequi|daviplata|enlace\s+de\s+pago|cash|cards?|credit|debit|bank\s+transfers?|transfers?|payment\s+link|dinheiro|cart[aã]o|cart[õo]es|pix|boleto|transfer[eê]ncias?|esp[eè]ces|cartes?\s+(?:bancaires?|de\s+cr[eé]dit)|carte|virements?|paypal)(?!\p{L})/iu;

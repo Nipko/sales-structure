@@ -17,6 +17,13 @@ import { PersonaService } from '../persona/persona.service';
 import { toUsted } from './register-adapt';
 import { scheduleTimeZoneElement } from './informational-hours';
 import { escapeXmlAttribute, escapeXmlText } from '../../common/utils/xml.util';
+import { renderConfirmedFacts } from '@parallext/business-spec';
+
+/**
+ * C14: how the model reads `<confirmed_business_facts>`. Travels with the block (only when there are facts), so a tenant
+ * without confirmed facts keeps a byte-identical prompt.
+ */
+export const CONFIRMED_FACTS_NOTE = 'Datos confirmados por el negocio: el dueño los confirmó. Dilos tal cual cuando el cliente pregunte (completos: si es una lista, toda la lista) y cuentan como dato registrado aunque el mismo tema figure en <unknown>. No agregues lo que no dicen.';
 
 const ACTIVE_OBJECT_KIND_SET = new Set<string>(ACTIVE_OBJECT_KINDS);
 const ACTIVE_OBJECT_SOURCE_SET = new Set<string>(ACTIVE_OBJECT_SOURCES);
@@ -479,6 +486,15 @@ export class PromptAssemblerService {
             lines.push('  </business>');
         } else {
             lines.push('  <business>', '    <location_status>not_registered</location_status>', '  </business>');
+        }
+        // C14: what the owner confirmed in the readiness panel beyond identity, hours and policies (payment methods,
+        // appointment requirements, change rules, languages, clinical scope…). Labels are the spec titles and values are
+        // already readable (@parallext/business-spec resolveConfirmedFacts / renderConfirmedFacts); only confirmed,
+        // unexpired values reach this block — a seeded or example value never does (option B). Absent when there is none.
+        if (turn.confirmedFacts?.length) {
+            lines.push(`  <confirmed_business_facts note="${this.attrEscape(CONFIRMED_FACTS_NOTE)}">`);
+            for (const line of renderConfirmedFacts(turn.confirmedFacts)) lines.push(`    - ${this.xmlEscape(line)}`);
+            lines.push('  </confirmed_business_facts>');
         }
 
         if (turn.verticalContext) {

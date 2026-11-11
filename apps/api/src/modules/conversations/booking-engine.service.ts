@@ -84,14 +84,16 @@ const MESSAGES: Record<string, Record<string, string | string[]>> = {
         bookingAwaitingPayment: "La cita para {service} el {date} a las {time} está pendiente del pago de {amount}. El horario se retiene temporalmente; la confirmación llegará cuando se acredite el pago.{refLine}",
         serviceSelected: [
             '{service} seleccionado. ¿Qué fecha le queda bien?',
-            '¡Excelente elección! Reservaremos {service}. ¿Qué día le gustaría agendar?',
+            // E2ai/E2aj C16: «Reservaremos {service}» y «agendaremos {service}» prometían la cita antes de que nada se
+            // registrara (el resultado dice luego si quedó confirmada o en solicitud). Elegir el servicio no promete nada.
+            '¡Buena elección! {service}. ¿Qué día le gustaría?',
             'Listo, he seleccionado {service} para usted. ¿Para qué fecha desea la cita?',
-            'Perfecto, agendaremos {service}. Cuénteme, ¿qué día le viene mejor?'
+            'Perfecto, {service}. Cuénteme, ¿qué día le viene mejor?'
         ],
         switchedService: [
             'Cambiamos a {service}. ¿Qué fecha le queda bien?',
             'Entendido, cambiamos al servicio {service}. ¿Qué día prefiere para la cita?',
-            'Listo, ahora estamos agendando {service}. ¿Qué fecha le gustaría?'
+            'Listo, ahora es {service}. ¿Qué fecha le gustaría?'
         ],
         cancelled: '¡Sin problema! ¿Hay algo más en lo que pueda ayudarle?',
         resumeOffer: 'Quedó a medio agendar una cita de {service}. ¿Desea continuar o prefiere empezar de nuevo?',
@@ -2356,3 +2358,6 @@ export class BookingEngineService {
         }
     }
 }
+
+/** Textos del motor, para comprobar en pruebas que elegir un servicio no promete la cita. */
+export const BOOKING_ENGINE_MESSAGES: Readonly<Record<string, Record<string, string | string[]>>> = MESSAGES;

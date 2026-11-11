@@ -22,7 +22,8 @@ export interface SqlJsonRunner {
 /** Columnas leídas por tabla del esquema del tenant (ninguna con secretos). */
 export const TENANT_TABLE_COLUMNS: Readonly<Record<string, string>> = {
     companies: 'id, name, about, address, city, country, phone, email, website, social_links, is_primary, created_at, updated_at',
-    services: 'id, name, description, category, duration_minutes, price, currency, price_status, is_active, metadata, location_type, required_fields, payment_policy, deposit_percent, deposit_amount, created_at, updated_at',
+    // includes/excludes/preparation(_required): ficha del servicio (ADR 0031, fricción 10)
+    services: 'id, name, description, category, duration_minutes, price, currency, price_status, is_active, metadata, location_type, required_fields, payment_policy, deposit_percent, deposit_amount, includes, excludes, preparation, preparation_required, created_at, updated_at',
     service_staff: 'id, service_id, user_id, created_at',
     menu_items: 'id, category_id, name, description, price, currency, allergens, tags, is_available, is_active, created_at, updated_at',
     menu_categories: 'id, name, is_active, created_at, updated_at',

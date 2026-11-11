@@ -6,7 +6,8 @@ import { renderScreen, findAccessibilityViolations } from '@/test/a11y';
 import ServiceModal from './ServiceModal';
 
 const props: ComponentProps<typeof ServiceModal> = {
- form:{name:'QA service',duration:30,durationMax:60,durationType:'flexible',buffer:0,price:100,priceStatus:'confirmed',color:'#6c5ce7',category:'QA',maxConcurrent:1,rebookAfterDays:null,requiredFields:[],locationType:'hybrid',locationAddress:'QA street',meetingLink:'https://example.invalid/meeting',paymentPolicy:'none',depositPercent:null,depositAmount:null},
+ form:{name:'QA service',duration:30,durationMax:60,durationType:'flexible',buffer:0,price:100,priceStatus:'confirmed',color:'#6c5ce7',category:'QA',maxConcurrent:1,rebookAfterDays:null,requiredFields:[],locationType:'hybrid',locationAddress:'QA street',meetingLink:'https://example.invalid/meeting',paymentPolicy:'none',depositPercent:null,depositAmount:null,
+  description:'QA description',includesText:'Valoración\nLimpieza',excludesText:'Radiografías',preparation:'Ayuno',noPreparation:false},
  onChange:jest.fn(),editingService:null,saving:false,onSave:jest.fn(),onClose:jest.fn(),currency:'COP',
 };
 const selector='input:not([type=radio]):not([type=checkbox]),select,textarea';
@@ -16,9 +17,16 @@ describe('Service editor accessible field names',()=>{
   const screen=await renderScreen(<NextIntlClientProvider locale={locale} messages={messages}><ServiceModal {...props}/></NextIntlClientProvider>);
   try {
    const controls=[...screen.container.querySelectorAll<HTMLInputElement|HTMLSelectElement>(selector)];
-   expect(controls).toHaveLength(11);
+   // 11 de reserva + descripción, incluye, no incluye y preparación (ADR 0031, fricción 10)
+   expect(controls).toHaveLength(15);
    for(const control of controls){expect(control.labels?.length).toBeGreaterThan(0);expect(control.labels?.[0].textContent?.trim()).toBeTruthy();}
    expect(controls[0].labels?.[0].textContent).toContain(messages.appointments.serviceName);
+   const labelled=(text:string)=>controls.find(c=>c.labels?.[0].textContent?.trim()===text);
+   expect(labelled(messages.appointments.serviceDescription)?.value).toBe('QA description');
+   expect(labelled(messages.appointments.serviceIncludes)?.value).toBe('Valoración\nLimpieza');
+   expect(labelled(messages.appointments.serviceExcludes)?.value).toBe('Radiografías');
+   expect(labelled(messages.appointments.servicePreparation)?.value).toBe('Ayuno');
+   expect(screen.container.textContent).toContain(messages.appointments.serviceNoPreparation);
    expect(await findAccessibilityViolations(screen.container)).toEqual([]);
    expect(props.onSave).not.toHaveBeenCalled();
   }finally{screen.unmount();}

@@ -55,6 +55,59 @@ describe('ficha de alojamiento', () => {
     });
 });
 
+describe('ficha de servicio (ADR 0031, fricción 10)', () => {
+    const edited = { is_active: true, duration_minutes: 30, price: 80000, price_status: 'confirmed', created_at: '2026-10-20 10:00:00', updated_at: '2026-10-21 10:00:00' };
+    const medical = () => {
+        const rows = factRows({ tenant: { ref: 't', name: 'Clínica', settings: {} }, companies: [], policies: [], requirement_values: [] });
+        rows.tenant.subtype = 'salud/medica_general';
+        return rows;
+    };
+    const preparations = (rows: ReturnType<typeof medical>) =>
+        evaluate(spec, fromLegacyRows(rows), NOW).requirements.find(r => r.id === 'PROF.P09.PREPARATIONS');
+
+    it('lleva qué incluye y qué no incluye del formulario; una lista vacía no es «no incluye» confirmado', () => {
+        const rows = medical();
+        rows.services = [
+            { id: 's1', name: 'Limpieza', includes: ['Profilaxis', 'Flúor'], excludes: ['Blanqueamiento'], ...edited },
+            { id: 's2', name: 'Consulta', includes: [], excludes: [], ...edited },
+        ];
+        const [cleaning, consult] = fromLegacyRows(rows).items.appointment;
+        expect(cleaning.fields).toMatchObject({ includes: ['Profilaxis', 'Flúor'], excludes: ['Blanqueamiento'] });
+        expect(cleaning.fieldStatus).toMatchObject({ includes: 'confirmed', excludes: 'confirmed' });
+        expect(consult.fieldStatus).toMatchObject({ includes: 'seeded', excludes: 'seeded' });
+    });
+
+    it('las indicaciones escritas en el servicio y «no requiere» cumplen PROF.P09.PREPARATIONS', () => {
+        const rows = medical();
+        rows.services = [
+            { id: 's1', name: 'Laboratorio', preparation: 'Ayuno de 8 horas.', preparation_required: true, ...edited },
+            { id: 's2', name: 'Consulta', preparation: null, preparation_required: false, ...edited },
+        ];
+        const snap = fromLegacyRows(rows);
+        expect(snap.items.appointment.map(s => s.fields.preparation_ref)).toEqual(['service:s1', 'no_requiere']);
+        expect(snap.values['PROF.P09.PREPARATIONS'][0]).toMatchObject({
+            value: [{ ref: 'service:s1', service: 'Laboratorio', instructions: 'Ayuno de 8 horas.' }], status: 'confirmed', storage: 'services.preparation',
+        });
+        expect(preparations(rows)?.result).toBe('cumple');
+    });
+
+    it('un servicio sin declarar (ni indicaciones ni «no requiere») sigue sin cumplir', () => {
+        const rows = medical();
+        rows.services = [
+            { id: 's1', name: 'Laboratorio', preparation: 'Ayuno de 8 horas.', preparation_required: true, ...edited },
+            { id: 's2', name: 'Consulta', preparation: null, preparation_required: null, ...edited },
+        ];
+        expect(preparations(rows)?.result).not.toBe('cumple');
+    });
+
+    it('las indicaciones de un servicio sembrado del alta no cuentan como confirmadas', () => {
+        const rows = medical();
+        rows.services = [{ id: 's1', name: 'Laboratorio', preparation: 'Ayuno de 8 horas.', preparation_required: true, ...edited,
+            created_at: '1970-01-01 00:00:00', updated_at: '1970-01-01 00:00:00' }];
+        expect(fromLegacyRows(rows).values['PROF.P09.PREPARATIONS']).toBeUndefined();
+    });
+});
+
 describe('ficha de tour', () => {
     it('E2m: lleva el mínimo y el máximo de viajeros del paquete, que el agente lee', () => {
         const rows = factRows({ tenant: { ref: 't', name: 'Agencia', settings: {} }, companies: [], policies: [], requirement_values: [] });

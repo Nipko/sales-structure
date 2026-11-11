@@ -60,6 +60,32 @@ export interface ServiceFormState {
     paymentPolicy: "none" | "full" | "deposit" | "any";
     depositPercent: number | null;
     depositAmount: number | null;
+    /** Ficha del servicio (ADR 0031, fricción 10). Las listas se editan una por línea. */
+    description: string;
+    includesText: string;
+    excludesText: string;
+    preparation: string;
+    /** «Este servicio no requiere preparación». */
+    noPreparation: boolean;
+}
+
+/** One item per line; blank lines and repeated items are dropped. */
+export function serviceListFromText(text: string): string[] {
+    return [...new Set(text.split(/\r?\n/).map(line => line.trim()).filter(Boolean))];
+}
+
+/**
+ * Lo que el formulario manda de la ficha. Unas indicaciones vacías sin «no
+ * requiere» dejan la preparación sin declarar (el servidor no la inventa).
+ */
+export function serviceDetailsPayload(form: Pick<ServiceFormState, "description" | "includesText" | "excludesText" | "preparation" | "noPreparation">) {
+    return {
+        description: form.description.trim() || null,
+        includes: serviceListFromText(form.includesText),
+        excludes: serviceListFromText(form.excludesText),
+        preparation: form.noPreparation ? null : form.preparation.trim() || null,
+        preparationRequired: form.noPreparation ? false : null,
+    };
 }
 
 const EMPTY_FORM: ServiceFormState = {
@@ -81,6 +107,11 @@ const EMPTY_FORM: ServiceFormState = {
     paymentPolicy: "none",
     depositPercent: null,
     depositAmount: null,
+    description: "",
+    includesText: "",
+    excludesText: "",
+    preparation: "",
+    noPreparation: false,
 };
 
 export interface ServiceCatalogMessages {
@@ -163,6 +194,11 @@ export function useServiceCatalog(
                     locationAddress: s.locationAddress ?? s.location_address ?? "",
                     meetingLink: s.meetingLink ?? s.meeting_link ?? "",
                     ...readPaymentPolicy(s),
+                    description: s.description ?? null,
+                    includes: Array.isArray(s.includes) ? s.includes : [],
+                    excludes: Array.isArray(s.excludes) ? s.excludes : [],
+                    preparation: s.preparation ?? null,
+                    preparationRequired: typeof s.preparationRequired === "boolean" ? s.preparationRequired : null,
                 }));
                 setServices(mapped);
             }
@@ -202,6 +238,11 @@ export function useServiceCatalog(
             meetingLink: (svc as any).meetingLink || (svc as any).meeting_link || "",
             // Sin esto, editar un servicio con anticipo lo devolvia a "sin pago".
             ...readPaymentPolicy(svc),
+            description: svc.description ?? "",
+            includesText: (svc.includes ?? []).join("\n"),
+            excludesText: (svc.excludes ?? []).join("\n"),
+            preparation: svc.preparation ?? "",
+            noPreparation: svc.preparationRequired === false,
         });
         setShowServiceModal(true);
     }, []);
@@ -221,6 +262,10 @@ export function useServiceCatalog(
             // example sends nothing and the server keeps the mark.
             delete payload.price;
             delete payload.priceStatus;
+            delete payload.includesText;
+            delete payload.excludesText;
+            delete payload.noPreparation;
+            Object.assign(payload, serviceDetailsPayload(serviceForm));
             Object.assign(payload, servicePriceFormPayload(
                 serviceForm,
                 editingService ? servicePriceAmount(editingService) : null,

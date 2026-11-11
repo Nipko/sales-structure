@@ -54,6 +54,11 @@ const EDITOR_FORM: EditorForm = {
     paymentPolicy: "deposit",
     depositPercent: 30,
     depositAmount: null,
+    description: "",
+    includesText: "",
+    excludesText: "",
+    preparation: "",
+    noPreparation: false,
 };
 
 describe("services whose price the owner never confirmed", () => {

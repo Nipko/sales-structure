@@ -31,6 +31,11 @@ export {
 export type {
     FactSources, OwnerFact, RuntimeDay, RuntimeBusinessHours, RuntimePolicy, NotOfferedEntry, IdentityOverlay, LegacyPatch, LegacyProjection,
 } from './business-facts';
+export {
+    CONFIRMED_FACT_EXCLUDED_PATTERNS, CONFIRMED_FACT_MAX_CHARS, CONFIRMED_FACTS_MAX_TOTAL_CHARS, isConfirmedFactRequirement, confirmedFactIds,
+    resolveConfirmedFacts, renderFactValue, renderConfirmedFacts,
+} from './confirmed-facts';
+export type { ConfirmedFactView } from './confirmed-facts';
 export { validateRequirementValue, requiredFieldsOutsideDictionary, isValueRequirement, isIsoDuration, unionOptions, MAX_VALUE_BYTES } from './validate-value';
 export type { ValueIssue, ValueWriteInput } from './validate-value';
 export { planProvenanceBackfill, applyBackfillPlan } from './backfill';

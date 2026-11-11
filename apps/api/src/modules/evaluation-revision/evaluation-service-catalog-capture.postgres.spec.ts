@@ -27,9 +27,10 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
         await query(`CREATE TABLE "${source}".services(id uuid PRIMARY KEY,name text,description text,
             duration_minutes integer,buffer_minutes integer,price numeric,currency text,is_active boolean,
             duration_type text,duration_minutes_max integer,payment_policy text,deposit_percent numeric,deposit_amount numeric,
-            location_type text,location_address text,meeting_link text,is_public boolean,sort_order integer,price_status text)`);
+            location_type text,location_address text,meeting_link text,is_public boolean,sort_order integer,price_status text,
+            includes jsonb,excludes jsonb,preparation text,preparation_required boolean)`);
         await query(`INSERT INTO "${source}".services VALUES($1::uuid,'Consulta','Consulta general',30,0,100,'COP',true,
-            'fixed',null,'none',null,null,'in_person','Sede principal',null,true,1,'confirmed')`, [serviceId]);
+            'fixed',null,'none',null,null,'in_person','Sede principal',null,true,1,'confirmed','[]','[]',null,null)`, [serviceId]);
         await query(`CREATE TABLE "${source}".messages(id uuid PRIMARY KEY,content_text text)`);
         await query(`CREATE TABLE "${source}".contacts(id uuid PRIMARY KEY,name text)`);
         for (const table of ['agent_personas','knowledge_documents','knowledge_embeddings']) {

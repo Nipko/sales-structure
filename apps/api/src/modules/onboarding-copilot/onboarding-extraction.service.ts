@@ -14,7 +14,8 @@
  */
 import { ForbiddenException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import {
-    checkCopilotProposal, genericTextReason, isCopilotRequirement, resolveValue, sameCopilotValue, type CopilotSource,
+    checkCopilotProposal, copilotPromptShape, copilotValueAgrees, genericTextReason, isCopilotRequirement, resolveValue, sameCopilotValue,
+    type CopilotSource,
 } from '@parallext/business-spec';
 import { LLMRouterService } from '../ai/router/llm-router.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +30,8 @@ import {
 
 /** Estados en los que el copiloto propone un valor (lo confirmado solo se compara, para detectar contradicciones). */
 const OPEN_STATES = new Set(['ausente', 'sembrado', 'ejemplo', 'caducado']);
+/** Orden de entrada al tope de requisitos por ejecución: los bloqueantes primero. */
+const LEVEL_RANK: Readonly<Record<string, number>> = { bloqueante: 0, necesario: 1, recomendado: 2 };
 const FAQ_HYGIENE = 'CORE.KNOWLEDGE.FAQ_HYGIENE';
 export const EXTRACTION_RUN_ACTION = 'copilot.extraction_run';
 
@@ -84,20 +87,28 @@ export class OnboardingExtractionService {
         const applicable = view.result.requirements.filter(r => r.applies && !r.platform && !r.derived);
 
         const missing: PromptRequirement[] = [];
+        const rankOf = new Map<string, number>();
         const confirmed: PromptRequirement[] = [];
         for (const r of applicable) {
             if (!isCopilotRequirement(spec, r.id)) continue;
             const req = spec.requirements[r.id];
             const resolved = resolveValue(snapshot.values[r.id], this.now());
+            // ADR 0031 (recall): los requisitos de hechos se muestran solo con sus campos de hecho, en palabras del dueño
+            const shape = copilotPromptShape(spec, r.id);
             const entry: PromptRequirement = {
-                id: r.id, title: req.title, structure: req.data?.structure ?? null, example: req.data?.example ?? null,
+                id: r.id, title: req.title, structure: shape.structure, example: shape.example,
                 question: typeof req.gapMessage === 'string' ? req.gapMessage : (Object.values(req.gapMessage)[0] ?? req.title),
             };
             if (resolved.state === 'confirmado' && resolved.record) confirmed.push({ ...entry, current: resolved.record.value });
-            else if (OPEN_STATES.has(String(resolved.state ?? 'ausente')) || r.result !== 'cumple') missing.push(entry);
+            else if (OPEN_STATES.has(String(resolved.state ?? 'ausente')) || r.result !== 'cumple') {
+                missing.push(entry);
+                rankOf.set(r.id, LEVEL_RANK[String(r.level)] ?? 3);
+            }
         }
-        const targets = missing.slice(0, COPILOT_LIMITS.maxTargets);
+        // con más requisitos abiertos al copiloto, los bloqueantes entran primero al tope de la ejecución
+        const targets = [...missing].sort((a, b) => (rankOf.get(a.id) ?? 3) - (rankOf.get(b.id) ?? 3)).slice(0, COPILOT_LIMITS.maxTargets);
         const compare = confirmed.slice(0, COPILOT_LIMITS.maxConfirmed);
+        const missingIds = new Set(targets.map(r => r.id));
         const targetIds = new Set([...targets, ...compare].map(r => r.id));
         const currentOf = new Map(compare.map(r => [r.id, r.current]));
 
@@ -140,7 +151,7 @@ export class OnboardingExtractionService {
             if (content !== null) {
                 const parsed = parseExtractionResponse(content);
                 if (parsed.malformed) summary.note = 'malformed_response';
-                drafts.push(...this.decide(parsed, { spec, sources, targetIds, currentOf, summary }));
+                drafts.push(...this.decide(parsed, { spec, sources, targetIds, missingIds, currentOf, summary }));
             }
         }
 
@@ -159,10 +170,15 @@ export class OnboardingExtractionService {
      * - una versión distinta del valor confirmado → una contradicción con el valor de hoy;
      * - igual al valor confirmado → nada;
      * - el resto → una propuesta de valor.
+     * Las preguntas del modelo se guardan solo para requisitos que faltan y que esta ejecución no propuso (ADR 0031: una
+     * pregunta cuya respuesta ya estaba en el documento, o en un valor confirmado, le cuesta tiempo al dueño).
      */
     private decide(
         parsed: ReturnType<typeof parseExtractionResponse>,
-        ctx: { spec: ReadinessService['spec']; sources: CopilotSource[]; targetIds: Set<string>; currentOf: Map<string, unknown>; summary: ExtractionRunSummary },
+        ctx: {
+            spec: ReadinessService['spec']; sources: CopilotSource[]; targetIds: Set<string>; missingIds: Set<string>;
+            currentOf: Map<string, unknown>; summary: ExtractionRunSummary;
+        },
     ): CopilotProposalDraft[] {
         const bySource = new Map(ctx.sources.map(s => [s.ref, s]));
         const verified = new Map<string, { value: unknown; evidence: CopilotEvidenceView[] }[]>();
@@ -189,7 +205,8 @@ export class OnboardingExtractionService {
         for (const [requirementId, versions] of verified) {
             const hasCurrent = ctx.currentOf.has(requirementId);
             const current = ctx.currentOf.get(requirementId);
-            const differing = hasCurrent ? versions.filter(v => !sameCopilotValue(v.value, current)) : versions;
+            // con forma de hechos (región, idiomas…) se comparan solo los campos propuestos: el pack de país no es una contradicción
+            const differing = hasCurrent ? versions.filter(v => !copilotValueAgrees(ctx.spec, requirementId, v.value, current)) : versions;
             if (!differing.length) continue;
             const evidence = differing.flatMap(v => v.evidence);
             if (differing.length > 1) {
@@ -200,9 +217,10 @@ export class OnboardingExtractionService {
                 drafts.push({ kind: 'value', requirementId, targetRef: '', evidence, input: { value: differing[0].value } });
             }
         }
-        const covered = new Set(drafts.map(d => d.requirementId));
+        // ADR 0031: no se pregunta lo que ya está confirmado ni lo que esta misma ejecución propuso desde las fuentes
+        const covered = new Set([...drafts.map(d => d.requirementId), ...verified.keys()]);
         for (const q of parsed.questions) {
-            if (!ctx.targetIds.has(q.requirementId) || covered.has(q.requirementId)) continue;
+            if (!ctx.missingIds.has(q.requirementId) || covered.has(q.requirementId)) continue;
             covered.add(q.requirementId);
             drafts.push({ kind: 'question', requirementId: q.requirementId, targetRef: '', evidence: [], input: { question: { code: 'owner_question', text: q.question } } });
         }

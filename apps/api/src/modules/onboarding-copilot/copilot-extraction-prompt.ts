@@ -20,12 +20,15 @@ export const COPILOT_LIMITS = {
     sourceChars: 12_000,
     totalChars: 60_000,
     maxSources: 20,
-    /** Requisitos por ejecución (los que faltan primero; los confirmados solo para detectar contradicciones). */
-    maxTargets: 30,
+    /**
+     * Requisitos por ejecución (los que faltan primero; los confirmados solo para detectar contradicciones). 40 desde que
+     * se abrieron región, urgencias, idiomas… (ADR 0031, recall); entre los que faltan, los bloqueantes primero.
+     */
+    maxTargets: 40,
     maxConfirmed: 15,
     /** Propuestas guardadas por ejecución. */
     maxProposals: 30,
-    maxTokens: 4_000,
+    maxTokens: 6_000,
     /** Ejecuciones por tenant en 24 h (tope de costo). */
     runsPerDay: 10,
 } as const;
@@ -74,10 +77,12 @@ export function buildExtractionPrompt(input: {
         '1. Propón un valor solo si una fuente lo dice explícitamente. Si no lo dice, no lo propongas (no adivines ni completes con algo típico).',
         '2. Cada propuesta lleva "evidence": una o más citas COPIADAS LITERALMENTE de una fuente (8 a 300 caracteres), con su "source_ref".',
         '3. Toda cifra, hora, fecha, porcentaje o monto del valor debe aparecer en alguna de sus citas.',
-        '4. El valor sigue exactamente la "structure" del requisito (mismas claves; para listas cerradas, solo opciones de la lista; mira el "example").',
+        '4. El valor sigue exactamente la "structure" del requisito (mismas claves; para listas cerradas, solo opciones de la lista; mira el "example"). Si la structure lista solo algunos campos, propón solo esos: el resto lo decide el dueño.',
+        '   Países, monedas, zonas horarias e idiomas van como códigos (CO, COP, America/Bogota, es). El país solo si una fuente lo nombra.',
         '5. Para los requisitos YA CONFIRMADOS: propón solo si una fuente dice algo distinto de "current" (es una posible contradicción).',
         '6. Si dos fuentes dicen cosas distintas sobre un requisito, propón cada versión con su cita.',
         '7. "questions": preguntas puntuales al dueño (máx. 5) cuando las fuentes insinúan un dato pero no lo dejan claro. Nunca al cliente.',
+        '   Si una fuente responde la pregunta, no preguntes: propón el valor con su cita. No preguntes por un requisito que propones ni por uno ya confirmado.',
         'FORMATO: {"proposals":[{"requirement_id":"...","value":...,"evidence":[{"source_ref":"S1","quote":"..."}]}],"questions":[{"requirement_id":"...","question":"..."}]}',
         '',
         'REQUISITOS QUE FALTAN:',

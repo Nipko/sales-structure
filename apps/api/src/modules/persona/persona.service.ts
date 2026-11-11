@@ -1729,7 +1729,7 @@ export class PersonaService {
                             // prohibe explicitamente, asi que pedirlo aca dejaba al modelo
                             // eligiendo a quien obedecer turno a turno — y acumulaba cedulas
                             // sin cifrar en JSONB cuando ganaba la plantilla.
-                            'Confirma nombre y telefono del paciente antes de agendar. No pidas cedula ni documento de identidad salvo que el negocio lo haya definido como dato para agendar (sus documentos o FAQs lo dicen)',
+                            'Confirma nombre y telefono del paciente antes de agendar. No pidas ni recibas por chat la cedula ni otro documento de identidad: se presenta en la clinica. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Pregunta si tiene seguro/convenio y cuál — pero aclara que la cobertura la confirma la clínica',
                             'Para urgencias fuera de horario, da número de guardia (escalado) — nunca improvises',
                         ],
@@ -2271,7 +2271,7 @@ export class PersonaService {
                             // prohibe explicitamente, asi que pedirlo aca dejaba al modelo
                             // eligiendo a quien obedecer turno a turno — y acumulaba cedulas
                             // sin cifrar en JSONB cuando ganaba la plantilla.
-                            'Captura nombre completo, telefono y email antes de escalar. NUNCA pidas cedula, RFC ni documento de identidad: eso lo toma el asesor humano',
+                            'Captura nombre completo, telefono y email antes de escalar. NUNCA pidas cedula, RFC ni documento de identidad: eso lo toma el asesor humano. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Si el cliente pide cifras exactas de tasas, escala al asesor (las tasas cambian)',
                             'Para reclamos sobre productos vigentes, escala inmediatamente',
                             'Aclara siempre que la información es general y no es asesoría personalizada',
@@ -2313,7 +2313,7 @@ export class PersonaService {
                             // de identidad, asi que pedirla aca dejaba al modelo eligiendo a quien
                             // obedecer turno a turno. El numero de poliza alcanza, y ademas el
                             // gate por contacto ya verifica de quien es.
-                            'Pide el numero de poliza antes de dar informacion. NUNCA pidas cedula, DNI ni documento de identidad',
+                            'Pide el numero de poliza antes de dar informacion. NUNCA pidas cedula, DNI ni documento de identidad. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Para renovaciones: confirma datos actualizados antes de procesar',
                             'NO compartas informacion sensible (saldos detallados, datos de tarjeta) por chat — deriva a un asesor humano',
                             'Para cambios contractuales, escala SIEMPRE al asesor humano',
@@ -2445,7 +2445,7 @@ export class PersonaService {
                     },
                     behavior: {
                         rules: [
-                            'Pide el numero de pedido, el telefono o el email para localizar la compra. NUNCA pidas cedula ni documento de identidad',
+                            'Pide el numero de pedido, el telefono o el email para localizar la compra. NUNCA pidas cedula ni documento de identidad. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Comunica el estado del pedido con timestamps reales',
                             'Para devoluciones: confirma plazo (30 días) y estado del producto antes de procesar',
                             'Reembolsos completos solo si el producto llega en condiciones aceptables',
@@ -2685,7 +2685,7 @@ export class PersonaService {
                             // prohibe explicitamente, asi que pedirlo aca dejaba al modelo
                             // eligiendo a quien obedecer turno a turno — y acumulaba cedulas
                             // sin cifrar en JSONB cuando ganaba la plantilla.
-                            'Captura nombre completo, telefono y email antes de generar la cotizacion. NUNCA pidas cedula ni DNI: los datos formales los toma el asesor al emitir',
+                            'Captura nombre completo, telefono y email antes de generar la cotizacion. NUNCA pidas cedula ni DNI: los datos formales los toma el asesor al emitir. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Para reclamos de siniestros, escala inmediatamente al agente humano',
                         ],
                         forbiddenTopics: ['Montos exactos de prima sin evaluación', 'Garantizar cobertura', 'Asesoría legal sobre siniestros', 'Productos de competidores'],
@@ -2716,7 +2716,7 @@ export class PersonaService {
                     },
                     behavior: {
                         rules: [
-                            'Verifica con el numero de poliza antes de dar informacion. NUNCA pidas cedula ni DNI',
+                            'Verifica con el numero de poliza antes de dar informacion. NUNCA pidas cedula ni DNI. Si el negocio declara que se necesita un documento (sus documentos, FAQs o requisitos), informa cual y cuando se presenta; nunca digas que no se necesita',
                             'Para renovaciones: confirma que los datos del asegurado siguen vigentes',
                             'Para siniestros: captura fecha, lugar, descripción y fotos antes de escalar',
                             'NO confirmes cobertura de un siniestro — solo el ajustador puede hacerlo',

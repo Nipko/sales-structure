@@ -1,4 +1,5 @@
 import { LlmProviderHealthService, LLM_PROVIDER_HEALTH_ALERT_EVENT, LlmProviderHealthAlert } from './llm-provider-health.service';
+import { RECOVERY_QUIET_MS } from './llm-provider-state';
 
 class FakeRedis {
     store = new Map<string, string>();
@@ -63,7 +64,10 @@ describe('LlmProviderHealthService', () => {
 
     it('recuperacion: avisa, cierra el incidente y re-arma el aviso para una recaida', async () => {
         const { svc, sent, alerts } = setup();
+        let now = 1_800_000_000_000;
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
         await svc.recordFailure('openai', 'm', noCredits, 'traffic');
+        now += RECOVERY_QUIET_MS;
         await svc.recordSuccess('openai', 'm', 'probe');
         const recovery = sent().find(a => a.key === 'llm:provider:openai:recovered');
         expect(recovery).toBeDefined();
@@ -74,6 +78,20 @@ describe('LlmProviderHealthService', () => {
         // Recaida: el gate en Redis se libero; el guard local de 5 min tambien.
         await svc.recordFailure('openai', 'm', noCredits, 'traffic');
         expect(alerts().filter(a => a.key === 'llm:provider:openai:no_credits' && !a.resolveOnly)).toHaveLength(2);
+    });
+
+    it('credito agotandose con exitos intercalados: un aviso y un incidente, sin abrir y cerrar (10-nov)', async () => {
+        const { svc, sent, alerts } = setup();
+        let now = 1_800_000_000_000;
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
+        for (let i = 0; i < 60; i++) {
+            now += 1000;
+            if (i % 2) await svc.recordSuccess('openai', 'm', 'traffic');
+            else await svc.recordFailure('openai', 'm', noCredits, 'traffic');
+        }
+        expect(sent().map(a => a.key)).toEqual(['llm:provider:openai:no_credits']);
+        expect(alerts().filter(a => a.resolveKeys)).toHaveLength(0);
+        expect((await svc.getState('openai')).status).toBe('no_credits');
     });
 
     it('rate limit y errores sueltos no avisan; tres caidas seguidas si', async () => {

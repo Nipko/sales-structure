@@ -21,6 +21,12 @@ export const SEVERE_STATUSES: ReadonlySet<ProviderStatus> = new Set<ProviderStat
 
 export const DOWN_AFTER_CONSECUTIVE_FAILURES = 3;
 
+/**
+ * Un proveedor en estado grave solo se da por recuperado con un exito que
+ * llegue al menos este tiempo despues del ultimo error.
+ */
+export const RECOVERY_QUIET_MS = 2 * 60 * 1000;
+
 export type ObservationSource = 'traffic' | 'probe';
 
 export type ProviderObservation =
@@ -84,7 +90,14 @@ export function nextProviderState(
     obs: ProviderObservation,
 ): { state: ProviderState; transition: ProviderTransition | null } {
     let state: ProviderState;
-    if (obs.ok) {
+    if (obs.ok && SEVERE_STATUSES.has(prev.status) && prev.lastErrorAt !== null
+        && obs.at - prev.lastErrorAt < RECOVERY_QUIET_MS) {
+        // Histeresis: un exito suelto entre errores recientes no despeja el
+        // estado grave. Mientras se agota el credito, o con varias peticiones en
+        // vuelo, llegan exitos intercalados con 429; sin esto el incidente se
+        // abria y cerraba en cada uno (60 veces en 10 min el 10-nov-2026).
+        state = { ...prev, lastSuccessAt: obs.at };
+    } else if (obs.ok) {
         state = {
             ...prev,
             status: 'healthy',

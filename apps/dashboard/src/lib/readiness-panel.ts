@@ -133,6 +133,11 @@ export interface ReadinessPanelModel {
     coverage: PanelArea[];
     recommendedPct: number;
     counts: ReadinessResultView["counts"];
+    /**
+     * Huecos que muestran las listas (un hueco que nace de otro se cuenta una vez, en su raíz). El resumen usa estos
+     * números para no decir «18 bloqueantes» sobre una lista de 17 (ADR 0031, fricción 8).
+     */
+    shown: { blocking: number; necessary: number; recommended: number };
 }
 
 const pct = (ok: number, total: number) => (total ? Math.round((ok / total) * 100) : 100);
@@ -205,6 +210,9 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         };
     };
     const list = (ids: string[]) => ids.map(toGap).filter((g): g is PanelGap => g !== null);
+    const blocking = list(r.blockingGaps);
+    const necessary = list(r.necessaryGaps);
+    const recommended = list(r.recommendedGaps);
     const coverage = Object.entries(r.coverage.byArea)
         .map(([area, c]) => ({ area, ok: c.ok, total: c.total, pct: pct(c.ok, c.total) }))
         .sort((a, b) => a.pct - b.pct || a.area.localeCompare(b.area));
@@ -212,9 +220,9 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         verdict: r.verdict,
         evaluatedAt: response.evaluatedAt,
         specVersion: r.specVersion,
-        blocking: list(r.blockingGaps),
-        necessary: list(r.necessaryGaps),
-        recommended: list(r.recommendedGaps),
+        blocking,
+        necessary,
+        recommended,
         limitedIntents: r.limitedIntents.map(({ id, title }) => ({ id, title })),
         quality: r.qualityWarnings.map(w => {
             const req = byId.get(w.id);
@@ -224,7 +232,22 @@ export function buildReadinessPanel(response: ReadinessCurrentResponse, viewer: 
         coverage,
         recommendedPct: r.coverage.r5Pct,
         counts: r.counts,
+        shown: { blocking: blocking.length, necessary: necessary.length, recommended: recommended.length },
     };
+}
+
+/**
+ * Bloqueantes de una evaluación del historial contados como en la lista: sin los que se muestran en su raíz según la
+ * evaluación actual (el historial guarda los ids, no la causa raíz). Así la fila más reciente coincide con el resumen.
+ */
+export function shownGapCount(ids: readonly string[], current: ReadinessResultView | null | undefined): number {
+    if (!current) return ids.length;
+    const byId = new Map(current.requirements.map(r => [r.id, r]));
+    const listed = new Set(ids);
+    return ids.filter(id => {
+        const root = byId.get(id)?.gap?.rootCause;
+        return !(root && listed.has(root) && byId.get(root)?.gap);
+    }).length;
 }
 
 /** Enlace al panel con el cajón de ese requisito abierto (`/admin/readiness?open=ID`). */

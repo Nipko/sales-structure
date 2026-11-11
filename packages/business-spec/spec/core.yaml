@@ -86,8 +86,8 @@ requirements:
     example: {operating_country: CO, timezone: America/Bogota, currency: COP, default_locale: es-CO, country_pack: "CO@3"}
   criticality: {level: bloqueante, rule: R1}
   when_missing: {code: GAP, behavior: "Bloqueante. Nunca se infiere el país, la ciudad ni la moneda (B1 C02).", never: ["inferir país o moneda por el idioma del cliente"]}
-  sources: {allowed: [owner_form, country_pack]}
-  collection: {channels: [form], ui_today: /admin/settings/localization, storage_today: "Tenant.operatingCountry, operatingTimezone, operatingCurrency, defaultLocale, countryPackId (+ regionalProvenance)", storage_status: existe}
+  sources: {allowed: [owner_form, copilot_approved, country_pack]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/localization, storage_today: "Tenant.operatingCountry, operatingTimezone, operatingCurrency, defaultLocale, countryPackId (+ regionalProvenance)", storage_status: existe}
   readiness:
     predicate_kind: custom
     predicate: "operating_country, timezone y currency existen con origen declarado (no 'fallback') y country_pack resuelto"
@@ -319,8 +319,8 @@ requirements:
     example: [{kind: review, value: "https://g.page/r/…"}]
   criticality: {level: recomendado, rule: R5}
   when_missing: {code: HUM, behavior: "Empleo o proveedores: registra y deriva sin prometer respuesta. Reseña: agradece y registra.", never: ["confundir 'vagas' (empleo) con cupos"]}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
   readiness: {predicate_kind: value_or_empty, predicate: "valor o vacío confirmado", gap_message: "Comparte tu enlace de reseñas y el contacto para empleo y proveedores."}
   qa_truth: "C33: esperado registro + derivación, o el contacto si existe."
 
@@ -338,8 +338,8 @@ requirements:
     example: {agent_languages: [es, en, pt, fr], human_languages: [es], content_source_language: es, translate_content: true}
   criticality: {level: necesario, rule: R4}
   when_missing: {code: NC+AV, behavior: "Responde siempre en el idioma del mensaje actual (T04). Al traspasar, si el idioma del cliente ∉ human_languages, lo avisa antes de traspasar."}
-  sources: {allowed: [owner_form, country_pack]}
-  collection: {channels: [form], ui_today: /admin/settings/localization, storage_today: "Tenant.language / defaultLocale (uno solo)", storage_status: parcial}
+  sources: {allowed: [owner_form, copilot_approved, country_pack]}
+  collection: {channels: [form, copilot_extraction], ui_today: /admin/settings/localization, storage_today: "Tenant.language / defaultLocale (uno solo)", storage_status: parcial}
   readiness:
     predicate_kind: confirmed_fields
     predicate_params: {fields: ["human_languages[]", content_source_language]}
@@ -553,8 +553,8 @@ requirements:
     example: {when: anticipo_parcial, deposit: {amount: "30%", refundable: false}}
   criticality: {level: necesario, rule: R4, conditional: "bloqueante (R2) si OBJ.<x>.WRITE_MODE exige pago para confirmar", when: [{if: payment_required_any, level: bloqueante, rule: R2}]}
   when_missing: {code: NC+AV, behavior: "«No tengo confirmado si se requiere anticipo» + AV.", never: ["afirmar 'no se cobra depósito' sin 'ninguno' confirmado"]}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: nuevo, storage_today: "services/properties/tour_packages/courses.{payment_policy, deposit_percent, deposit_amount} por ítem (payment_policy = 'none' es default de columna ⇒ sembrado, schema §7.5 L4); photo_sessions.deposit_paid; regla general del negocio: nuevo", storage_status: parcial}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: "services/properties/tour_packages/courses.{payment_policy, deposit_percent, deposit_amount} por ítem (payment_policy = 'none' es default de columna ⇒ sembrado, schema §7.5 L4); photo_sessions.deposit_paid; regla general del negocio: nuevo", storage_status: parcial}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [when, deposit]}, predicate: "existe(when) y existe(deposit) (o 'ninguno') confirmados", gap_message: "¿Cuándo se paga y pides anticipo?"}
   qa_truth: "C27: AFIRMA monto y si es reembolsable; 'ninguno' → NIEGA; ausente → NC+AV."
 
@@ -572,8 +572,8 @@ requirements:
     example: {insurers_accepted: ["Sura", "Colsanitas"], installments: {enabled: true, partners: ["Addi"]}}
   criticality: {level: recomendado, rule: R5}
   when_missing: {code: NC+AV, behavior: "PREG por la aseguradora concreta y luego NC+AV si no consta.", never: ["pre-aprobar crédito", "afirmar cobertura de un seguro"]}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: nuevo, storage_status: nuevo}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [installments, insurers_accepted]}, predicate: "installments e insurers_accepted declarados (valor o vacío confirmado)", gap_message: "¿Trabajas con cuotas, convenios o aseguradoras? Si no, confírmalo."}
   qa_truth: "Entidad listada → AFIRMA con su regla; no listada → NC+AV."
 
@@ -611,8 +611,8 @@ requirements:
     example: {required_fields: [razón_social, nit, correo], confirms: business, sla: {min: 1, unit: día}}
   criticality: {level: recomendado, rule: R5}
   when_missing: {code: HUM, behavior: "Solicitud + HUM; no pide datos fiscales si no hay procedimiento."}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: "nuevo (verificado: /admin/settings/fiscal es el perfil fiscal del tenant para la facturación de la plataforma: settings.fiscalData + public.fiscal_invoices)", storage_today: nuevo, storage_status: nuevo}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: "nuevo (verificado: /admin/settings/fiscal es el perfil fiscal del tenant para la facturación de la plataforma: settings.fiscalData + public.fiscal_invoices)", storage_today: nuevo, storage_status: nuevo}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {any_of: [["required_fields[]", sla], [no_invoice]]}, predicate: "required_fields y sla confirmados, o 'no emitimos factura' confirmado", gap_message: "¿Cómo entregas facturas y qué datos necesitas?"}
   qa_truth: "C23: PREG por required_fields y confirmación de solicitud con el SLA; sin procedimiento → HUM."
 
@@ -731,8 +731,8 @@ requirements:
     example: {controller: {name: "Sonrisa SAS", email: "datos@sonrisa.co"}, url_or_text: "https://sonrisa.co/privacidad"}
   criticality: {level: bloqueante, rule: R1}
   when_missing: {code: HUM, behavior: "No se publica sin aviso. En ensayo: deriva preguntas de datos a HUM."}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: "/admin/settings/policies (privacy) + textos legales", storage_today: "policies.type = privacy, legal_text_versions, consent_records", storage_status: existe}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: "/admin/settings/policies (privacy) + textos legales", storage_today: "policies.type = privacy, legal_text_versions, consent_records", storage_status: existe}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [controller, url_or_text]}, predicate: "existe versión activa con controller confirmado", gap_message: "Falta tu aviso de privacidad (obligatorio para operar)."}
   qa_truth: "C28: entrega el enlace o resumen y el contacto del responsable."
 
@@ -809,8 +809,8 @@ requirements:
     example: {sla_in_hours: {min: 15, unit: min}, sla_out_of_hours: siguiente_apertura, callback_offered: true}
   criticality: {level: bloqueante, rule: R1}
   when_missing: {code: HUM, behavior: "Solo en ensayo: «te paso con el equipo; te responderán en cuanto estén disponibles» sin prometer tiempos.", never: ["prometer una respuesta inmediata fuera del horario humano"]}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: "/admin/agent (afterHoursMessage) — horario humano y SLA: nuevo", storage_today: "persona config afterHoursMessage (texto); SLA y horario humano: nuevo", storage_status: parcial}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: "/admin/agent (afterHoursMessage) — horario humano y SLA: nuevo", storage_today: "persona config afterHoursMessage (texto); SLA y horario humano: nuevo", storage_status: parcial}
   readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [human_hours, sla_in_hours, sla_out_of_hours]}, predicate: "human_hours y sla_in_hours y sla_out_of_hours confirmados", gap_message: "Indica en qué horario responde una persona y en cuánto tiempo."}
   qa_truth: "C30 dentro de horario → 'te paso; responden en {sla}'; fuera → 'te responden {próxima apertura}' + solicitud registrada."
   owner_decision: E12

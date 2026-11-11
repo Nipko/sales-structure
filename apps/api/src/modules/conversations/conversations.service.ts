@@ -14,7 +14,7 @@ import { spelledTotalCorrection } from './spelled-total';
 import { stockShortfallNote } from './stock-shortfall';
 import { pendingServicesNote, templateServicesOfTurn } from './runtime/pending-services-note';
 import { unbackedExclusionCorrection } from './unbacked-exclusion';
-import { unbackedPaymentCorrection } from './unbacked-payment';
+import { confirmedFactsAsReads, unbackedPaymentCorrection } from './unbacked-payment';
 import { quantityTotalNote } from './quantity-total';
 import { budgetVerdictCorrection } from './budget-verdict';
 import { wrongServiceCorrection } from './wrong-service';
@@ -215,7 +215,7 @@ import {
     toolOrigin,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
-import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
+import { AUTOMATIC_FAQ_TIMEOUT_MS, AUTOMATIC_READ_TIMEOUT_MS, awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import { faqResultTraceMetadata } from '../../common/utils/faq-result-provenance';
 import {
@@ -3019,6 +3019,9 @@ export class ConversationsService {
             : identity;
         // D1a (ADR 0016): the knowledge contract is sealed with the rest, so a sealed turn sees what a live turn sees.
         const knowledgeContract = this.readinessContext ? await this.readinessContext.contract(tenantId) : null;
+        // C14: the owner-confirmed facts the customer may be told, sealed like the identity (a sealed turn never reads them live).
+        // A read failure is not frozen as absence: the capture fails, like the other sources.
+        const confirmedFacts = this.businessFacts ? await this.businessFacts.confirmedFacts(tenantId, AGENT_TEST_EXECUTION_CONTEXT) : [];
         return resolveEvaluationTurnContext({ version: 1, tenantId,
             businessHours: businessHours ?? null,
             appointmentHours: await this.captureAppointmentHours(tenantId, config),
@@ -3043,6 +3046,8 @@ export class ConversationsService {
             ...(knowledgeContract ? { knowledgeContract } : {}),
             // Only when on: a snapshot of a tenant with the flag off is exactly the previous one.
             ...(resolveFeatureFlag((tenant.settings as any)?.featureFlags, EVIDENCE_VERIFIER_FLAG) ? { evidenceVerifier: true } : {}),
+            // Only when there is one: a snapshot of a tenant without confirmed facts is exactly the previous one.
+            ...(confirmedFacts.length ? { confirmedFacts } : {}),
         }, tenantId);
     }
 
@@ -3475,6 +3480,16 @@ export class ConversationsService {
             if (business) turnContext.business = business;
         } catch (e: any) {
             this.logger.warn(`Business identity lookup failed (non-fatal): ${e.message}`);
+        }
+        // C14: what the owner confirmed beyond identity, hours and policies (payment methods, appointment requirements, change
+        // rules, languages…), only confirmed and unexpired values (business-spec resolveConfirmedFacts). A sealed turn reads
+        // the snapshot; a live read failure leaves the block out (the turn runs as before), never invents it.
+        try {
+            const confirmedFacts = evaluationContext ? evaluationContext.confirmedFacts ?? []
+                : this.businessFacts ? await this.businessFacts.confirmedFacts(tenantId, executionContext) : [];
+            if (confirmedFacts.length) turnContext.confirmedFacts = confirmedFacts;
+        } catch (e: any) {
+            this.logger.warn(`Confirmed business facts lookup failed (non-fatal): ${e.message}`);
         }
 
         // 3.5 Vertical context — inject industry-specific terminology for the LLM
@@ -4975,7 +4990,7 @@ export class ConversationsService {
                         faqSelector: request => (session ? llmRouter : this.llmRouter).execute({ ...request, tenantId, executionContext,
                             traceContext: { conversationId: conversation.id, stage: 'faq_selector' } }),
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, faqExecutionContext);
+                ), AUTOMATIC_FAQ_TIMEOUT_MS, faqExecutionContext);
                 const faqs = !result?.error && Array.isArray(result?.faqs) ? boundedAutomaticFaqs(result.faqs) : [];
                 preExecutedTools.push({ name: 'search_faqs', result: { ...result, faqs } });
                 const retrievedFaqs: RetrievedKnowledgeItem[] = faqs
@@ -5057,7 +5072,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_customer_context', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'customer_context_lookup_failed' };
@@ -5080,7 +5095,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'list_my_tour_bookings', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'tour_bookings_lookup_failed' };
@@ -5102,7 +5117,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_appointment_details', { appointmentId: appointmentReadId }, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 preExecutedTools.push({ name: 'get_appointment_details', result });
                 automaticAppointmentRead = { appointmentId: appointmentReadId, result };
                 turnTrace.add('tool_result', 'get_appointment_details', { ok: !result?.error, error: result?.error, automatic: true });
@@ -5129,7 +5144,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'list_services', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'service_location_lookup_failed' };
@@ -5154,7 +5169,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_menu', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'menu_description_lookup_failed' };
@@ -5175,7 +5190,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'search_packages', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, packageExecutionContext);
+                ), AUTOMATIC_READ_TIMEOUT_MS, packageExecutionContext);
                 const catalogue = canonicalPackageCatalogue(result);
                 preExecutedTools.push({ name: 'search_packages', result });
                 turnContext.catalog = [...(turnContext.catalog || []), ...catalogue];
@@ -5194,7 +5209,7 @@ export class ConversationsService {
                             schemaName, tenantId, conversation.contact_id || '', 'get_package_details', { packageId }, conversation.id,
                             { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
                                 commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                        ), 3_000, packageExecutionContext);
+                        ), AUTOMATIC_READ_TIMEOUT_MS, packageExecutionContext);
                         preExecutedTools.push({ name: 'get_package_details', result: details });
                         automaticPackageDetailRead = { packageId, result: details };
                         turnTrace.add('tool_result', 'get_package_details', { ok: !details?.error, error: details?.error, automatic: true });
@@ -5225,7 +5240,7 @@ export class ConversationsService {
                 turnTrace.add('tool_call', 'search_listings', { origin: 'vertical', effect: 'read', automatic: true });
                 const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                     schemaName, tenantId, conversation.contact_id || '', 'search_listings', {}, conversation.id, options,
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 preExecutedTools.push({ name: 'search_listings', result });
                 turnTrace.add('tool_result', 'search_listings', { ok: !result?.error, error: result?.error, automatic: true });
                 const listingId = turnAllowedTools.includes('get_listing_details') ? listingDetailIdForQuestion(userText, result) : null;
@@ -5233,7 +5248,7 @@ export class ConversationsService {
                     turnTrace.add('tool_call', 'get_listing_details', { origin: 'vertical', effect: 'read', automatic: true });
                     const details = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', 'get_listing_details', { listingId }, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                     preExecutedTools.push({ name: 'get_listing_details', result: details });
                     automaticListingDetailRead = { listingId, result: details };
                     turnTrace.add('tool_result', 'get_listing_details', { ok: !details?.error, error: details?.error, automatic: true });
@@ -5264,7 +5279,7 @@ export class ConversationsService {
                 try {
                     result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 } catch (error: any) {
                     if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                     result = { error: 'product_stock_lookup_failed' };
@@ -5300,7 +5315,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'search_products', args, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'catalogue_order_lookup_failed' };
@@ -5325,7 +5340,7 @@ export class ConversationsService {
                 try {
                     result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 } catch (error: any) {
                     if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                     result = { error: 'property_detail_lookup_failed' };
@@ -7182,7 +7197,8 @@ export class ConversationsService {
         const templateIds = templateItemIds(input.turnContext.catalog, input.turnContext.availableServices, input.reads.map(read => read.result));
         const facts = templateIds.size ? input.facts.filter(fact => !templateIds.has(String(fact.subject.id))) : input.facts;
         const evidence = turnEvidence({ facts, catalog: input.turnContext.catalog, services: input.turnContext.availableServices,
-            reads: input.reads, knowledge: input.turnContext.retrievedKnowledge, business: input.turnContext.business });
+            reads: input.reads, knowledge: input.turnContext.retrievedKnowledge, business: input.turnContext.business,
+            confirmedFacts: input.turnContext.confirmedFacts });
         try {
             const request = evidenceVerifierRequest({ customerMessage: input.customerMessage, reply: input.reply, contract: input.contract, evidence });
             const response = await input.router.execute({ ...request, tenantId: input.tenantId, executionContext: input.executionContext,
@@ -8003,6 +8019,9 @@ export class ConversationsService {
             this.logger.warn(`[Guardrail] The enough / not-enough verdict contradicted the figures: "${response.slice(0, 100)}"`);
             response = budgetVerdict;
         }
+        // C14: the owner-confirmed facts in the prompt (`<confirmed_business_facts>`) back a claim like any read of the turn: with
+        // CORE.PAYMENT.METHODS confirmed, «aceptamos tarjeta débito» is the business's own word, not an invented method.
+        const confirmedFactReads = confirmedFactsAsReads(trustedContext?.confirmedFacts);
         // F4300-54: «the Spark QA Tour does not include lunch», «el plato no incluye postre» with no read that excludes it: not recorded.
         const unbackedExclusion = unbackedExclusionCorrection(response, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
         if (unbackedExclusion) {
@@ -8011,7 +8030,7 @@ export class ConversationsService {
             response = unbackedExclusion;
         }
         // F4300-58: «¿qué medios de pago aceptan?» → «efectivo, tarjeta, PSE…» with no read that names them: not recorded.
-        const unbackedPayment = unbackedPaymentCorrection(response, customerText, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages)], lang);
+        const unbackedPayment = unbackedPaymentCorrection(response, customerText, [...(executedTools || []), ...toolReadsOfTurnMessages(currentMessages), ...confirmedFactReads], lang);
         if (unbackedPayment) {
             this.recordAgentSignal(tenantId, 'claim_unbacked', session);
             this.logger.warn(`[Guardrail] Payment methods no read names are said as not recorded: "${response.slice(0, 100)}"`);

@@ -59,6 +59,7 @@ export const EVIDENCE_VERIFIER_PROMPT = [
     '- AFIRMAN como hecho algo de un tema que no consta (un horario, precio, plazo, política, disponibilidad, medio de pago, cargo, servicio o condición) y que no está respaldado por facts ni por evidence; o',
     '- NIEGAN algo («no hay», «no incluye», «no tenemos», «no aceptamos», «no requiere») sin que facts o evidence lo respalden. Que un dato no conste NUNCA autoriza a negarlo.',
     'La evidencia trae el catálogo, los servicios, los hechos verificados y las lecturas que el agente tuvo en este turno: un dato que aparece ahí (un precio, una ficha, un horario, un stock) está respaldado aunque el tema esté en unknown, porque unknown describe el requisito del negocio en general, no cada ficha.',
+    'Los datos que el dueño confirmó (business_confirmed_facts en la evidencia: medios de pago, requisitos, reglas de cambio, idiomas…) respaldan decirlos tal cual, aunque su ID esté en unknown.',
     'Una pregunta frecuente (FAQ) o un artículo de la evidencia que habla de un tipo de producto o servicio sin nombrar uno concreto («el audífono», «el audífono QA de prueba», «los tours») respalda decir ese dato del producto concreto de ese tipo por el que pregunta el cliente («Audífono QA Aurora»). No lo respalda si nombra otro producto distinto («Faro Azul» no respalda «Faro Rojo»).',
     'Un 0 o false en la evidencia NO respalda una negación: suele ser el valor por defecto del campo, no un «no» del negocio. «Sin cargo por limpieza» con cleaningFee 0 es una violación.',
     'Excepción: una lectura de este turno que responde «available»: false con un motivo de falta («reason»: no_departure_on_date, not_enough_seats, party_size_too_small o party_size_too_large) SÍ respalda decir que no hay salida, cupo o disponibilidad en esa fecha. «party_size_required» NO es un «no»: solo falta saber cuántos viajan.',
@@ -131,11 +132,18 @@ export function turnEvidence(input: {
     reads?: ReadonlyArray<{ name: string; result: unknown }>;
     knowledge?: readonly unknown[];
     business?: unknown;
+    /**
+     * C14: what the owner confirmed in the readiness panel (`TurnContext.confirmedFacts`: confirmed and unexpired only).
+     * The business's own record, like its identity: a reply that says it («aceptamos tarjeta débito») is backed.
+     */
+    confirmedFacts?: ReadonlyArray<{ id: string; title: string; scope?: string; text: string }>;
 }): string[] {
     const facts = (input.facts ?? []).map(f => `${f.subject.name ?? f.subject.id} · ${f.field} = ${JSON.stringify(f.value)}${f.currency ? ` ${f.currency}` : ''}`);
     const catalog = withoutTemplateItems(input.catalog ?? []) as unknown[];
     const services = withoutTemplateItems(input.services ?? []) as unknown[];
+    const confirmed = (input.confirmedFacts ?? []).map(f => `${f.id} (${f.title}${f.scope ? `, ${f.scope}` : ''}) = ${f.text}`);
     return [
+        ...(confirmed.length ? [`business_confirmed_facts: ${clip(confirmed.join('; '), 2500)}`] : []),
         ...(facts.length ? [`facts: ${clip(facts.join('; '), 2500)}`] : []),
         ...(catalog.length ? [`catalog: ${clip(JSON.stringify(catalog), 2500)}`] : []),
         ...(services.length ? [`services: ${clip(JSON.stringify(services), 1500)}`] : []),

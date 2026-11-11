@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle2, ClipboardCheck, FlaskConical, History, Inbox, ListChecks, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 import { useTenant } from "@/contexts/TenantContext";
 import { useRole } from "@/hooks/useRole";
 import { api } from "@/lib/api";
@@ -110,6 +111,7 @@ export default function ReadinessPage() {
     const locale = useLocale();
     const { activeTenantId, isLoading: tenantLoading } = useTenant();
     const { role, impersonating } = useRole();
+    const { verticalConfig } = useAuth();
     const [current, setCurrent] = useState<ReadinessCurrentResponse | null>(null);
     const [history, setHistory] = useState<ReadinessHistoryEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export default function ReadinessPage() {
         if (id) setDrawer({ id, screen: null });
     }, []);
 
-    const model = useMemo(() => (current ? buildReadinessPanel(current, { role, impersonating }) : null), [current, role, impersonating]);
+    const model = useMemo(() => (current ? buildReadinessPanel(current, { role, impersonating, verticalConfig }) : null), [current, role, impersonating, verticalConfig]);
     const formatDate = (iso: string) => new Date(iso).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
 
     if (tenantLoading) return <p role="status">{t("loading")}</p>;

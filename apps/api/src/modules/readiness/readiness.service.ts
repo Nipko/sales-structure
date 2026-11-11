@@ -206,6 +206,14 @@ export class ReadinessService {
         if (!req) throw new NotFoundException(`requisito desconocido: ${requirementId}`);
         const [view, snapshot] = await Promise.all([this.getCurrent(tenantId), this.readSnapshot(tenantId)]);
         const resolved = resolveValue(snapshot.values[requirementId], this.now());
+        const form = formFor(req, this.spec);
+        // ADR 0031 fricción 5: el precio enlazaba a las 14 pantallas de catálogo de todos los verticales. El cajón muestra
+        // solo las de los objetos habilitados del tenant, las mismas que resuelve `screenTargetsFor` para el panel.
+        if (form.mode === 'screen' && form.screens.length > 1) {
+            const enabled = view.result.config.objects.map(o => o.object);
+            const mine = enabled.flatMap(o => form.screens.filter(s => s.object === o));
+            if (mine.length) form.screens = mine;
+        }
         return {
             specVersion: this.spec.specVersion,
             definition: {
@@ -216,7 +224,7 @@ export class ReadinessService {
             },
             evaluation: view.result.requirements.find(r => r.id === requirementId) ?? null,
             evaluatedAt: view.evaluatedAt,
-            form: formFor(req, this.spec),
+            form,
             current: { state: resolved.state, record: resolved.record, conflicts: resolved.conflicts },
         };
     }

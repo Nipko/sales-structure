@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, History, Loader2 } from "lucide-react";
 import { api, type ApiEnvelope } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { gapAction, type PanelViewer, type ScreenAction } from "@/lib/readiness-panel";
 import {
@@ -53,6 +54,8 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
     const t = useTranslations("readinessForms");
     const tp = useTranslations("readinessPanel");
     const locale = useLocale();
+    // el vertical decide qué pantalla de catálogo existe para este tenant (ADR 0031, fricción 5)
+    const { verticalConfig } = useAuth();
     const [detail, setDetail] = useState<RequirementDetailResponse | null>(null);
     const [versions, setVersions] = useState<BusinessFactVersion[]>([]);
     const [value, setValue] = useState<unknown>(null);
@@ -118,7 +121,7 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
     const form = detail?.form;
     const record = detail?.current.record ?? null;
     const screens: { href: string; action: ScreenAction }[] = (form?.mode === "screen" ? form.screens : [])
-        .map(s => ({ href: s.uiTarget, action: gapAction(s.uiTarget, viewer) }));
+        .map(s => ({ href: s.uiTarget, action: gapAction(s.uiTarget, { ...viewer, verticalConfig }) }));
 
     return (
         <Sheet open={Boolean(requirementId)} onOpenChange={open => { if (!open) onClose(); }}>
@@ -214,7 +217,7 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
                                         {screens.map(s => (
                                             <li key={s.href}>
                                                 {s.action.kind === "link"
-                                                    ? <Link href={s.action.href} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">{s.href}</Link>
+                                                    ? <Link href={s.action.href} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">{s.action.href}</Link>
                                                     : <span>{s.href} — {tp("action.askAdmin")}</span>}
                                             </li>
                                         ))}

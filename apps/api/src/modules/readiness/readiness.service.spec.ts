@@ -156,6 +156,18 @@ describe('ReadinessService', () => {
         await expect(service.getRequirement(TENANT, 'NO.EXISTE')).rejects.toThrow(/desconocido/);
     });
 
+    it('ADR 0031 fricción 5: el cajón de precio enlaza solo la pantalla del objeto habilitado del tenant', async () => {
+        const { service } = build();
+        const detail = await service.getRequirement(TENANT, 'CORE.OFFER.PRICE_MODEL');
+        expect(detail.form.mode).toBe('screen');
+        const view = await service.getCurrent(TENANT);
+        const enabled = view.result.config.objects.map(o => o.object);
+        expect(detail.form.screens.length).toBeGreaterThan(0);
+        expect(detail.form.screens.length).toBeLessThan(14);
+        expect(detail.form.screens.every(s => s.object && enabled.includes(s.object))).toBe(true);
+        expect(detail.form.screens[0].uiTarget).toBe(service.screenTargets(view.result)['CORE.OFFER.PRICE_MODEL']);
+    });
+
     it('el lector por Prisma desenvuelve el único valor JSON', async () => {
         const tx = { $executeRawUnsafe: jest.fn(), $queryRawUnsafe: jest.fn(async (_sql: string) => [{ v: { a: 1 } }]) };
         const runner = prismaJsonRunner({ $transaction: async (fn: any) => fn(tx) } as any);

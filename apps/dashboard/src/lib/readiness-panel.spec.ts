@@ -141,3 +141,20 @@ describe("panel de preparación: forma de los datos", () => {
         expect(panel.blocking[0].alsoFixes).toEqual([{ id: child.id, title: child.title }]);
     });
 });
+
+describe("pantalla de catálogo según el vertical (ADR 0031, fricción 5)", () => {
+    const { resolveVerticalCapabilityManifest } = jest.requireActual("@parallext/shared");
+    const config = (industry: string, subType: string) => {
+        const m = resolveVerticalCapabilityManifest(industry, subType);
+        return { industry, subType, manifestVersion: m.manifestVersion, effectiveCapabilities: m.capabilities };
+    };
+
+    it("un consultorio con agenda edita sus servicios en Citas › Servicios, no en el catálogo que lo manda al inicio", () => {
+        const viewer = { role: "tenant_admin" as const, impersonating: false, verticalConfig: config("salud", "dental") };
+        expect(gapAction("/admin/service-catalog", viewer)).toEqual({ kind: "link", href: "/admin/appointments?tab=services" });
+    });
+
+    it("sin el vertical cargado, el enlace no cambia", () => {
+        expect(gapAction("/admin/service-catalog", { role: "tenant_admin", impersonating: false })).toEqual({ kind: "link", href: "/admin/service-catalog" });
+    });
+});

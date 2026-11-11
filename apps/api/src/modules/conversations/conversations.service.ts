@@ -215,7 +215,7 @@ import {
     toolOrigin,
     toolRequiresSequentialExecution,
 } from './tool-policy-registry';
-import { awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
+import { AUTOMATIC_FAQ_TIMEOUT_MS, AUTOMATIC_READ_TIMEOUT_MS, awaitAutomaticFaqLookup, awaitToolWithSafeTimeout } from './tool-timeout-policy';
 import { boundedAutomaticFaqs } from '../faqs/automatic-faq-context';
 import { faqResultTraceMetadata } from '../../common/utils/faq-result-provenance';
 import {
@@ -4975,7 +4975,7 @@ export class ConversationsService {
                         faqSelector: request => (session ? llmRouter : this.llmRouter).execute({ ...request, tenantId, executionContext,
                             traceContext: { conversationId: conversation.id, stage: 'faq_selector' } }),
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, faqExecutionContext);
+                ), AUTOMATIC_FAQ_TIMEOUT_MS, faqExecutionContext);
                 const faqs = !result?.error && Array.isArray(result?.faqs) ? boundedAutomaticFaqs(result.faqs) : [];
                 preExecutedTools.push({ name: 'search_faqs', result: { ...result, faqs } });
                 const retrievedFaqs: RetrievedKnowledgeItem[] = faqs
@@ -5057,7 +5057,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_customer_context', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'customer_context_lookup_failed' };
@@ -5080,7 +5080,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'list_my_tour_bookings', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'tour_bookings_lookup_failed' };
@@ -5102,7 +5102,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_appointment_details', { appointmentId: appointmentReadId }, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 preExecutedTools.push({ name: 'get_appointment_details', result });
                 automaticAppointmentRead = { appointmentId: appointmentReadId, result };
                 turnTrace.add('tool_result', 'get_appointment_details', { ok: !result?.error, error: result?.error, automatic: true });
@@ -5129,7 +5129,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'list_services', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'service_location_lookup_failed' };
@@ -5154,7 +5154,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'get_menu', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'menu_description_lookup_failed' };
@@ -5175,7 +5175,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'search_packages', {}, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                ), 3_000, packageExecutionContext);
+                ), AUTOMATIC_READ_TIMEOUT_MS, packageExecutionContext);
                 const catalogue = canonicalPackageCatalogue(result);
                 preExecutedTools.push({ name: 'search_packages', result });
                 turnContext.catalog = [...(turnContext.catalog || []), ...catalogue];
@@ -5194,7 +5194,7 @@ export class ConversationsService {
                             schemaName, tenantId, conversation.contact_id || '', 'get_package_details', { packageId }, conversation.id,
                             { authority: llmAuthority, channelType: msg.channelType, executionContext: packageExecutionContext,
                                 commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value },
-                        ), 3_000, packageExecutionContext);
+                        ), AUTOMATIC_READ_TIMEOUT_MS, packageExecutionContext);
                         preExecutedTools.push({ name: 'get_package_details', result: details });
                         automaticPackageDetailRead = { packageId, result: details };
                         turnTrace.add('tool_result', 'get_package_details', { ok: !details?.error, error: details?.error, automatic: true });
@@ -5225,7 +5225,7 @@ export class ConversationsService {
                 turnTrace.add('tool_call', 'search_listings', { origin: 'vertical', effect: 'read', automatic: true });
                 const result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                     schemaName, tenantId, conversation.contact_id || '', 'search_listings', {}, conversation.id, options,
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 preExecutedTools.push({ name: 'search_listings', result });
                 turnTrace.add('tool_result', 'search_listings', { ok: !result?.error, error: result?.error, automatic: true });
                 const listingId = turnAllowedTools.includes('get_listing_details') ? listingDetailIdForQuestion(userText, result) : null;
@@ -5233,7 +5233,7 @@ export class ConversationsService {
                     turnTrace.add('tool_call', 'get_listing_details', { origin: 'vertical', effect: 'read', automatic: true });
                     const details = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', 'get_listing_details', { listingId }, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                     preExecutedTools.push({ name: 'get_listing_details', result: details });
                     automaticListingDetailRead = { listingId, result: details };
                     turnTrace.add('tool_result', 'get_listing_details', { ok: !details?.error, error: details?.error, automatic: true });
@@ -5264,7 +5264,7 @@ export class ConversationsService {
                 try {
                     result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 } catch (error: any) {
                     if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                     result = { error: 'product_stock_lookup_failed' };
@@ -5300,7 +5300,7 @@ export class ConversationsService {
                     schemaName, tenantId, conversation.contact_id || '', 'search_products', args, conversation.id,
                     { authority: llmAuthority, channelType: msg.channelType, executionContext: context,
                         commitmentBlocked, deniedTools, jurisdiction: regional?.operatingCountry.value, customerText: userText },
-                ), 3_000, context);
+                ), AUTOMATIC_READ_TIMEOUT_MS, context);
             } catch (error: any) {
                 if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                 result = { error: 'catalogue_order_lookup_failed' };
@@ -5325,7 +5325,7 @@ export class ConversationsService {
                 try {
                     result = await awaitAutomaticFaqLookup(toolExecutor.execute(
                         schemaName, tenantId, conversation.contact_id || '', name, args, conversation.id, options,
-                    ), 3_000, context);
+                    ), AUTOMATIC_READ_TIMEOUT_MS, context);
                 } catch (error: any) {
                     if (session || error instanceof LLMSourceAuthorityUnavailable) throw error;
                     result = { error: 'property_detail_lookup_failed' };

@@ -5,7 +5,7 @@ Generado por `apps/api/scripts/artifacts/generate-certification-manifest.cjs`. *
 `requiredScenarios` que exige el reporte de certificación, y cuyas tarifas salen del catálogo del propio
 router. La cifra que se pide autorizar y la que se factura no pueden ser dos listas de precios distintas.
 
-Revisión: `1cf4421c13725e15c67b2260acd7baa4905ee731`. **Este documento no contiene ni requiere ningún secreto**: las variables se
+Revisión: `959fbf99fe57c87de9d048756dd177f00ad48980`. **Este documento no contiene ni requiere ningún secreto**: las variables se
 nombran, no se leen.
 
 ## Qué se pide

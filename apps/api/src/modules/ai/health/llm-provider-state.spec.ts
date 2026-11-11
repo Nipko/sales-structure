@@ -1,6 +1,6 @@
 import {
     alertForTransition, DOWN_AFTER_CONSECUTIVE_FAILURES, fallbackIsSignificant, INITIAL_PROVIDER_STATE,
-    nextProviderState, ProviderObservation, ProviderState,
+    nextProviderState, ProviderObservation, ProviderState, RECOVERY_QUIET_MS,
 } from './llm-provider-state';
 import { ProviderErrorKind } from './llm-provider-error';
 
@@ -56,12 +56,26 @@ describe('nextProviderState', () => {
     });
 
     it('un exito recupera y limpia la racha', () => {
-        const { state, transitions } = run([fail('quota', 10), ok(50)]);
+        const { state, transitions } = run([fail('quota', 10), ok(10 + RECOVERY_QUIET_MS)]);
         expect(state.status).toBe('healthy');
         expect(state.firstErrorAt).toBeNull();
         expect(state.consecutiveFailures).toBe(0);
         expect(state.lastErrorAt).toBe(10); // el ultimo error queda a la vista
         expect(transitions[1]).toEqual({ from: 'no_credits', to: 'healthy' });
+    });
+
+    it('histeresis: exitos intercalados con errores recientes no despejan el estado grave (10-nov)', () => {
+        // Mientras se agota el credito llegan 429 y exitos alternados cada segundo.
+        const obs: ProviderObservation[] = [];
+        for (let i = 0; i < 60; i++) obs.push(i % 2 ? ok(i * 1000) : fail('quota', i * 1000));
+        const { state, transitions } = run(obs);
+        expect(state.status).toBe('no_credits');
+        expect(state.lastSuccessAt).toBe(59000);
+        expect(transitions.filter(Boolean)).toEqual([{ from: 'unknown', to: 'no_credits' }]);
+
+        // Un exito despues de la ventana sin errores si recupera.
+        const later = nextProviderState(state, ok(58000 + RECOVERY_QUIET_MS));
+        expect(later.transition).toEqual({ from: 'no_credits', to: 'healthy' });
     });
 });
 

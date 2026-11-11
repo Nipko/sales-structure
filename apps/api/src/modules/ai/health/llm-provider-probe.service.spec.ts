@@ -75,8 +75,11 @@ describe('LlmProviderProbeService', () => {
         const { probe, health, redis, alerts } = setup({ openai: 'sk-real' }, () => (credits
             ? { status: 200, body: { choices: [{ message: { content: 'p' } }] } }
             : { status: 429, body: OPENAI_NO_CREDITS }));
+        let now = 1_800_000_000_000;
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
         await probe.runOnce();
         credits = true;
+        now += 5 * 60 * 1000; // siguiente pasada de la sonda
         await probe.runOnce();
         expect((await health.getState('openai')).status).toBe('healthy');
         expect(redis.store.get('llm:health:openai:open')).toBeUndefined();

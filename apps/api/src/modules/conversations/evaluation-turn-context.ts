@@ -38,9 +38,18 @@ export interface EvaluationTurnContextInputs {
     knowledgeContract?: TurnKnowledgeContract;
     /** `agentRuntime.evidenceVerifier` (D1b) as the tenant had it at capture. Optional: older snapshots lack it and read as off. */
     evidenceVerifier?: boolean;
+    /**
+     * C14: the owner-confirmed facts the customer may be told (BusinessFactsReader.confirmedFacts), as the tenant had them at
+     * capture. Optional and present only when there is at least one: an older snapshot (or a tenant without confirmed facts)
+     * runs without `<confirmed_business_facts>`, exactly as before.
+     */
+    confirmedFacts?: NonNullable<TurnContext['confirmedFacts']>;
 }
 
 const record = (value: unknown): value is Record<string, any> => !!value && typeof value === 'object' && !Array.isArray(value);
+
+const confirmedFactShape = (value: unknown): boolean => record(value) && typeof value.id === 'string' && typeof value.title === 'string'
+    && typeof value.text === 'string' && (!Object.hasOwn(value, 'scope') || typeof value.scope === 'string');
 
 export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs | undefined, tenantId: string): EvaluationTurnContextInputs {
     if (!record(input) || input.version !== 1 || input.tenantId !== tenantId
@@ -53,6 +62,7 @@ export function resolveEvaluationTurnContext(input: EvaluationTurnContextInputs 
         || (Object.hasOwn(input, 'renderedFacts') && typeof input.renderedFacts !== 'boolean')
         || (Object.hasOwn(input, 'catalogOverFaq') && typeof input.catalogOverFaq !== 'boolean')
         || (Object.hasOwn(input, 'evidenceVerifier') && typeof input.evidenceVerifier !== 'boolean')
+        || (Object.hasOwn(input, 'confirmedFacts') && (!Array.isArray(input.confirmedFacts) || !input.confirmedFacts.every(confirmedFactShape)))
         || (Object.hasOwn(input, 'knowledgeContract') && (!record(input.knowledgeContract)
             || typeof input.knowledgeContract.specVersion !== 'string' || !Array.isArray(input.knowledgeContract.unknown)))
         || (Object.hasOwn(input, 'requiredReads') && (!record(input.requiredReads)

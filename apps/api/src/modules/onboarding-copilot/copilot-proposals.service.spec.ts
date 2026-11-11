@@ -96,6 +96,11 @@ function fakeDb() {
             values.set(key, row);
             return [clone(row)];
         }
+        // BusinessFactsService.get
+        if (/FROM requirement_values WHERE requirement_id = \$1 AND scope_key = \$2$/.test(s)) {
+            const row = values.get(`${params[0]}|${params[1]}`);
+            return row ? [clone(row)] : [];
+        }
         throw new Error(`SQL inesperado: ${s}`);
     });
     const prisma = {
@@ -116,9 +121,11 @@ function make() {
         invalidate: jest.fn(async () => undefined),
     };
     const events = { emit: jest.fn() };
-    const facts = new BusinessFactsService(db.prisma as any, readiness as any, events as any);
+    // la puerta de Localización (ADR 0031 fricción 1): un REGION confirmado declara el país del tenant
+    const regional = { declare: jest.fn(async (_t: string, field: string, value: string, _by: string) => ({ field, value })) };
+    const facts = new BusinessFactsService(db.prisma as any, readiness as any, events as any, undefined, regional as any);
     const service = new CopilotProposalsService(db.prisma as any, facts, readiness as any);
-    return { db, readiness, events, facts, service };
+    return { db, readiness, events, facts, service, regional };
 }
 
 const valueDraft = (value: unknown, requirementId = PAYMENT): CopilotProposalDraft =>
@@ -268,5 +275,55 @@ describe('CopilotProposalsService: reemplazo y rechazo', () => {
         expect(kit.db.values.size).toBe(0);
         const list = await kit.service.list(TENANT, { status: 'all' });
         expect(list.counts).toMatchObject({ rejected: 1, proposed: 0 });
+    });
+});
+
+describe('CopilotProposalsService: hechos recién abiertos al copiloto (ADR 0031, recall)', () => {
+    const REGION = 'CORE.IDENTITY.REGION';
+    const BY = '11111111-1111-4111-8111-111111111111';
+
+    it('aprobar la región del copiloto pasa por la misma puerta que el formulario: BusinessFactsService.write y el país del tenant', async () => {
+        const kit = make();
+        const write = jest.spyOn(kit.facts, 'write');
+        const [p] = await kit.service.storeRun(TENANT, RUN, BY, [valueDraft({ operating_country: 'CO', timezone: 'America/Bogota', currency: 'COP' }, REGION)]);
+        const result = await kit.service.approve(TENANT, p.id, {}, OWNER);
+        expect(write).toHaveBeenCalledWith(TENANT, expect.objectContaining({ requirementId: REGION, origin: 'copilot', status: 'confirmed' }), OWNER);
+        expect(result.fact).toMatchObject({ requirementId: REGION, origin: 'copilot', confirmedBy: BY, value: { operating_country: 'CO', timezone: 'America/Bogota', currency: 'COP' } });
+        // como Configuración › Localización: país, zona y moneda declarados en el tenant, por la persona que aprobó
+        expect(kit.regional.declare.mock.calls.map(c => [c[1], c[2], c[3]])).toEqual([
+            ['operating_country', 'CO', BY], ['timezone', 'America/Bogota', BY], ['currency', 'COP', BY],
+        ]);
+    });
+
+    it('sin editar, la región confirmada conserva lo que el copiloto no propone (el pack de país)', async () => {
+        const kit = make();
+        await kit.facts.write(TENANT, { requirementId: REGION, value: { operating_country: 'CO', timezone: 'America/Bogota', currency: 'COP', country_pack: 'CO@3' } }, OWNER);
+        const [p] = await kit.service.storeRun(TENANT, RUN, BY, [{
+            kind: 'contradiction', requirementId: REGION, targetRef: '', evidence: EVIDENCE,
+            input: { value: { currency: 'USD' }, current: { operating_country: 'CO', timezone: 'America/Bogota', currency: 'COP', country_pack: 'CO@3' } },
+        }]);
+        const result = await kit.service.approve(TENANT, p.id, {}, OWNER);
+        expect(result.fact.value).toEqual({ operating_country: 'CO', timezone: 'America/Bogota', currency: 'USD', country_pack: 'CO@3' });
+        expect(result.fact.sourceRef).toMatchObject({ edited: false });
+    });
+
+    it('una región mal escrita no se aprueba (ni editada): se pide el código, nunca se adivina', async () => {
+        const kit = make();
+        const [p] = await kit.service.storeRun(TENANT, RUN, BY, [valueDraft({ operating_country: 'CO', currency: 'COP' }, REGION)]);
+        await expect(kit.service.approve(TENANT, p.id, { value: { operating_country: 'CO', timezone: 'GMT-5' } }, OWNER)).rejects.toBeInstanceOf(BadRequestException);
+        expect(kit.db.values.size).toBe(0);
+        expect(kit.regional.declare).not.toHaveBeenCalled();
+        expect((await kit.service.get(TENANT, p.id)).status).toBe('proposed');
+    });
+
+    it('una línea de urgencias «WhatsApp» no se aprueba; con el número real, sí', async () => {
+        const kit = make();
+        const EMERGENCY = 'DOM.HEALTH.EMERGENCY_PROTOCOL';
+        const [p] = await kit.service.storeRun(TENANT, RUN, BY, [valueDraft({ own_urgent_line: { kind: 'phone', value: '+573001234567' }, urgent_slot: true }, EMERGENCY)]);
+        await expect(kit.service.approve(TENANT, p.id, { value: { own_urgent_line: { kind: 'whatsapp', value: 'WhatsApp' } } }, OWNER)).rejects.toBeInstanceOf(BadRequestException);
+        expect(kit.db.values.size).toBe(0);
+        // lo que el dueño edita no se recorta: aceptar las señales de alarma es decisión suya
+        const ok = await kit.service.approve(TENANT, p.id, { value: { own_urgent_line: { kind: 'phone', value: '+573001234567' }, urgent_slot: true, red_flags: ['sangrado'] } }, OWNER);
+        expect(ok.fact.value).toEqual({ own_urgent_line: { kind: 'phone', value: '+573001234567' }, urgent_slot: true, red_flags: ['sangrado'] });
     });
 });

@@ -13,7 +13,9 @@
  */
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { normalizeCopilotValue, placeholderContactPoints, sameCopilotValue } from '@parallext/business-spec';
+import {
+    copilotFactShape, copilotPlaceholders, copilotValueProblems, mergeCopilotValue, normalizeCopilotValue, sameCopilotValue,
+} from '@parallext/business-spec';
 import { PrismaService } from '../prisma/prisma.service';
 import { ensureContentProposalSchema } from '../copilot/agent-configuration-proposal-schema';
 import { proposalHash } from '../copilot/agent-proposal-digest';
@@ -168,15 +170,28 @@ export class CopilotProposalsService {
         }
         // ADR 0031 fricción 2: la propuesta (o lo editado) se lleva a la forma del requisito antes de escribir. Un horario
         // en tuplas `[["08:00","18:00"]]` quedaba guardado y el motor lo marcaba «tramo inválido» hasta re-guardarlo.
-        const value = normalizeCopilotValue(this.readiness.spec, view.requirementId, raw).value;
-        // Un contacto cuyo valor es el nombre del canal («WhatsApp») no es un dato: se pide el valor real.
-        const placeholders = view.requirementId === 'CORE.CONTACT.CHANNELS' ? placeholderContactPoints(raw) : [];
+        // ADR 0031 (recall): sin editar, solo los campos de hecho del documento (lo editado es del dueño y no se recorta).
+        const spec = this.readiness.spec;
+        const proposed = normalizeCopilotValue(spec, view.requirementId, raw, { factsOnly: !edited }).value;
+        // Un contacto (o una línea de urgencias) cuyo valor es el nombre del canal («WhatsApp») no es un dato: se pide el real.
+        const placeholders = copilotPlaceholders(view.requirementId, raw);
         if (placeholders.length) {
+            const path = view.requirementId === 'CORE.CONTACT.CHANNELS' ? 'points' : '';
             throw new BadRequestException({
                 message: `escribe el dato real de cada canal (no el nombre del canal): ${placeholders.join(', ')}`,
-                issues: placeholders.map(p => ({ path: 'points', code: 'placeholder', message: `${p} no es un dato de contacto` })),
+                issues: placeholders.map(p => ({ path, code: 'placeholder', message: `${p} no es un dato de contacto` })),
             });
         }
+        // País, zona, moneda e idioma que el pack de país no reconocería: se piden bien escritos, nunca se adivinan.
+        const problems = copilotValueProblems(spec, view.requirementId, proposed);
+        if (problems.length) {
+            throw new BadRequestException({ message: problems.join('; '), issues: problems.map(message => ({ path: '', code: 'shape', message })) });
+        }
+        // Sin editar, el valor confirmado de hoy conserva lo que el copiloto no propone (pack de país, señales aceptadas…).
+        const current = !edited && copilotFactShape(spec, view.requirementId)
+            ? await this.facts.get(tenantId, view.requirementId, view.targetRef).then(r => r.fact).catch(() => null)
+            : null;
+        const value = current?.status === 'confirmed' ? mergeCopilotValue(spec, view.requirementId, current.value, proposed) : proposed;
 
         // Se toma la propuesta ANTES de escribir (como el apply de Assist): dos aprobaciones a la vez no escriben dos veces.
         const claimed = await this.prisma.executeInTenantSchema<any[]>(schema,

@@ -12,6 +12,9 @@ export const SERVICE_CATALOG_COLUMNS = [
     'duration_type', 'duration_minutes_max', 'payment_policy', 'deposit_percent', 'deposit_amount',
     'location_type', 'location_address', 'meeting_link', 'price_status',
     'includes', 'excludes', 'preparation', 'preparation_required',
+    // Provenance (content_status, origin, source_ref, updated_at): the canonical list_services reader projects them since the
+    // knowledge-provenance work; a capture without them would silently narrow what the reader sees.
+    'content_status', 'origin', 'source_ref', 'updated_at',
 ] as const;
 
 export type CaptureQuery = (sql: string, params?: unknown[]) => Promise<any[]>;

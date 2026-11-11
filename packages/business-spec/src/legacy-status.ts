@@ -381,21 +381,41 @@ export function fromLegacyRows(rows: LegacyTenantRows): TenantSnapshot {
 
     const staffByService = new Map<string, string[]>();
     for (const s of rows.service_staff) staffByService.set(String(s.service_id), [...(staffByService.get(String(s.service_id)) ?? []), String(s.user_id)]);
+    // Ficha del servicio (ADR 0031, fricción 10): «Citas › Servicios disponibles» escribe qué incluye / no incluye y la
+    // preparación en columnas propias. `preparation_required = false` es «no requiere» confirmado; unas indicaciones
+    // escritas declaran `preparation_ref = service:<id>` y su instrucción va a PROF.P09.PREPARATIONS (un solo registro
+    // con las de todos los servicios confirmados). Sin columnas se sigue leyendo metadata.preparation_ref.
+    const preparations: Array<{ ref: string; service: unknown; instructions: string; row: Row }> = [];
     if (rows.services.length) snap.items.appointment = rows.services.map(r => {
+        const instructions = str(r.preparation);
+        const preparationRef = r.preparation_required === false ? 'no_requiere'
+            : instructions ? `service:${r.id}` : r.metadata?.preparation_ref ?? null;
         const base = item('services', r, {
             name: r.name, description: str(r.description), category: str(r.category),
             duration: num(r.duration_minutes) ? { min: num(r.duration_minutes), unit: 'min' } : null,
             price: num(r.price) && num(r.price)! > 0 ? num(r.price) : null, currency: r.currency,
-            preparation_ref: r.metadata?.preparation_ref ?? null, staff_ids: staffByService.get(String(r.id)) ?? [],
+            preparation_ref: preparationRef, staff_ids: staffByService.get(String(r.id)) ?? [],
+            includes: jsonList(r.includes), excludes: jsonList(r.excludes),
             // R1.1 F5: datos que el motor de reservas exige para este servicio (WRITE_MODE.required_fields por ítem)
             required_fields: jsonList(r.required_fields).map(String),
         });
+        if (instructions && r.preparation_required !== false && base.contentStatus === 'confirmed') {
+            preparations.push({ ref: `service:${r.id}`, service: r.name, instructions, row: r });
+        }
         return {
             ...base,
-            fieldStatus: { staff_ids: base.contentStatus, required_fields: listStatus(r.required_fields, base.contentStatus) },
+            fieldStatus: {
+                staff_ids: base.contentStatus, required_fields: listStatus(r.required_fields, base.contentStatus),
+                includes: listStatus(r.includes, base.contentStatus), excludes: listStatus(r.excludes, base.contentStatus),
+            },
             ...(str(r.price_status) ? { priceMarker: true } : {}),
         };
     });
+    if (preparations.length) {
+        const newest = [...preparations].sort((a, b) => (toMs(b.row.updated_at) || 0) - (toMs(a.row.updated_at) || 0))[0].row;
+        add('PROF.P09.PREPARATIONS', legacyRec(preparations.map(({ ref, service, instructions }) => ({ ref, service, instructions })),
+            { status: 'confirmed', rule: 'L6' }, 'services.preparation', newest));
+    }
     const categories = new Map(rows.menu_categories.map(c => [String(c.id), c.name]));
     if (rows.menu_items.length) snap.items.food_order = rows.menu_items.map(r => {
         const base = item('menu_items', r, {

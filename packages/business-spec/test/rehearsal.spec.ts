@@ -117,7 +117,8 @@ describe('generateRehearsal: opciones', () => {
         const priceCase = bank.cases.find(c => c.intentId === 'C09' && c.itemId === seeded.id);
         if (priceCase && priceCase.truth.fields?.price === 'ejemplo') {
             expect(priceCase.expectation.figuresAnyOf).toEqual([]);
-            expect(priceCase.expectation.forbiddenFigures).toEqual(figuresOfValue(seeded.fields.price));
+            // las demás cifras sembradas de la ficha (p. ej. la duración) también se prohíben
+            expect(priceCase.expectation.forbiddenFigures).toEqual(expect.arrayContaining(figuresOfValue(seeded.fields.price)));
             expect(priceCase.expectation.unknownMarker).toBe(true);
             expect(priceCase.expectation.answerable).toBe(false);
         }

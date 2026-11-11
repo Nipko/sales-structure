@@ -66,6 +66,7 @@ const NOT_MIGRATED: ReadonlyArray<{ prefix: string; reason: string }> = [
     { prefix: 'tenants.operating_', reason: 'región: se reutiliza tenants.operating_* y regional_provenance (C0 §2.3)' },
     { prefix: 'availability_slots', reason: 'horario deducido de la agenda: la agenda sigue siendo del profesional, no el horario del negocio' },
     { prefix: 'menu_promotions', reason: 'promociones: viven en sus tablas de catálogo' },
+    { prefix: 'services.preparation', reason: 'preparación: vive en la ficha de cada servicio (services.preparation)' },
 ];
 
 const bump = (m: Record<string, number>, k: string) => { m[k] = (m[k] ?? 0) + 1; };

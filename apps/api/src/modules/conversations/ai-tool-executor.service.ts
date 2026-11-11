@@ -23,6 +23,7 @@ import { RedisService } from '../redis/redis.service';
 import { AppointmentsService } from '../appointments/appointments.service';
 import { APPOINTMENT_SERVICE_TERMS_COLUMNS, appointmentPriceSql, appointmentCurrencySql, appointmentServiceTerms, appointmentServiceTermsHash,
     AppointmentTermsChangedError, appointmentTermsReviewResult, type AppointmentServiceTerms } from '../appointments/appointment-service-terms';
+import { serviceDetailsForAgent } from '../appointments/service-details';
 import { CalendarIntegrationService } from '../appointments/calendar-integration.service';
 import { CalendarSyncOutboxService } from '../appointments/calendar-sync-outbox.service';
 import { FaqsService } from '../faqs/faqs.service';
@@ -3311,6 +3312,7 @@ export class AIToolExecutorService {
         const rows: any[] = await this.prisma.$queryRawUnsafe(
             `SELECT id, name, description, duration_minutes, buffer_minutes, price, currency, is_active, duration_type, duration_minutes_max,
                     payment_policy, deposit_percent, deposit_amount, location_type, location_address, meeting_link, price_status,
+                    includes, excludes, preparation, preparation_required,
                     content_status, origin, source_ref, updated_at
              FROM "${schema}".services WHERE is_active = true AND (is_public IS NULL OR is_public = true)
              ORDER BY sort_order, name`,
@@ -3353,6 +3355,7 @@ export class AIToolExecutorService {
                     paymentChoice: confirmed && policy.customerChooses ? 'deposit_or_full' : undefined,
                     paymentNote: confirmed ? describePaymentPolicy(policy) : undefined,
                     appointmentTerms: appointmentServiceTerms(s),
+                    ...serviceDetailsForAgent(s),
                     ...(contentStatus !== 'confirmed' ? { contentStatus } : {}),
                 };
             }),

@@ -11,6 +11,11 @@ import {
   type PaymentPolicyMode,
 } from "@/components/payments/payment-policy-fields";
 
+/** Los mismos topes que valida la API (services.service.ts). */
+const SERVICE_DESCRIPTION_MAX = 2000;
+const SERVICE_PREPARATION_MAX = 2000;
+const TEXTAREA_CLASS = "w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-y";
+
 interface ServiceForm {
   name: string;
   duration: number;
@@ -38,6 +43,13 @@ interface ServiceForm {
   paymentPolicy: PaymentPolicyMode;
   depositPercent: number | null;
   depositAmount: number | null;
+  /** Ficha del servicio: lo que el asistente puede contar (ADR 0031, fricción 10). */
+  description: string;
+  /** Una línea por ítem. */
+  includesText: string;
+  excludesText: string;
+  preparation: string;
+  noPreparation: boolean;
 }
 
 interface ServiceModalProps {
@@ -132,6 +144,21 @@ export default function ServiceModal({
               value={form.name}
               onChange={(e) => onChange({ ...form, name: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+
+          {/* Descripción */}
+          <div>
+            <label htmlFor={fieldId("description")} className="block text-sm font-medium mb-2 text-neutral-700 dark:text-neutral-300">
+              {t('serviceDescription')}
+            </label>
+            <textarea id={fieldId("description")}
+              rows={3}
+              maxLength={SERVICE_DESCRIPTION_MAX}
+              placeholder={t('serviceDescriptionPlaceholder')}
+              value={form.description}
+              onChange={(e) => onChange({ ...form, description: e.target.value })}
+              className={TEXTAREA_CLASS}
             />
           </div>
 
@@ -471,6 +498,54 @@ export default function ServiceModal({
               />
               <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{t('rebookAfterDaysHint')}</p>
             </div>
+          </div>
+
+          {/* Qué incluye / no incluye y preparación. Lo que no esté aquí el
+              asistente lo dice como «no consta»: nunca «no incluye». */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {([
+              { key: 'includesText', label: t('serviceIncludes'), placeholder: t('serviceIncludesPlaceholder') },
+              { key: 'excludesText', label: t('serviceExcludes'), placeholder: t('serviceExcludesPlaceholder') },
+            ] as const).map(({ key, label, placeholder }) => (
+              <div key={key}>
+                <label htmlFor={fieldId(key)} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+                  {label}
+                </label>
+                <textarea id={fieldId(key)}
+                  rows={4}
+                  placeholder={placeholder}
+                  aria-describedby={fieldId("listHint")}
+                  value={form[key]}
+                  onChange={(e) => onChange({ ...form, [key]: e.target.value })}
+                  className={TEXTAREA_CLASS}
+                />
+              </div>
+            ))}
+            <p id={fieldId("listHint")} className="sm:col-span-2 -mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">{t('serviceListHint')}</p>
+          </div>
+
+          <div>
+            <label htmlFor={fieldId("preparation")} className="block text-sm font-medium mb-1 text-neutral-700 dark:text-neutral-300">
+              {t('servicePreparation')}
+            </label>
+            <textarea id={fieldId("preparation")}
+              rows={3}
+              maxLength={SERVICE_PREPARATION_MAX}
+              placeholder={t('servicePreparationPlaceholder')}
+              value={form.noPreparation ? '' : form.preparation}
+              disabled={form.noPreparation}
+              onChange={(e) => onChange({ ...form, preparation: e.target.value })}
+              className={cn(TEXTAREA_CLASS, "disabled:opacity-50")}
+            />
+            <label className="mt-2 flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.noPreparation}
+                onChange={(e) => onChange({ ...form, noPreparation: e.target.checked })}
+                className="w-4 h-4 rounded border-neutral-300 text-primary focus:ring-primary/20 cursor-pointer"
+              />
+              <span className="text-sm text-neutral-700 dark:text-neutral-300">{t('serviceNoPreparation')}</span>
+            </label>
           </div>
 
           {/* Required Fields */}

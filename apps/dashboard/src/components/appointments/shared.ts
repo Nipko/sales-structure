@@ -58,6 +58,13 @@ export interface Service {
   paymentPolicy?: "none" | "full" | "deposit" | "any";
   depositPercent?: number | null;
   depositAmount?: number | null;
+  /** Ficha del servicio (ADR 0031, fricción 10). */
+  description?: string | null;
+  includes?: string[];
+  excludes?: string[];
+  preparation?: string | null;
+  /** null = sin declarar; false = no requiere preparación. */
+  preparationRequired?: boolean | null;
 }
 
 export interface ExternalEvent {

@@ -1613,6 +1613,16 @@ ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "duration_minu
 -- ~90 días, unas raíces ~28, una limpieza dental ~180. El evaluador temporal
 -- (`rebooking.due`) lo lee por servicio y cae a su ventana genérica si está NULL.
 ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "rebook_after_days" INTEGER;
+-- Ficha del servicio (ADR 0031, fricción 10): qué incluye, qué no incluye y
+-- cómo prepararse, escritos por el dueño en «Citas › Servicios disponibles».
+-- El agente solo afirma lo que está aquí; una lista vacía es «no consta», no
+-- «no incluye». `preparation_required` sin default a propósito: NULL = el
+-- dueño no lo ha dicho; false = «no requiere preparación»; true = las
+-- indicaciones están en `preparation`.
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "includes" JSONB DEFAULT '[]';
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "excludes" JSONB DEFAULT '[]';
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "preparation" TEXT;
+ALTER TABLE "{{SCHEMA_NAME}}"."services" ADD COLUMN IF NOT EXISTS "preparation_required" BOOLEAN;
 
 -- De dónde salió el precio (D10, sep-2026): 'example' lo sembró la receta del
 -- rubro y nadie lo confirmó; 'confirmed' lo escribió o confirmó el dueño (0 =

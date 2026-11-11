@@ -53,7 +53,7 @@ export function withSlotWindowParameter<T>(tools: readonly T[]): T[] {
 export const APPOINTMENT_TOOLS: ToolDefinition[] = [
     {
         name: 'list_services',
-        description: 'List all bookable services. Call ONCE at the start of a booking conversation.',
+        description: 'List all bookable services, with what each one includes/excludes and its preparation instructions when the business wrote them. Call ONCE at the start of a booking conversation, or to answer what a service includes or how to prepare. Never state an inclusion, exclusion or preparation the result does not list.',
         parameters: { type: 'object', properties: {}, required: [] },
     },
     {

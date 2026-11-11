@@ -68,5 +68,7 @@ export {
     checkCopilotProposal, normalizeQuoteText, quoteAppearsIn, valueFigures, figuresWithoutQuote, isCopilotRequirement, sameCopilotValue,
     genericTextReason, MIN_QUOTE_CHARS, MAX_QUOTE_CHARS, MAX_EVIDENCE,
     normalizeCopilotValue, normalizeWeeklyHours, placeholderContactPoints, isPlaceholderContactPoint, copilotHoursProblems,
+    COPILOT_FACT_SHAPES, copilotFactShape, copilotPromptShape, mergeCopilotValue, copilotValueAgrees, copilotPlaceholders,
+    copilotOwnerDecisions, copilotValueProblems, countryAppearsIn, isCountryCode, isCurrencyCode, isIanaTimezone, isLanguageCode,
 } from './copilot';
-export type { CopilotEvidence, CopilotSource, CopilotCheck, CopilotRejection, CopilotRejectionCode } from './copilot';
+export type { CopilotEvidence, CopilotSource, CopilotCheck, CopilotRejection, CopilotRejectionCode, CopilotFactShape } from './copilot';

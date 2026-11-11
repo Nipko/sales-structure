@@ -17,7 +17,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { gapAction, type PanelViewer, type ScreenAction } from "@/lib/readiness-panel";
 import {
-    formIssues, initialFormValue, submitValue,
+    formIssues, initialFormValue, submitValue, withPrefill,
     type BusinessFactVersion, type BusinessFactWriteResponse, type FormIssue, type RequirementDetailResponse,
 } from "@/lib/readiness-forms";
 import { FieldInput, ItemList, ObjectFields, type FieldContext } from "./FormFields";
@@ -72,7 +72,8 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
         if (res.success && res.data) {
             setDetail(res.data);
             // el valor guardado manda; si no hay, el que lee el motor (también heredado de una pantalla vieja)
-            setValue(initialFormValue(res.data.form, initialValue !== undefined ? initialValue : res.data.fact?.value ?? res.data.current.record?.value ?? null));
+            const start = initialValue !== undefined ? initialValue : res.data.fact?.value ?? res.data.current.record?.value ?? null;
+            setValue(initialFormValue(res.data.form, withPrefill(start, res.data.prefill)));
         } else setError(res.error || t("loadError"));
         setVersions(hist.success && Array.isArray(hist.data) ? hist.data : []);
         setLoading(false);

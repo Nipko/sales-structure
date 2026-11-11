@@ -2,7 +2,7 @@ import { formFor, formRequirementIds, type FormField as SpecFormField } from "..
 import { loadSpec } from "../../../../packages/business-spec/src/load";
 import { validateRequirementValue } from "../../../../packages/business-spec/src/validate-value";
 import {
-    formIssues, initialFormValue, isVisible, refValue, setAt, submitValue,
+    formIssues, initialFormValue, isVisible, refValue, setAt, submitValue, withPrefill,
     type FormDescriptor, type FormField,
 } from "./readiness-forms";
 
@@ -147,5 +147,23 @@ describe("«Editar y aprobar» abre con la propuesta del copiloto (ADR 0031, fri
     it("el horario propuesto en tuplas abre con sus tramos", () => {
         const value = initialFormValue(descriptor("CORE.HOURS.REGULAR"), { days: { mon: [["08:00", "18:00"]], sun: [] } }) as { days: Record<string, unknown> };
         expect(value.days.mon).toEqual([{ open: "08:00", close: "18:00" }]);
+    });
+});
+
+describe("el horario de atención humana parte del horario del negocio (ADR 0031, fricción 6)", () => {
+    const regular = { days: { mon: [{ open: "08:00", close: "18:00" }], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+
+    it("completa el campo sin declarar y no pisa lo que ya dice el valor", () => {
+        expect(withPrefill(null, { human_hours: regular })).toEqual({ human_hours: regular });
+        const closed = { days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+        expect(withPrefill({ human_hours: closed, callback_offered: true }, { human_hours: regular })).toEqual({ human_hours: regular, callback_offered: true });
+        const own = { days: { ...closed.days, sat: [{ open: "09:00", close: "12:00" }] } };
+        expect(withPrefill({ human_hours: own }, { human_hours: regular })).toEqual({ human_hours: own });
+        expect(withPrefill({ a: 1 }, undefined)).toEqual({ a: 1 });
+    });
+
+    it("el formulario abre con los tramos del horario del negocio", () => {
+        const value = initialFormValue(descriptor("CORE.HANDOFF.HOURS_SLA"), withPrefill(null, { human_hours: regular })) as { human_hours: { days: Record<string, unknown> } };
+        expect(value.human_hours.days.mon).toEqual([{ open: "08:00", close: "18:00" }]);
     });
 });

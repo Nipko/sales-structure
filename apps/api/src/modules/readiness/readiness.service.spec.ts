@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { evaluate, fromLegacyRows, type LegacyTenantRows } from '@parallext/business-spec';
+import { evaluate, fromLegacyRows, resolveValue, type LegacyTenantRows } from '@parallext/business-spec';
 import { loadSpec } from '@parallext/business-spec/load';
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
 import { ReadinessController } from './readiness.controller';
@@ -166,6 +166,22 @@ describe('ReadinessService', () => {
         expect(detail.form.screens.length).toBeLessThan(14);
         expect(detail.form.screens.every(s => s.object && enabled.includes(s.object))).toBe(true);
         expect(detail.form.screens[0].uiTarget).toBe(service.screenTargets(view.result)['CORE.OFFER.PRICE_MODEL']);
+    });
+
+    it('ADR 0031 fricción 6: el horario de atención humana trae el horario confirmado del negocio para precargar', async () => {
+        const { service } = build();
+        const snapshot = await service.readSnapshot(TENANT);
+        // sin horario confirmado (la foto golden lo tiene sembrado) no hay nada que precargar
+        expect(resolveValue(snapshot.values['CORE.HOURS.REGULAR'], NOW).state).not.toBe('confirmado');
+        expect((await service.getRequirement(TENANT, 'CORE.HANDOFF.HOURS_SLA')).prefill).toBeUndefined();
+        // con el horario confirmado, el cajón lo recibe para «human_hours» (por defecto = CORE.HOURS.REGULAR)
+        const days = { mon: [{ open: '08:00', close: '18:00' }], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] };
+        const confirmedId = Object.keys(snapshot.values).find(id => resolveValue(snapshot.values[id], NOW).state === 'confirmado')!;
+        const template = resolveValue(snapshot.values[confirmedId], NOW).record!;
+        jest.spyOn(service, 'readSnapshot').mockResolvedValue({ ...snapshot, values: { ...snapshot.values, 'CORE.HOURS.REGULAR': [{ ...template, value: { days } }] } });
+        expect((await service.getRequirement(TENANT, 'CORE.HANDOFF.HOURS_SLA')).prefill).toEqual({ human_hours: { days } });
+        // un requisito sin «por defecto = …» no trae nada
+        expect((await service.getRequirement(TENANT, 'CORE.IDENTITY.REGION')).prefill).toBeUndefined();
     });
 
     it('el lector por Prisma desenvuelve el único valor JSON', async () => {

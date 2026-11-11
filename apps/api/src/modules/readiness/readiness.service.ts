@@ -58,6 +58,12 @@ export interface RequirementDetail {
      * de las pantallas actuales (reglas L). El cajón lo usa para precargar el formulario.
      */
     current: { state: ValueState; record: ValueRecord | null; conflicts: ValueRecord[] };
+    /**
+     * Campos que la especificación declara «por defecto = <requisito>» con el valor confirmado de ese requisito (ADR 0031,
+     * fricción 6: el horario de atención humana abría con los 7 días cerrados aunque el horario del negocio estaba
+     * confirmado). El cajón los usa para completar lo que el valor guardado no trae; guardar sigue siendo del dueño.
+     */
+    prefill?: Record<string, unknown>;
 }
 
 /** La caché vive poco: los escritores de hoy no avisan todos (R3 agrega `business_fact.written`). */
@@ -201,6 +207,21 @@ export class ReadinessService {
         return this.formIds;
     }
 
+    /** `{prefill}` con los campos «por defecto = <requisito>» cuyo requisito tiene un valor confirmado, o nada. */
+    private prefillFor(structure: unknown, snapshot: TenantSnapshot): { prefill?: Record<string, unknown> } {
+        if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return {};
+        const prefill: Record<string, unknown> = {};
+        for (const [rawKey, desc] of Object.entries(structure as Record<string, unknown>)) {
+            const ref = String(desc ?? '').match(/por defecto = ((?:CORE|OBJ|DOM|PROF)\.[A-Z0-9_.]+[A-Z0-9_])/)?.[1];
+            if (!ref || !this.spec.requirements[ref]) continue;
+            const resolved = resolveValue(snapshot.values[ref], this.now());
+            if (resolved.state === 'confirmado' && resolved.record?.value !== undefined && resolved.record.value !== null) {
+                prefill[rawKey.replace(/\?$/, '')] = resolved.record.value;
+            }
+        }
+        return Object.keys(prefill).length ? { prefill } : {};
+    }
+
     async getRequirement(tenantId: string, requirementId: string): Promise<RequirementDetail> {
         const req = this.spec.requirements[requirementId];
         if (!req) throw new NotFoundException(`requisito desconocido: ${requirementId}`);
@@ -226,6 +247,7 @@ export class ReadinessService {
             evaluatedAt: view.evaluatedAt,
             form,
             current: { state: resolved.state, record: resolved.record, conflicts: resolved.conflicts },
+            ...this.prefillFor(req.data?.structure, snapshot),
         };
     }
 

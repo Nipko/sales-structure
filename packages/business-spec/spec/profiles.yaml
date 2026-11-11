@@ -21,7 +21,7 @@ domains:
     data:
       name: safety.health_emergency
       type: procedure_spec
-      structure: {own_urgent_line: "contact_point + horario (o vacío confirmado)", external: "ref pack de país (emergencias médicas)", urgent_slot: "bool: ofrece cita de urgencia", published_advice: "text_i18n? (solo consejos que el negocio publicó)", red_flags: "lista de plataforma (dolor intenso, sangrado, trauma, inflamación facial, dolor de pecho, falta de aire…)"}
+      structure: {own_urgent_line: "contact_point + horario (o vacío confirmado)", external: "ref pack de país (emergencias médicas)", urgent_slot: "bool: ofrece cita de urgencia", published_advice: "text_i18n? (solo consejos que el negocio publicó)", red_flags: "lista de plataforma (dolor intenso, sangrado, trauma, inflamación facial, dolor de pecho, falta de aire…)", red_flags_accepted: "bool: el negocio acepta la lista de plataforma tal cual"}
       validation: ["external resuelto desde el pack", "red_flags = default de plataforma aceptado (ampliable)"]
       example: {own_urgent_line: {kind: phone, value: "+57 300 000 0000", hours: "24/7"}, urgent_slot: true}
     criticality: {level: bloqueante, rule: R3}

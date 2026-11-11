@@ -13,6 +13,7 @@ import { assertActiveTenantUser } from './tenant-user-scope.util';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { validatePaymentPolicyInput } from '../../common/utils/payment-policy.util';
 import { storedPriceAmount } from './service-price-status';
+import { serviceTextList } from './service-details';
 
 export type DurationType = 'fixed' | 'flexible' | 'open';
 export type ServiceLocationType = 'in_person' | 'online' | 'hybrid';
@@ -60,6 +61,16 @@ export interface BookableService {
      * según el caso. El agente solo dice precios 'confirmed'.
      */
     priceStatus: ServicePriceStatus;
+    /**
+     * Ficha del servicio (ADR 0031, fricción 10). Listas vacías = «no consta»:
+     * el agente no puede decir «no incluye X» si X no está en `excludes`.
+     */
+    includes: string[];
+    excludes: string[];
+    /** Indicaciones previas tal como las escribió el dueño. */
+    preparation: string | null;
+    /** null = el dueño no lo ha dicho; false = no requiere preparación. */
+    preparationRequired: boolean | null;
 }
 
 export type ServicePriceStatus = 'example' | 'confirmed' | 'quote';
@@ -95,6 +106,80 @@ function serviceLocationInput(data: any): Partial<Pick<BookableService, 'locatio
             || /\s/.test(values.meetingLink) || containsControlCharacter) {
             throw new BadRequestException('meetingLink must be an absolute HTTP or HTTPS URL without credentials');
         }
+    }
+    return values;
+}
+
+export const SERVICE_DESCRIPTION_MAX = 2000;
+export const SERVICE_PREPARATION_MAX = 2000;
+export const SERVICE_LIST_MAX_ITEMS = 30;
+export const SERVICE_LIST_ITEM_MAX = 200;
+
+export interface ServiceDetailsInput {
+    description?: string | null;
+    includes?: string[];
+    excludes?: string[];
+    preparation?: string | null;
+    preparationRequired?: boolean | null;
+}
+
+function optionalText(value: unknown, field: string, max: number): string | null | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (typeof value !== 'string') throw new BadRequestException(`${field} must be a string or null`);
+    const trimmed = value.trim();
+    if (trimmed.length > max) throw new BadRequestException(`${field} must be at most ${max} characters`);
+    return trimmed || null;
+}
+
+function optionalTextList(value: unknown, field: string): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (value === null) return [];
+    if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) {
+        throw new BadRequestException(`${field} must be a list of texts`);
+    }
+    const items = [...new Set((value as string[]).map(item => item.trim()).filter(Boolean))];
+    if (items.length > SERVICE_LIST_MAX_ITEMS) throw new BadRequestException(`${field} admits at most ${SERVICE_LIST_MAX_ITEMS} items`);
+    if (items.some(item => item.length > SERVICE_LIST_ITEM_MAX)) {
+        throw new BadRequestException(`each ${field} item must be at most ${SERVICE_LIST_ITEM_MAX} characters`);
+    }
+    return items;
+}
+
+/**
+ * Descripción, qué incluye / no incluye y preparación. Omitido = no se toca.
+ * Escribir indicaciones declara que el servicio requiere preparación; «no
+ * requiere» borra las indicaciones, y pedir ambas cosas a la vez es un error.
+ */
+export function serviceDetailsInput(data: any): ServiceDetailsInput {
+    const values: ServiceDetailsInput = {};
+    const description = optionalText(data?.description, 'description', SERVICE_DESCRIPTION_MAX);
+    if (description !== undefined) values.description = description;
+    const includes = optionalTextList(data?.includes, 'includes');
+    if (includes !== undefined) values.includes = includes;
+    const excludes = optionalTextList(data?.excludes, 'excludes');
+    if (excludes !== undefined) values.excludes = excludes;
+    const preparation = optionalText(data?.preparation, 'preparation', SERVICE_PREPARATION_MAX);
+    const required = data?.preparationRequired;
+    if (required !== undefined && required !== null && typeof required !== 'boolean') {
+        throw new BadRequestException('preparationRequired must be a boolean or null');
+    }
+    if (required === false && preparation) {
+        throw new BadRequestException({
+            error: 'preparation_conflict',
+            message: 'Marcaste que el servicio no requiere preparación, pero escribiste indicaciones: elige una de las dos.',
+        });
+    }
+    if (required === false) {
+        values.preparationRequired = false;
+        values.preparation = null;
+    } else if (preparation) {
+        values.preparationRequired = true;
+        values.preparation = preparation;
+    } else if (required !== undefined || preparation !== undefined) {
+        // Indicaciones vacías (o «sí requiere» sin texto) no declaran nada: queda «sin decir».
+        values.preparationRequired = null;
+        values.preparation = null;
     }
     return values;
 }
@@ -296,11 +381,12 @@ export class ServicesService {
         // prices"), and `data.price || 0` turned that silence into a free service
         // the agent offered as such. "Es gratis" is the explicit 0.
         const price = data?.free === true ? 0 : storedPriceAmount(data?.price);
+        const details = serviceDetailsInput(data);
         try {
             await this.prisma.executeInTenantSchema(schemaName,
-                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, location_type, location_address, meeting_link, created_at, updated_at)
-                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW(), NOW())`,
-                [id, data.name, data.description || null, duration,
+                `INSERT INTO services (id, name, description, duration_minutes, buffer_minutes, price, currency, color, category, max_concurrent, required_fields, duration_type, duration_minutes_max, rebook_after_days, payment_policy, deposit_percent, deposit_amount, price_status, location_type, location_address, meeting_link, includes, excludes, preparation, preparation_required, created_at, updated_at)
+                 VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb, $23::jsonb, $24, $25, NOW(), NOW())`,
+                [id, data.name, details.description ?? null, duration,
                  buffer, price, currency, data.color || '#6c5ce7',
                  data.category || null, data.maxConcurrent || 1,
                  JSON.stringify(data.requiredFields || []),
@@ -311,7 +397,9 @@ export class ServicesService {
                  createPolicy.values.payment_policy ?? 'none',
                  createPolicy.values.deposit_percent ?? null,
                  createPolicy.values.deposit_amount ?? null,
-                 priceStatus, location.locationType ?? 'in_person', location.locationAddress ?? null, location.meetingLink ?? null],
+                 priceStatus, location.locationType ?? 'in_person', location.locationAddress ?? null, location.meetingLink ?? null,
+                 JSON.stringify(details.includes ?? []), JSON.stringify(details.excludes ?? []),
+                 details.preparation ?? null, details.preparationRequired ?? null],
             );
         } catch (e: any) {
             // uidx_services_name (tenant-schema.sql): el motor de reservas lista los
@@ -332,6 +420,7 @@ export class ServicesService {
 
     async update(schemaName: string, serviceId: string, data: any, tenantId?: string): Promise<BookableService> {
         const location = serviceLocationInput(data);
+        const details = serviceDetailsInput(data);
         const current = await this.getById(schemaName, serviceId);
         const nextPriceStatus = resolvePriceStatusInput(data, current);
         const nextDurationType = (data.durationType ?? current.durationType) as DurationType;
@@ -359,7 +448,11 @@ export class ServicesService {
         let idx = 1;
 
         if (data.name !== undefined) { sets.push(`name = $${idx++}`); params.push(data.name); }
-        if (data.description !== undefined) { sets.push(`description = $${idx++}`); params.push(data.description); }
+        if (details.description !== undefined) { sets.push(`description = $${idx++}`); params.push(details.description); }
+        if (details.includes !== undefined) { sets.push(`includes = $${idx++}::jsonb`); params.push(JSON.stringify(details.includes)); }
+        if (details.excludes !== undefined) { sets.push(`excludes = $${idx++}::jsonb`); params.push(JSON.stringify(details.excludes)); }
+        if (details.preparation !== undefined) { sets.push(`preparation = $${idx++}`); params.push(details.preparation); }
+        if (details.preparationRequired !== undefined) { sets.push(`preparation_required = $${idx++}`); params.push(details.preparationRequired); }
         if (requestedDuration !== undefined || data.durationType !== undefined) {
             sets.push(`duration_minutes = $${idx++}`);
             params.push(nextDuration);
@@ -549,6 +642,10 @@ export class ServicesService {
             depositPercent: row.deposit_percent ?? null,
             depositAmount: row.deposit_amount != null ? Number(row.deposit_amount) : null,
             priceStatus: row.price_status || 'confirmed',
+            includes: serviceTextList(row.includes),
+            excludes: serviceTextList(row.excludes),
+            preparation: row.preparation || null,
+            preparationRequired: typeof row.preparation_required === 'boolean' ? row.preparation_required : null,
         };
     }
 

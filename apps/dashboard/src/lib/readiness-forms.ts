@@ -203,6 +203,8 @@ export function initialFormValue(form: FormDescriptor, current: unknown): unknow
         return Array.isArray(current) ? current.map(item => (isObj(item) && form.fields.length ? pickObject(form.fields, item) : item)) : [];
     }
     if (form.root === "json") return current ?? {};
+    // una lista suelta guardada antes para un formulario de un solo campo lista (contacto: `[...]` → `{points: [...]}`)
+    if (Array.isArray(current) && form.fields.length === 1 && form.fields[0].kind === "list") return pickObject(form.fields, { [form.fields[0].key]: current });
     return pickObject(form.fields, isObj(current) ? current : {});
 }
 

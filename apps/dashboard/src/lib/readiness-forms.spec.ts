@@ -130,3 +130,22 @@ describe("formularios de R3", () => {
         expect(setAt(after, ["cancel", "deadline"], { min: 1, unit: "h" })).toMatchObject({ cancel: { charge: "ninguno", deadline: { min: 1, unit: "h" } } });
     });
 });
+
+describe("«Editar y aprobar» abre con la propuesta del copiloto (ADR 0031, fricción 4)", () => {
+    it("el contacto se edita canal por canal, no como JSON, y abre con los puntos propuestos", () => {
+        const form = descriptor("CORE.CONTACT.CHANNELS");
+        expect(form.root).toBe("object");
+        expect(form.fields[0]).toMatchObject({ key: "points", kind: "list" });
+        expect(form.fields[0].fields?.map(f => f.key)).toEqual(["kind", "value", "label", "hours"]);
+        const proposal = { points: [{ kind: "whatsapp", value: "+573001234567" }, { kind: "email", value: "citas@sonrisa.co" }] };
+        expect(initialFormValue(form, proposal)).toEqual(proposal);
+        // una lista suelta guardada antes también abre llena
+        expect(initialFormValue(form, proposal.points)).toEqual(proposal);
+        expect(server("CORE.CONTACT.CHANNELS", submitValue(form, initialFormValue(form, proposal)))).toEqual([]);
+    });
+
+    it("el horario propuesto en tuplas abre con sus tramos", () => {
+        const value = initialFormValue(descriptor("CORE.HOURS.REGULAR"), { days: { mon: [["08:00", "18:00"]], sun: [] } }) as { days: Record<string, unknown> };
+        expect(value.days.mon).toEqual([{ open: "08:00", close: "18:00" }]);
+    });
+});

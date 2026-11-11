@@ -280,6 +280,11 @@ export class CopilotProposalsService {
     private view(row: any): CopilotProposalView {
         const input = (row.input && typeof row.input === 'object' ? row.input : {}) as CopilotProposalInput;
         const requirementId = String(row.requirement_id ?? '');
+        // «Editar y aprobar» abre el formulario con este valor: una propuesta guardada antes de normalizar (horario en
+        // tuplas) se muestra ya en la forma del requisito (ADR 0031, fricciones 2 y 4). El contacto se muestra tal cual:
+        // un «WhatsApp» sin número lo tiene que ver el dueño para corregirlo.
+        const shape = (v: unknown) => (v === null || v === undefined || requirementId === 'CORE.CONTACT.CHANNELS'
+            ? v : normalizeCopilotValue(this.readiness.spec, requirementId, v).value);
         return {
             id: String(row.id),
             kind: KIND_OF[row.operation] ?? 'question',
@@ -287,9 +292,9 @@ export class CopilotProposalsService {
             requirementTitle: this.readiness.spec.requirements[requirementId]?.title ?? null,
             targetRef: String(row.target_ref ?? ''),
             status: row.status,
-            value: input.value ?? null,
+            value: shape(input.value) ?? null,
             current: input.current ?? null,
-            alternatives: Array.isArray(input.alternatives) ? input.alternatives : [],
+            alternatives: Array.isArray(input.alternatives) ? input.alternatives.map(a => ({ ...a, value: shape(a?.value) })) : [],
             question: input.question ?? null,
             evidence: Array.isArray(row.evidence) ? row.evidence : [],
             runId: row.extraction_run_id ?? null,

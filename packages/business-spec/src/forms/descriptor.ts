@@ -378,6 +378,22 @@ const ADJUSTMENTS: Readonly<Record<string, Adjust>> = {
         patch(d, 'default_locale', { kind: 'text', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', help: 'Idioma con el que responde el agente, p. ej. es-CO.' });
         put(d, 'country_pack', field('country_pack', 'readonly', { help: 'Lo resuelve la plataforma a partir del país.' }));
     },
+    // ADR 0031 fricción 4: el contacto se pintaba como lista sin campos (un cuadro de JSON por elemento) y guardaba una
+    // lista suelta, mientras el evaluador y el copiloto leen `{points: [...]}`. Ahora: canal, dato, etiqueta y horario.
+    'CORE.CONTACT.CHANNELS': d => {
+        d.root = 'object';
+        d.emptyAllowed = true;
+        d.fields = [field('points', 'list', {
+            label: 'Canales de contacto',
+            help: 'Teléfono, WhatsApp, correo, web o redes. Sin ninguno, el agente dice que te escriban por este mismo canal.',
+            fields: [
+                field('kind', 'enum', { required: true, label: 'Canal', options: options(['phone', 'whatsapp', 'email', 'web', 'social']) }),
+                field('value', 'text', { required: true, label: 'Dato', help: 'El número con indicativo (+57…), el correo o el enlace.' }),
+                field('label', 'text', { label: 'Etiqueta' }),
+                field('hours', 'text', { label: 'Horario de este canal' }),
+            ],
+        })];
+    },
     'CORE.LOCATIONS.LIST': d => {
         put(d, 'modality', field('modality', 'readonly', { ref: 'CORE.IDENTITY.PROFILE', help: 'Se declara en «Cómo opera el negocio» (perfil).' }));
         put(d, 'locations', field('locations', 'list', {

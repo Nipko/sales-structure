@@ -125,7 +125,7 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
             <SheetContent side="right" closeLabel={t("close")} className="w-full overflow-y-auto sm:max-w-xl">
                 <SheetHeader className="border-b border-neutral-200 dark:border-neutral-800">
                     <SheetTitle>{detail?.definition.title ?? requirementId}</SheetTitle>
-                    <SheetDescription>{form?.help ?? t("loading")}</SheetDescription>
+                    <SheetDescription>{detail?.evaluation?.gap?.message ?? form?.help ?? t("loading")}</SheetDescription>
                 </SheetHeader>
 
                 <div className="space-y-4 px-4 pb-4">

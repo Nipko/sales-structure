@@ -66,7 +66,8 @@ export function FieldInput({ field, value, onChange, path, ctx }: {
                 <div className="rounded-lg bg-neutral-50 p-2 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400" data-field={path}>
                     <span className="font-medium">{name}:</span>{" "}
                     {value === undefined || value === null ? t("readonly.empty") : typeof value === "string" ? value : JSON.stringify(value)}
-                    {" · "}{field.ref ? t("readonly.ref", { ref: field.ref }) : t("readonly.platform")}
+                    {/* la ayuda dice dónde se edita en palabras del dueño; el id del requisito no le dice nada (ADR 0031) */}
+                    {" · "}{field.help ?? (field.ref ? t("readonly.elsewhere") : t("readonly.platform"))}
                 </div>
             );
         case "fixed":

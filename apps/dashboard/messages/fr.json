@@ -15805,6 +15805,7 @@
     "readonly": {
       "empty": "aucune donnée",
       "ref": "se modifie dans {ref}",
+      "elsewhere": "se modifie dans un autre élément du panneau",
       "platform": "ne se modifie pas ici"
     },
     "fixed": "toujours actif",
@@ -15878,9 +15879,9 @@
       "photographs_minors": "Photographie des mineurs",
       "simulates_financing": "Simule des crédits ou prêts",
       "treats_minors": "Reçoit des mineurs",
-      "operating_country": "Pays (ISO, ex. FR)",
+      "operating_country": "Pays",
       "timezone": "Fuseau horaire",
-      "currency": "Devise (ISO-4217)",
+      "currency": "Devise",
       "default_locale": "Langue par défaut",
       "country_pack": "Pack pays",
       "locations": "Établissements",
@@ -15890,7 +15891,7 @@
       "line2": "Complément",
       "city": "Ville",
       "region": "Région",
-      "country": "Pays (ISO)",
+      "country": "Pays",
       "postal_code": "Code postal",
       "map_url": "Lien de la carte",
       "is_main": "Établissement principal",

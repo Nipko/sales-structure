@@ -15,6 +15,7 @@
  * restricciones de más (largo mínimo, patrón, «al menos uno») son las que el evaluador del requisito necesita para
  * cumplir: el formulario las pide para que guardar sirva para salir del hueco.
  */
+import { OBJECT_NOUNS } from '../engine/primitives';
 import { RESERVABLE_OBJECTS } from '../facts';
 import { isValueRequirement } from '../validate-value';
 import type { CompiledRequirement, CompiledSpec } from '../types';
@@ -103,6 +104,100 @@ const humanize = (key: string): string => {
     return s ? s[0].toUpperCase() + s.slice(1) : key;
 };
 
+/**
+ * Etiquetas en español de los campos que la especificación nombra con una clave técnica (ADR 0031, fricción 3). Sin
+ * esta tabla la etiqueta salía de la clave («Own urgent line», «Red flags», «Consent text»): inglés en un panel en
+ * español. El panel aún traduce por `key` (`readinessForms.fields.*`) cuando tiene la clave.
+ */
+const FIELD_LABELS: Readonly<Record<string, string>> = {
+    accepted: 'Aceptados', accepted_currencies: 'Monedas aceptadas', access_delete: 'Acceso y borrado de datos',
+    accessibility: 'Accesibilidad', address_privacy_default: 'Privacidad de la dirección por defecto', age_threshold: 'Edad límite',
+    agent_languages: 'Idiomas del agente', allowed: 'Permitido', alternative: 'Alternativa', amenities: 'Comodidades', amount: 'Monto',
+    answer_becomes_knowledge: 'La respuesta se guarda como dato', applies_to: 'Aplica a', assistance_line: 'Línea de asistencia',
+    bookable_by_name: 'Se reserva por nombre', buffer: 'Margen entre reservas', business_additions: 'Casos que agrega el negocio',
+    capacity: 'Capacidad', carriers: 'Transportadoras', case: 'Caso', channel: 'Canal', check_in_from: 'Check-in desde',
+    check_in_until: 'Check-in hasta', check_out_until: 'Check-out hasta', claim_steps: 'Pasos para reclamar', code: 'Código',
+    condition: 'Condición', conditions: 'Condiciones', confirms: 'Quién confirma', conflict_check: 'Revisión de conflicto de interés',
+    consent_text: 'Texto de consentimiento', content_source_language: 'Idioma del contenido', cost: 'Costo', coverage: 'Cobertura',
+    coverages: 'Coberturas', crisis_lines: 'Líneas de crisis', damage_procedure: 'Procedimiento por daños', deductible: 'Deducible',
+    default_rule: 'Regla general', delivery_time: 'Tiempo de entrega', deposit: 'Depósito', directions: 'Cómo llegar',
+    disclaimer: 'Aviso', discreet_notifications: 'Avisos discretos', distance: 'Distancia', documents: 'Documentos', duration: 'Duración',
+    early_late: 'Llegada temprana o salida tarde', electronic_invoice: 'Factura electrónica', eta: 'Tiempo estimado', exceptions: 'Excepciones',
+    exchanges: 'Cambios de producto', external: 'Servicio externo', feeding: 'Alimentación', fields_visible: 'Datos visibles',
+    formats: 'Formatos', fraud_line: 'Línea de fraude', free_from: 'Gratis desde', freeze: 'Congelamiento', freshness: 'Vigencia del dato',
+    general_statement: 'Declaración general', group: 'Grupo', group_menu: 'Menú para grupos', guardian_fields: 'Datos del acudiente',
+    guest_registration: 'Registro de huéspedes', hazards: 'Riesgos', help_center_url: 'Centro de ayuda', hold_allowed: 'Permite apartar',
+    hold_duration: 'Tiempo apartado', horizon: 'Horizonte', hours: 'Horario', human_languages: 'Idiomas del equipo',
+    human_only: 'Solo una persona', identity_level: 'Nivel de identificación', installments: 'Cuotas', instructions: 'Instrucciones',
+    insurer: 'Aseguradora', insurers_accepted: 'Aseguradoras aceptadas', item: 'Ítem', kitchen_contact: 'Contacto de cocina',
+    kyc_process: 'Verificación de identidad', lang: 'Idioma', languages: 'Idiomas', large_groups: 'Grupos grandes',
+    last_ingested_at: 'Última lectura', lead_time: 'Anticipación mínima', level: 'Nivel', license_id: 'Número de licencia', line: 'Línea',
+    makeup_allowed: 'Permite recuperar', makeup_window: 'Plazo para recuperar', mandatory: 'Obligatorio', max: 'Máximo',
+    max_detail_in_chat: 'Qué no contar por el chat', max_party_online: 'Máximo de personas por reserva en línea',
+    max_wait_in_hours: 'Espera máxima en horario', max_without_call: 'Máximo sin llamada', medication: 'Medicación',
+    message: 'Mensaje', min: 'Mínimo', min_fields: 'Datos de salud que se piden por chat', min_order: 'Pedido mínimo',
+    min_spend: 'Consumo mínimo', minors_authorization: 'Autorización de menores', model: 'Modelo', never_request: 'Nunca pedir',
+    no_valuation: 'Sin avalúo', notify_customer_on_answer: 'Avisar al cliente al responder', numbers: 'Números', objects: 'Aplica a',
+    offer: 'Oferta', offered: 'Se ofrece', on_timeout: 'Si nadie responde', opt_out: 'Darse de baja', optional_waivers: 'Exenciones opcionales',
+    options: 'Opciones', ordering: 'Orden', outside_zone_policy: 'Fuera de la zona', own_urgent_line: 'Línea propia de urgencias',
+    owner: 'Responsable', parking: 'Parqueadero', partners: 'Aliados', password_reset_url: 'Recuperar contraseña', per_holiday: 'Por festivo',
+    per_item: 'Por ítem', pharmacist_handoff: 'Paso al farmacéutico', place: 'Lugar', platform_defaults: 'Casos de la plataforma',
+    portfolio: 'Portafolio', prescription_intake: 'Recepción de fórmulas', priority_assignees: 'Responsables prioritarios',
+    procedure: 'Procedimiento', professional_alert: 'Aviso al profesional', protected_filters_blocked: 'Filtros protegidos bloqueados',
+    provider: 'Proveedor', published_advice: 'Consejos publicados', published_first_aid: 'Primeros auxilios publicados',
+    published_ranges: 'Rangos publicados', rate: 'Tarifa', readable: 'El cliente puede consultarlas', reason: 'Motivo',
+    recipients: 'Destinatarios', recommend: 'Recomendar', recorded: 'Registrado', red_flags: 'Señales de alarma',
+    reentry_times: 'Tiempos de reingreso', refunds: 'Reembolsos', requires_assessment: 'Requiere valoración',
+    resource_model: 'Modelo de recursos', response: 'Respuesta', retention: 'Conservación de datos', returns: 'Devoluciones',
+    rule: 'Regla', scope: 'Alcance', sector: 'Sector', self_check_in: 'Check-in autónomo', sensitive_never: 'Datos sensibles que nunca se piden',
+    services: 'Servicios', single_notice: 'Un solo aviso', sla: 'Plazo de respuesta', source: 'Fuente', space: 'Espacio',
+    special_order: 'Pedido especial', status: 'Estado', status_page_url: 'Página de estado', status_vocabulary: 'Estados que ve el cliente',
+    surcharge: 'Recargo', title: 'Título', topic: 'Tema', towing: 'Grúa', tracking: 'Seguimiento', translate_content: 'Traducir el contenido',
+    turns: 'Turnos', urgent_slot: 'Cupo de urgencias', url: 'Enlace', usage_rights: 'Derechos de uso', valid_from: 'Válido desde',
+    valid_to: 'Válido hasta', verified_by: 'Verificado por', vet_emergency: 'Urgencia veterinaria', waitlist: 'Lista de espera',
+    when: 'Cuándo', who_can_approve: 'Quién aprueba', why: 'Por qué', zones: 'Zonas',
+    country_pack: 'Paquete del país', operating_country: 'País', timezone: 'Zona horaria', currency: 'Moneda', default_locale: 'Idioma por defecto',
+    address_privacy: 'Privacidad de la dirección', human_hours: 'Horario de atención humana', sla_in_hours: 'Tiempo de respuesta en horario',
+    sla_out_of_hours: 'Fuera de horario', out_of_hours_message: 'Mensaje fuera de horario', callback_offered: 'Ofrece devolver la llamada',
+    notes: 'Notas', routing: 'Reparto', mode: 'Modo', kind: 'Tipo', value: 'Valor', label: 'Etiqueta', name: 'Nombre', line2: 'Complemento',
+    region: 'Departamento o estado', postal_code: 'Código postal', map_url: 'Enlace del mapa', request_message: 'Mensaje al cliente',
+    business_confirm_sla: 'Plazo para que el negocio confirme', required_fields: 'Datos que pide al cliente',
+};
+
+/** Ayudas que reemplazan una descripción de tipo («ISO-3166», «IANA», «BCP-47»…) por una frase para el dueño. */
+const TOKEN_HELP: readonly [RegExp, string][] = [
+    [/ISO-3166/g, 'código de país de 2 letras'],
+    [/ISO-4217/g, 'código de moneda de 3 letras'],
+    [/\bBCP-47 list\b/g, 'idiomas (p. ej. es, en)'],
+    [/\bBCP-47\b/g, 'idioma (p. ej. es-CO)'],
+    [/\bIANA\b/g, 'zona horaria (p. ej. America/Bogota)'],
+    [/\bISO-8601\b/g, ''],
+];
+
+/** Tipos de la especificación al inicio de una descripción: el componente ya lo dice, el dueño no lo necesita. */
+const TYPE_PREFIX = /^(?:union \[[^\]]*\]|enum_list \[[^\]]*\]|enum \[[^\]]*\]|enum_list|enum|bool|text_i18n\??|int|money\??|duration\??|url|URL|contact_point|weekly_hours|policy_terms|address|requerido|opcional|derivado|lista de \{[\s\S]*\}|ref (?:CORE|OBJ|DOM|PROF)\.[A-Za-z0-9_.*]+)\s*/;
+
+/**
+ * La descripción de un campo en palabras del dueño (ADR 0031, fricción 3): sin el tipo de la especificación («enum […]»,
+ * «bool (ref …)», «text_i18n»), sin referencias a ADR ni a requisitos, y con los estándares en una frase. Si lo que
+ * queda sigue siendo notación (llaves, corchetes), no hay ayuda.
+ */
+export function ownerHelp(desc: string | undefined): string | undefined {
+    if (!desc) return undefined;
+    let s = desc.trim().replace(/^contact_point \+ horario/, 'teléfono o canal, y su horario').replace(/^ref pack de país/i, 'paquete del país');
+    for (let i = 0; i < 3; i++) {
+        const next = s.replace(TYPE_PREFIX, '').replace(/^[+?,;:\s]+/, '').trim();
+        if (next === s) break;
+        s = next;
+    }
+    s = s.replace(/;?\s*ADR \d+/g, '').replace(/\bref (?:CORE|OBJ|DOM|PROF)\.[A-Za-z0-9_.*]+/g, '').replace(/\(\s*\)/g, '');
+    if (/^\(([^()]*)\)$/.test(s)) s = s.slice(1, -1).trim();
+    for (const [re, text] of TOKEN_HELP) s = s.replace(re, text);
+    s = s.replace(/\s{2,}/g, ' ').replace(/\s+([,.;)])/g, '$1').trim();
+    if (!s || /[{}[\]]|\b(?:text_i18n|enum|bool|iso_duration)\b|\b(?:CORE|OBJ|DOM|PROF)\.[A-Z]/.test(s)) return undefined;
+    return s[0].toUpperCase() + s.slice(1);
+}
+
 /** Parte una lista por comas de primer nivel (fuera de [], {} y ()). */
 export function splitTop(s: string): string[] {
     const out: string[] = [];
@@ -124,14 +219,14 @@ const isOpen = (inner: string): boolean => /…|\.\.\./.test(inner);
 const options = (values: string[]): FormOption[] => values.map(v => ({ value: v, label: v.replace(/_/g, ' ') }));
 
 const field = (key: string, kind: FormFieldKind, extra: Partial<FormField> = {}): FormField =>
-    ({ key, label: humanize(key), kind, required: false, ...extra });
+    ({ key, label: FIELD_LABELS[key] ?? humanize(key), kind, required: false, ...extra });
 
 const addressFields = (): FormField[] => [
     field('line1', 'text', { label: 'Dirección' }),
     field('line2', 'text'),
     field('city', 'text', { required: true, label: 'Ciudad' }),
     field('region', 'text'),
-    field('country', 'text', { required: true, label: 'País', pattern: '^[A-Z]{2}$', help: 'ISO-3166 (CO, MX, BR…)' }),
+    field('country', 'text', { required: true, label: 'País', pattern: '^[A-Z]{2}$', help: 'Código de 2 letras (CO, MX, BR…)' }),
     field('postal_code', 'text'),
 ];
 
@@ -175,7 +270,7 @@ function braceFields(inner: string): FormField[] {
  */
 export function parseField(key: string, rawDesc: unknown): FormField {
     const desc = typeof rawDesc === 'string' ? rawDesc.trim() : rawDesc === true ? 'true' : String(rawDesc ?? '').trim();
-    const help = desc || undefined;
+    const help = ownerHelp(desc);
     const base = { help };
     let m: RegExpMatchArray | null;
 
@@ -277,10 +372,10 @@ const ADJUSTMENTS: Readonly<Record<string, Adjust>> = {
         }));
     },
     'CORE.IDENTITY.REGION': d => {
-        patch(d, 'operating_country', { kind: 'text', required: true, pattern: '^[A-Z]{2}$' });
-        patch(d, 'timezone', { kind: 'text', required: true, pattern: '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)+$|^UTC$' });
-        patch(d, 'currency', { kind: 'text', required: true, pattern: '^[A-Z]{3}$' });
-        patch(d, 'default_locale', { kind: 'text', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$' });
+        patch(d, 'operating_country', { kind: 'text', required: true, pattern: '^[A-Z]{2}$', help: 'Código de 2 letras del país donde operas (CO, MX, BR…).' });
+        patch(d, 'timezone', { kind: 'text', required: true, pattern: '^[A-Za-z_]+(/[A-Za-z0-9_+-]+)+$|^UTC$', help: 'Zona horaria del negocio, p. ej. America/Bogota.' });
+        patch(d, 'currency', { kind: 'text', required: true, pattern: '^[A-Z]{3}$', help: 'Código de 3 letras de la moneda en que cobras (COP, MXN, USD…).' });
+        patch(d, 'default_locale', { kind: 'text', pattern: '^[a-z]{2,3}(-[A-Z]{2})?$', help: 'Idioma con el que responde el agente, p. ej. es-CO.' });
         put(d, 'country_pack', field('country_pack', 'readonly', { help: 'Lo resuelve la plataforma a partir del país.' }));
     },
     'CORE.LOCATIONS.LIST': d => {
@@ -378,11 +473,35 @@ function catalogScreens(spec?: CompiledSpec): FormDescriptor['screens'] {
  * Descriptor del formulario de un requisito. `spec` completa las listas que dependen de la especificación entera
  * (subtipos, objetos, hechos condicionales y pantallas de catálogo); sin ella el formulario usa texto libre.
  */
+/**
+ * El texto del cajón sin marcadores sin resolver (ADR 0031, fricción 3: «{objeto}», «{reservas}», «{n} precios»). El
+ * objeto pone su sustantivo; una cifra que solo conoce la evaluación se dice sin número. El cajón muestra el mensaje
+ * de la evaluación (con la cifra) cuando lo hay.
+ */
+function helpText(req: CompiledRequirement, text: string): string {
+    const noun = req.object ? OBJECT_NOUNS[req.object] : undefined;
+    const known: Record<string, string> = noun
+        ? { objeto: noun.records, reservas: noun.records, 'ítems': noun.items, 'servicio/producto/plato…': noun.item, 'trámite': 'el trámite principal' }
+        : { objeto: 'tus reservas', reservas: 'reservas', 'ítems': 'ítems', 'servicio/producto/plato…': 'ítem', 'trámite': 'el trámite principal' };
+    // «{n} precios» → «Algunos precios»; «{n} preguntas» → «Algunas preguntas»
+    const some = (next: string, start: boolean) => {
+        const w = /(as|ión|iones)$/i.test(next) ? 'algunas' : 'algunos';
+        return start ? w[0].toUpperCase() + w.slice(1) : w;
+    };
+    return String(text)
+        .replace(/\{([^{}]+)\}/g, (m, key: string) => known[key] ?? m)
+        .replace(/\{n\} de \{m\}\s+/g, '{n} ')
+        .replace(/(^|[.!?]\s+)\{(?:n|m)\}\s+(\p{L}+)/gu, (_m, pre: string, next: string) => `${pre}${some(next, true)} ${next}`)
+        .replace(/\{(?:n|m)\}\s+(\p{L}+)/gu, (_m, next: string) => `${some(next, false)} ${next}`)
+        .replace(/\{(lista|campos)\}/g, 'lo que falta')
+        .replace(/\{([^{}]+)\}/g, (_m, key: string) => known[key] ?? key.replace(/_/g, ' '));
+}
+
 export function formFor(req: CompiledRequirement, spec?: CompiledSpec): FormDescriptor {
     const type = String(req.data?.type ?? '');
     const structure = req.data?.structure;
     const validation = Array.isArray(req.data?.validation) ? (req.data.validation as unknown[]).map(String) : [];
-    const help = typeof req.gapMessage === 'string' ? req.gapMessage : (Object.values(req.gapMessage)[0] ?? req.title);
+    const help = helpText(req, typeof req.gapMessage === 'string' ? req.gapMessage : (Object.values(req.gapMessage)[0] ?? req.title));
     const d: FormDescriptor = {
         schema: FORM_SCHEMA, requirementId: req.id, title: req.title, type, mode: 'form', screens: [], root: 'object', fields: [],
         emptyAllowed: req.predicateKind === 'value_or_empty', validation, example: req.data?.example ?? null, help: String(help),

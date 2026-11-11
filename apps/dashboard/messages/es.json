@@ -15805,6 +15805,7 @@
     "readonly": {
       "empty": "sin dato",
       "ref": "se edita en {ref}",
+      "elsewhere": "se edita en otro dato del panel",
       "platform": "no se edita aquí"
     },
     "fixed": "siempre activo",
@@ -15878,9 +15879,9 @@
       "photographs_minors": "Fotografía a menores",
       "simulates_financing": "Simula créditos o hipotecas",
       "treats_minors": "Atiende a menores",
-      "operating_country": "País (ISO, p. ej. CO)",
+      "operating_country": "País",
       "timezone": "Zona horaria",
-      "currency": "Moneda (ISO-4217)",
+      "currency": "Moneda",
       "default_locale": "Idioma por defecto",
       "country_pack": "Paquete del país",
       "locations": "Sedes",
@@ -15890,7 +15891,7 @@
       "line2": "Complemento",
       "city": "Ciudad",
       "region": "Departamento o estado",
-      "country": "País (ISO)",
+      "country": "País",
       "postal_code": "Código postal",
       "map_url": "Enlace del mapa",
       "is_main": "Sede principal",

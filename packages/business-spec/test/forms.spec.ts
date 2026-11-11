@@ -8,7 +8,7 @@
  */
 import { evaluate } from '../src/engine/evaluate';
 import { RESERVABLE_OBJECTS } from '../src/facts';
-import { formFor, formRequirementIds, parseField, splitTop, type FormDescriptor, type FormField } from '../src/forms/descriptor';
+import { formFor, formRequirementIds, ownerHelp, parseField, splitTop, type FormDescriptor, type FormField } from '../src/forms/descriptor';
 import { isValueRequirement, validateRequirementValue } from '../src/validate-value';
 import { NOW, base, region, spec, val } from './helpers';
 
@@ -209,5 +209,41 @@ describe('formularios de R3: 13 bloqueantes del núcleo y WRITE_MODE / CHANGE_RU
         const failing = CORE_BLOCKERS.filter(id => !['CORE.OFFER.ITEMS', 'CORE.OFFER.PRICE_MODEL', 'CORE.IDENTITY.PROFILE'].includes(id))
             .filter(id => r.requirements.find(x => x.id === id)?.result !== 'cumple');
         expect(failing).toEqual([]);
+    });
+});
+
+describe('texto para el dueño, no para el desarrollador (ADR 0031, fricción 3)', () => {
+    const allFields = (fs: FormField[]): FormField[] => fs.flatMap(f => [f, ...allFields(f.fields ?? [])]);
+    const DEV_TEXT = /\{[^}]*\}|enum \[|bool|text_i18n|ISO-\d|IANA|BCP-47|ADR \d/;
+
+    it('la ayuda de un campo dice qué es, no su tipo', () => {
+        expect(ownerHelp('enum [publica, solo_barrio, tras_confirmar] (por defecto publica)')).toBe('Por defecto publica');
+        expect(ownerHelp('bool (no repetir el motivo en avisos)')).toBe('No repetir el motivo en avisos');
+        expect(ownerHelp('text_i18n')).toBeUndefined();
+        expect(ownerHelp('BCP-47')).toBe('Idioma (p. ej. es-CO)');
+        expect(ownerHelp('weekly_hours (por defecto = CORE.HOURS.REGULAR)')).toBeUndefined();
+    });
+
+    it('ningún formulario muestra notación de la especificación ni marcadores sin resolver', () => {
+        const offenders: string[] = [];
+        for (const id of spec.order) {
+            const d = formFor(spec.requirements[id], spec);
+            if (DEV_TEXT.test(d.help)) offenders.push(`${id}: ${d.help}`);
+            for (const f of allFields(d.fields)) if (f.help && DEV_TEXT.test(f.help)) offenders.push(`${id}.${f.key}: ${f.help}`);
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    it('las etiquetas de salud salen en español', () => {
+        const labels = (id: string) => Object.fromEntries(allFields(formFor(spec.requirements[id], spec).fields).map(f => [f.key, f.label]));
+        expect(labels('DOM.HEALTH.EMERGENCY_PROTOCOL')).toMatchObject({ own_urgent_line: 'Línea propia de urgencias', red_flags: 'Señales de alarma' });
+        expect(labels('DOM.HEALTH.SENSITIVE_DATA')).toMatchObject({ consent_text: 'Texto de consentimiento', min_fields: 'Datos de salud que se piden por chat' });
+        expect(labels('DOM.HEALTH.CLINICAL_SCOPE')).toMatchObject({ disclaimer: 'Aviso' });
+    });
+
+    it('el texto del cajón pone el sustantivo del objeto y no deja «{n}»', () => {
+        expect(formFor(spec.requirements['CORE.OFFER.PRICE_MODEL'], spec).help).toMatch(/^Algunos precios siguen/);
+        expect(formFor(spec.requirements['OBJ.APPOINTMENT.CATALOG'], spec).help).toMatch(/^Algunos servicios no tienen/);
+        expect(formFor(spec.requirements['OBJ.APPOINTMENT.WRITE_MODE'], spec).help).not.toContain('{');
     });
 });

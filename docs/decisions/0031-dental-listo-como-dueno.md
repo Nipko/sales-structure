@@ -114,4 +114,13 @@ Consecuencias:
 - En el dental golden, disponibilidad y cancelación pasan de bloqueantes a necesarias: 20 aplicables y 16 que fallan, antes 22 y 18.
 - La herramienta de reserva no consulta el modo. El agente puede decir «solicitud» aunque la cita quede registrada directamente; promete de menos, no de más.
 
-Sigue abierta la fricción 10: descripción, incluye/excluye y preparación en el formulario de servicio. Necesita columnas y DTO nuevos.
+La fricción 10 (descripción, incluye/no incluye y preparación en el formulario de servicio) se resuelve en #434, con columnas nuevas en `services`.
+
+## Decisión: recall del copiloto (hechos del documento)
+
+- El copiloto propone también los requisitos que son **hechos que un negocio escribe en sus documentos**: `CORE.IDENTITY.REGION`, `CORE.HANDOFF.HOURS_SLA`, `CORE.LANGUAGES.SERVED`, `CORE.PAYMENT.TIMING_DEPOSIT`, `CORE.PAYMENT.FINANCING`, `CORE.PAYMENT.INVOICING`, `CORE.PRIVACY.NOTICE`, `CORE.CONTACT.SPECIAL`, `OBJ.*.CHANGE_RULES`, `DOM.HEALTH.EMERGENCY_PROTOCOL`, `DOM.HEALTH.CLINICAL_SCOPE` y `DOM.VETERINARY.EMERGENCY`.
+- Siguen cerrados los que son **decisiones de operación o de privacidad del dueño**: `OBJ.*.WRITE_MODE`, `OBJ.*.ACCOUNT_READ`, `OBJ.*.AVAILABILITY_SOURCE`, `DOM.*.SENSITIVE_DATA`, `CORE.SAFETY.*`, `CORE.PRIVACY.CUSTOMER_MEMORY` y `CORE.HANDOFF.ALWAYS_HUMAN`.
+- Cuando un requisito mezcla hechos y decisiones, el copiloto solo propone los campos de hecho (`COPILOT_FACT_SHAPES`): ni el pack de país, ni «directo» en CHANGE_RULES, ni las señales de alarma o el descargo clínico de la plataforma.
+- Guardarraíles iguales (cita literal, cifras citadas, aprobación por ítem) más: país, zona, moneda e idioma validados contra Intl (lo que no valida se rechaza) y el país debe aparecer en una cita.
+- Aprobar escribe por `BusinessFactsService.write`: una REGION del copiloto declara el país del tenant igual que el cajón.
+- El copiloto no pregunta por requisitos confirmados ni por los que la misma ejecución propuso.

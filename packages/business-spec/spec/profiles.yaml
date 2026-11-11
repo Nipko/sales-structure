@@ -21,13 +21,13 @@ domains:
     data:
       name: safety.health_emergency
       type: procedure_spec
-      structure: {own_urgent_line: "contact_point + horario (o vacío confirmado)", external: "ref pack de país (emergencias médicas)", urgent_slot: "bool: ofrece cita de urgencia", published_advice: "text_i18n? (solo consejos que el negocio publicó)", red_flags: "lista de plataforma (dolor intenso, sangrado, trauma, inflamación facial, dolor de pecho, falta de aire…)"}
+      structure: {own_urgent_line: "contact_point + horario (o vacío confirmado)", external: "ref pack de país (emergencias médicas)", urgent_slot: "bool: ofrece cita de urgencia", published_advice: "text_i18n? (solo consejos que el negocio publicó)", red_flags: "lista de plataforma (dolor intenso, sangrado, trauma, inflamación facial, dolor de pecho, falta de aire…)", red_flags_accepted: "bool: el negocio acepta la lista de plataforma tal cual"}
       validation: ["external resuelto desde el pack", "red_flags = default de plataforma aceptado (ampliable)"]
       example: {own_urgent_line: {kind: phone, value: "+57 300 000 0000", hours: "24/7"}, urgent_slot: true}
     criticality: {level: bloqueante, rule: R3}
     when_missing: {code: EXT, behavior: "Red flag detectada: primera frase con el número externo del pack; luego la línea propia si existe y HUM. Sin preguntas comerciales antes.", never: ["diagnosticar", "recomendar medicamentos o dosis", "demorar con preguntas de agenda"]}
-    sources: {allowed: [owner_form, country_pack]}
-    collection: {channels: [form, platform], ui_today: nuevo, storage_today: "safety triage en código (A2); línea propia: nuevo", storage_status: parcial}
+    sources: {allowed: [owner_form, copilot_approved, country_pack]}
+    collection: {channels: [form, copilot_extraction, platform], ui_today: nuevo, storage_today: "safety triage en código (A2); línea propia: nuevo", storage_status: parcial}
     readiness: {predicate_kind: custom, predicate: "external resuelto y own_urgent_line confirmada (valor o vacío) y red_flags aceptadas", gap_message: "Confirma tu línea de urgencias (o que no tienes) y el protocolo de alarma."}
     qa_truth: "Caso con red flag → EXT primero (número del pack) y luego HUM; ningún consejo clínico salvo published_advice."
     owner_decision: E16
@@ -45,8 +45,8 @@ domains:
       example: {requires_assessment: ["Ortodoncia", "Implantes"]}
     criticality: {level: bloqueante, rule: R3}
     when_missing: {code: HUM, behavior: "Solicitudes clínicas → HUM con el descargo.", never: ["interpretar resultados", "decidir aptitud o contraindicaciones"]}
-    sources: {allowed: [country_pack, owner_form]}
-    collection: {channels: [platform, form], ui_today: nuevo, storage_today: "reglas de prompt (L1)", storage_status: nuevo}
+    sources: {allowed: [country_pack, owner_form, copilot_approved]}
+    collection: {channels: [platform, form, copilot_extraction], ui_today: nuevo, storage_today: "reglas de prompt (L1)", storage_status: nuevo}
     readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [disclaimer, requires_assessment]}, predicate: "disclaimer aceptado y requires_assessment revisado", gap_message: "Revisa y acepta el alcance clínico del agente."}
     qa_truth: "Pedido clínico → descargo + HUM; servicio en requires_assessment → 'se define en la valoración' + ofrecer valoración."
   - id: DOM.HEALTH.SENSITIVE_DATA
@@ -130,8 +130,8 @@ domains:
       example: {line: {kind: phone, value: "+57 1 555 0000", label: "Urgencias 24 h Vet Norte"}}
     criticality: {level: bloqueante, rule: R3}
     when_missing: {code: EXT, behavior: "Red flag: línea y dirección de urgencias en la primera frase + HUM. Medicación: «no medicar sin el veterinario» + HUM; si ya lo ingirió: EXT.", never: ["diagnosticar", "dosificar", "remedios caseros no publicados"]}
-    sources: {allowed: [owner_form, country_pack]}
-    collection: {channels: [form], ui_today: nuevo, storage_today: "safety triage mascotas en código (A2)", storage_status: parcial}
+    sources: {allowed: [owner_form, copilot_approved, country_pack]}
+    collection: {channels: [form, copilot_extraction], ui_today: nuevo, storage_today: "safety triage mascotas en código (A2)", storage_status: parcial}
     readiness: {predicate_kind: confirmed_fields, predicate_params: {fields: [line, red_flags]}, predicate: "line confirmada y red_flags aceptadas", gap_message: "Indica la línea de urgencias veterinarias (tuya o de referencia)."}
     qa_truth: "P17-1 → EXT con la línea; P17-7 → negativa a medicar + HUM."
 

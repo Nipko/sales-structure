@@ -144,8 +144,8 @@ template:
     example: {agent_can_modify: directo, agent_can_cancel: directo, terms: "ref CORE.POLICY.CANCELLATION_CHANGES", ask_reason: false}
   criticality: {level: bloqueante, rule: R2}
   when_missing: {code: HUM, behavior: "Sin regla: solicitud + HUM. Fuera de plazo: cita la política y deriva la excepción a HUM.", never: ["cancelar sin confirmación explícita", "prometer reembolso fuera de la política"]}
-  sources: {allowed: [owner_form]}
-  collection: {channels: [form], ui_today: "/admin/settings/policies (texto) — reglas por objeto: nuevo", storage_today: "motor de transiciones (cancel/mover) + policies.cancellation", storage_status: parcial}
+  sources: {allowed: [owner_form, copilot_approved]}
+  collection: {channels: [form, copilot_extraction], ui_today: "/admin/settings/policies (texto) — reglas por objeto: nuevo", storage_today: "motor de transiciones (cancel/mover) + policies.cancellation", storage_status: parcial}
   readiness: {predicate_kind: custom, predicate: "agent_can_modify y agent_can_cancel declarados y terms resuelve (a CORE.POLICY.CANCELLATION_CHANGES si aplica; si es n/a, al policy_terms propio) con plazo o cancel_until_status y cargo confirmados", gap_message: "Define si el agente puede cambiar o cancelar {objeto} y con qué condiciones."}
   qa_truth: "C21/C22: dentro de plazo → recapitula + efecto (directo) o solicitud; fuera → política + HUM; nunca sin confirmación."
 

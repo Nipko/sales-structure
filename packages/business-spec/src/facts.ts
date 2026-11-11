@@ -26,6 +26,13 @@ export interface TenantFacts extends ExprEnv {
 }
 
 const WRITE_MODES = new Set<WriteMode>(['direct_commit', 'request_to_business', 'none']);
+
+/**
+ * Dominios en los que, sin modo declarado, el agente deja una SOLICITUD en vez de confirmar (ADR 0031, fricción 9): una
+ * cita de salud la confirma una persona del consultorio. El modo por defecto del objeto (`default_write_mode`) sigue
+ * valiendo para los demás negocios; un modo declarado por el dueño siempre manda.
+ */
+export const REQUEST_BY_DEFAULT_DOMAINS: ReadonlySet<string> = new Set(['health', 'mental_health']);
 const asRecord = (v: unknown): Record<string, any> => (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, any> : {});
 
 export function resolveFacts(spec: CompiledSpec, snap: TenantSnapshot, now: Date): TenantFacts {
@@ -53,12 +60,23 @@ export function resolveFacts(spec: CompiledSpec, snap: TenantSnapshot, now: Date
     }
     const enabled = objects.map(o => o.object);
 
+    // dominios: incondicionales del perfil + condicionales cuyo hecho se declaró verdadero
+    const domains = new Set<string>(profile?.domains ?? []);
+    const cdfDeclared = asRecord(declared.conditional_domain_facts);
+    for (const [fact, domain] of Object.entries(profile?.conditionalDomainFacts ?? {})) {
+        if (typeof cdfDeclared[fact] === 'boolean') { sources[fact] = 'declarado'; if (cdfDeclared[fact]) domains.add(domain); }
+        else { sources[fact] = 'desconocido'; undeclaredFacts.push(fact); }
+    }
+
     // modo de escritura por objeto
+    const requestByDefault = [...domains].some(d => REQUEST_BY_DEFAULT_DOMAINS.has(d));
     const writeModes: TenantFacts['writeModes'] = {};
     for (const o of enabled) {
         const rv = resolveValue(snap.values[`OBJ.${o.toUpperCase()}.WRITE_MODE`], now);
         const v = rv.state === 'confirmado' ? asRecord(rv.record?.value) : {};
-        const mode = WRITE_MODES.has(v.mode) ? v.mode as WriteMode : spec.objects[o].defaultWriteMode;
+        const platformDefault = spec.objects[o].defaultWriteMode;
+        const fallback: WriteMode = requestByDefault && platformDefault === 'direct_commit' ? 'request_to_business' : platformDefault;
+        const mode = WRITE_MODES.has(v.mode) ? v.mode as WriteMode : fallback;
         writeModes[o] = {
             mode, declared: WRITE_MODES.has(v.mode), paymentRequired: v.payment_required_to_confirm === true,
             requiredFields: Array.isArray(v.required_fields) ? v.required_fields.map(String) : [],
@@ -88,14 +106,6 @@ export function resolveFacts(spec: CompiledSpec, snap: TenantSnapshot, now: Date
 
     const hours = resolveValue(snap.values['CORE.HOURS.REGULAR'], now);
     const hoursAlwaysOpen = hours.state === 'confirmado' && asRecord(hours.record?.value).always_open === true;
-
-    // dominios: incondicionales del perfil + condicionales cuyo hecho se declaró verdadero
-    const domains = new Set<string>(profile?.domains ?? []);
-    const cdfDeclared = asRecord(declared.conditional_domain_facts);
-    for (const [fact, domain] of Object.entries(profile?.conditionalDomainFacts ?? {})) {
-        if (typeof cdfDeclared[fact] === 'boolean') { sources[fact] = 'declarado'; if (cdfDeclared[fact]) domains.add(domain); }
-        else { sources[fact] = 'desconocido'; undeclaredFacts.push(fact); }
-    }
 
     const estimateRequired = (snap.items.service_request ?? []).some(i => i.active && i.fields.estimate_required === true);
     const booksByStaff = (writeModes.appointment?.requiredFields ?? []).some(f => /profesional|staff/i.test(f));

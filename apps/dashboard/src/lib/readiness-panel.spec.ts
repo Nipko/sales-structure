@@ -10,6 +10,7 @@ import {
     gapAction,
     navigableTarget,
     panelFormHref,
+    shownGapCount,
     topBlockingGaps,
     type ReadinessCurrentResponse,
     type ReadinessResultView,
@@ -139,5 +140,33 @@ describe("panel de preparación: forma de los datos", () => {
         const panel = buildReadinessPanel(responseFor(result), owner);
         expect(panel.blocking.map(g => g.id)).toEqual([root.id]);
         expect(panel.blocking[0].alsoFixes).toEqual([{ id: child.id, title: child.title }]);
+    });
+});
+
+describe("pantalla de catálogo según el vertical (ADR 0031, fricción 5)", () => {
+    const { resolveVerticalCapabilityManifest } = jest.requireActual("@parallext/shared");
+    const config = (industry: string, subType: string) => {
+        const m = resolveVerticalCapabilityManifest(industry, subType);
+        return { industry, subType, manifestVersion: m.manifestVersion, effectiveCapabilities: m.capabilities };
+    };
+
+    it("un consultorio con agenda edita sus servicios en Citas › Servicios, no en el catálogo que lo manda al inicio", () => {
+        const viewer = { role: "tenant_admin" as const, impersonating: false, verticalConfig: config("salud", "dental") };
+        expect(gapAction("/admin/service-catalog", viewer)).toEqual({ kind: "link", href: "/admin/appointments?tab=services" });
+    });
+
+    it("sin el vertical cargado, el enlace no cambia", () => {
+        expect(gapAction("/admin/service-catalog", { role: "tenant_admin", impersonating: false })).toEqual({ kind: "link", href: "/admin/service-catalog" });
+    });
+});
+
+describe("conteos del resumen = filas de las listas (ADR 0031, fricción 8)", () => {
+    it("un hueco que se muestra en su raíz no se cuenta dos veces", () => {
+        const result = resultFor("spark-qa-dental-03");
+        const model = buildReadinessPanel(responseFor(result), { role: "tenant_admin", impersonating: false });
+        expect(model.shown).toEqual({ blocking: model.blocking.length, necessary: model.necessary.length, recommended: model.recommended.length });
+        // EMERGENCY_BASE se muestra en REGION: el motor cuenta uno más que la lista
+        expect(model.counts.blockingFailing).toBe(model.shown.blocking + 1);
+        expect(shownGapCount(result.blockingGaps, responseFor(result).result)).toBe(model.shown.blocking);
     });
 });

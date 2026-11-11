@@ -79,12 +79,16 @@ export function hasPolicyEvidence(input: PolicyEvidenceInput): boolean {
     // What the OWNER wrote into the prompt: the persona, the business description (`<about>`), the main instructions, the industry
     // guidance. The contract (rules for the model) is not a source.
     const prompt = String(input.systemPrompt ?? '');
-    const owner = [...prompt.matchAll(OWNER_BLOCK)].map(block => block[2]).join(' ');
+    // C14: the values the owner confirmed in the readiness panel (`<confirmed_business_facts>`, e.g. OBJ.*.CHANGE_RULES) are the
+    // owner's words too; the block's `note` attribute is ours and is not read.
+    const owner = [...[...prompt.matchAll(OWNER_BLOCK)].map(block => block[2]),
+        ...[...prompt.matchAll(CONFIRMED_FACTS_BLOCK)].map(block => block[1])].join(' ');
     if (owner && OWNER_TERMS.test(normalizeForIntent(owner))) return true;
     return false;
 }
 
 const OWNER_BLOCK = /<(persona|about|main_instructions|guidance|business_goals)>([\s\S]*?)<\/\1>/g;
+const CONFIRMED_FACTS_BLOCK = /<confirmed_business_facts(?:\s[^>]*)?>([\s\S]*?)<\/confirmed_business_facts>/g;
 const OWNER_TERMS = /(?:cancel|anul|reprogram)\w*[^.\n]{0,80}(?:\d+\s*(?:horas|h|hrs|dias|hours|days)|sin costo|sin cargo|gratis|penaliz|cargo|fee|free)/;
 
 /**

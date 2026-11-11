@@ -176,10 +176,12 @@ export class OnboardingExtractionService {
                 for (const r of check.rejections) ctx.summary.discarded.push({ requirementId: p.requirementId, code: r.code, message: r.message });
                 continue;
             }
+            // el valor ya llevado a la forma del requisito (ADR 0031, fricción 2)
+            const value = 'value' in check ? check.value : p.value;
             const versions = verified.get(p.requirementId) ?? [];
-            const same = versions.find(v => sameCopilotValue(v.value, p.value));
+            const same = versions.find(v => sameCopilotValue(v.value, value));
             if (same) same.evidence.push(...check.evidence.map(evidenceView));
-            else versions.push({ value: p.value, evidence: check.evidence.map(evidenceView) });
+            else versions.push({ value, evidence: check.evidence.map(evidenceView) });
             verified.set(p.requirementId, versions);
         }
 

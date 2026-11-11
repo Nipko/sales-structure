@@ -8,7 +8,9 @@
  * - `public.tenants` (nombre, `settings`, zona y país de operación);
  * - la fila de identidad de `companies` (`is_primary`, o la más reciente);
  * - las filas activas de `policies`;
- * - las filas de `requirement_values` de los requisitos que lee el agente (`RUNTIME_FACT_IDS`).
+ * - las filas de `requirement_values` de los requisitos que lee el agente (`RUNTIME_FACT_IDS`) y de los datos confirmados
+ *   que el agente puede decir al cliente (`confirmedFactIds`, derivados de la especificación: medios de pago, requisitos
+ *   de la cita, idiomas…; C14).
  *
  * Una tabla que el tenant aún no tiene cuenta como vacía (el agente sigue leyendo lo de hoy). Las fuentes se guardan 60 s
  * en Redis salvo para las políticas (texto de consentimiento: siempre la versión durable) y en contextos sin persistencia;
@@ -16,9 +18,10 @@
  */
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import {
-    RUNTIME_FACT_IDS, factSnapshot, resolveBusinessHours, resolveIdentity, resolveNotOffered, resolvePolicy,
-    type FactSources, type IdentityOverlay, type NotOfferedEntry, type RuntimePolicy,
+    RUNTIME_FACT_IDS, confirmedFactIds, factSnapshot, resolveBusinessHours, resolveConfirmedFacts, resolveIdentity, resolveNotOffered, resolvePolicy,
+    type CompiledSpec, type ConfirmedFactView, type FactSources, type IdentityOverlay, type NotOfferedEntry, type RuntimePolicy,
 } from '@parallext/business-spec';
+import { loadSpec } from '@parallext/business-spec/load';
 import type { BusinessIdentity } from '@parallext/shared';
 import { persistenceDisabled, type ServiceExecutionContext } from '../../common/types/execution-context';
 import { PrismaService } from '../prisma/prisma.service';
@@ -91,6 +94,17 @@ export class BusinessFactsReader {
         return applyIdentityOverlay(base, overlay, tenantId);
     }
 
+    /**
+     * C14: los datos que el dueño confirmó y que el agente puede decir al cliente, fuera de `RUNTIME_FACT_IDS` (medios de
+     * pago, requisitos de la cita, reglas de cambio, idiomas, alcance clínico…). Solo valores `confirmed` y vigentes de
+     * `requirement_values`: un valor sembrado o de ejemplo no viaja (opción B). La lista sale de la especificación
+     * (`confirmedFactIds`), no de la API.
+     */
+    async confirmedFacts(tenantId: string, executionContext?: ServiceExecutionContext, now: Date = new Date()): Promise<ConfirmedFactView[]> {
+        const src = await this.sources(tenantId, { executionContext });
+        return src ? resolveConfirmedFacts(businessSpec(), src, now) : [];
+    }
+
     /** Fuentes de un tenant (null si el tenant no existe). `fresh` evita la caché. */
     async sources(tenantId: string, options: { fresh?: boolean; executionContext?: ServiceExecutionContext } = {}): Promise<FactSources | null> {
         const cacheable = !options.fresh && !persistenceDisabled(options.executionContext) && this.redis;
@@ -111,7 +125,7 @@ export class BusinessFactsReader {
                 FROM policies WHERE is_active = true`, []),
             this.optional(schema, `SELECT id::text AS id, requirement_id, scope_key, value, status, origin, confirmed_by::text AS confirmed_by,
                 confirmed_at, source_ref, valid_until, spec_version, version, updated_at
-                FROM requirement_values WHERE requirement_id = ANY($1::text[])`, [[...RUNTIME_FACT_IDS]]),
+                FROM requirement_values WHERE requirement_id = ANY($1::text[])`, [readerRequirementIds()]),
         ]);
         const src: FactSources = {
             tenant: {
@@ -135,6 +149,11 @@ export class BusinessFactsReader {
         }
     }
 }
+
+let specCache: CompiledSpec | null = null;
+const businessSpec = (): CompiledSpec => (specCache ??= loadSpec());
+/** Los requisitos cuyas filas carga el lector: los de la vía propia y los datos confirmados para el cliente. */
+export const readerRequirementIds = (): string[] => [...new Set<string>([...RUNTIME_FACT_IDS, ...confirmedFactIds(businessSpec())])];
 
 /** La identidad de `companies` con los campos que declaró el dueño encima (lo no declarado queda igual). */
 export function applyIdentityOverlay(base: BusinessIdentity | null, overlay: IdentityOverlay, tenantId: string): BusinessIdentity | null {

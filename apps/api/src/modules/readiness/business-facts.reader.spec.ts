@@ -143,6 +143,37 @@ describe('BusinessFactsReader: precedencia (ADR 0007 §2, ADR 0009)', () => {
     });
 });
 
+describe('BusinessFactsReader.confirmedFacts (C14)', () => {
+    const rv = (requirement_id: string, value: unknown, extra: Row = {}) => ({
+        id: `rv-${requirement_id}`, requirement_id, scope_key: '', value, status: 'confirmed', origin: 'owner_form', version: 1,
+        confirmed_at: '2026-10-20T10:00:00.000Z', source_ref: null, valid_until: null, ...extra,
+    });
+
+    it('carga y entrega lo que el dueño confirmó fuera de RUNTIME_FACT_IDS; lo sembrado y lo vencido no viajan', async () => {
+        const { reader, box, prisma } = make();
+        box.state.rv.set('CORE.PAYMENT.METHODS|', rv('CORE.PAYMENT.METHODS', { methods: ['efectivo', 'tarjeta_débito', 'tarjeta_crédito', 'Nequi', 'transferencia'] }));
+        box.state.rv.set('OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS|', rv('OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS',
+            [{ trámite: 'primera_cita', documents: ['nombre completo', 'teléfono', 'número de documento'] }]));
+        box.state.rv.set('CORE.LANGUAGES.SERVED|', rv('CORE.LANGUAGES.SERVED', { human_languages: ['es'] }, { status: 'seeded', origin: 'platform_seed' }));
+        box.state.rv.set('CORE.PAYMENT.FINANCING|', rv('CORE.PAYMENT.FINANCING', { installments: true }, { valid_until: '2020-01-01T00:00:00.000Z' }));
+        box.state.rv.set('CORE.SAFETY.FORBIDDEN_TOPICS|', rv('CORE.SAFETY.FORBIDDEN_TOPICS', { topics: ['política'] }));
+        const facts = await reader.confirmedFacts(TENANT);
+        expect(facts.map(f => f.id)).toEqual(['CORE.PAYMENT.METHODS', 'OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS']);
+        expect(facts[0]).toEqual({ id: 'CORE.PAYMENT.METHODS', title: 'Medios de pago aceptados', text: 'efectivo, tarjeta débito, tarjeta crédito, Nequi, transferencia' });
+        expect(facts[1].text).toContain('número de documento');
+        // la consulta de requirement_values pide también los datos confirmados (y sigue pidiendo los de la vía propia)
+        const call = prisma.executeInTenantSchema.mock.calls.find(([, sql]: any[]) => /FROM requirement_values WHERE requirement_id = ANY/.test(sql));
+        expect((call![2] as string[])[0]).toEqual(expect.arrayContaining(['CORE.HOURS.REGULAR', 'CORE.PAYMENT.METHODS', 'OBJ.APPOINTMENT.CUSTOMER_REQUIREMENTS']));
+        expect((call![2] as string[])[0]).not.toContain('CORE.SAFETY.FORBIDDEN_TOPICS');
+    });
+
+    it('sin tabla requirement_values (tenant sin migrar) no hay datos', async () => {
+        const { reader, prisma } = make();
+        prisma.executeInTenantSchema.mockImplementation(async () => { throw Object.assign(new Error('relation "requirement_values" does not exist'), { code: '42P01' }); });
+        expect(await reader.confirmedFacts(TENANT)).toEqual([]);
+    });
+});
+
 describe('BusinessFactsService.write: escritura doble (expand, R3b)', () => {
     it('horario: escribe settings.businessHours y el valor con projected_to/hash en una transacción; el agente lee el valor', async () => {
         const { service, reader, box, events, prisma } = make();

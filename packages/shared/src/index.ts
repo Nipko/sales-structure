@@ -1069,6 +1069,13 @@ export interface TurnContext {
     factTokens?: FactTokenView[];
     businessHoursStatus: 'open' | 'closed' | 'unknown';
     business?: Pick<BusinessIdentity, 'companyName' | 'industry' | 'about' | 'phone' | 'email' | 'website' | 'address' | 'city' | 'country' | 'socialLinks'>;
+    /**
+     * C14: what the owner confirmed in the readiness panel and the customer may be told (payment methods, appointment
+     * requirements, change rules, languages, clinical scope…), outside the facts that reach the agent through their own
+     * path (hours, identity, policies). Built by @parallext/business-spec `resolveConfirmedFacts`: only confirmed, unexpired
+     * values; a seeded or example value never appears. Absent when there is none.
+     */
+    confirmedFacts?: Array<{ id: string; title: string; scope?: string; text: string }>;
     contact?: {
         name?: string;
         email?: string;

@@ -162,6 +162,26 @@ describe('CopilotProposalsService.approve', () => {
         expect(result.proposal.decisionNote).toBe('edited');
     });
 
+    it('ADR 0031 fricción 2: un horario en tuplas se guarda en la forma del requisito, no como «tramo inválido»', async () => {
+        const kit = make();
+        const days = { mon: [['08:00', '18:00']], tue: [['08:00', '18:00']], wed: [['08:00', '18:00']], thu: [['08:00', '18:00']], fri: [['08:00', '18:00']], sat: [['8:00', '12:00']], sun: [] };
+        const [p] = await kit.service.storeRun(TENANT, RUN, '11111111-1111-4111-8111-111111111111', [valueDraft({ days }, 'CORE.HOURS.REGULAR')]);
+        const result = await kit.service.approve(TENANT, p.id, {}, OWNER);
+        expect((result.fact.value as any).days.mon).toEqual([{ open: '08:00', close: '18:00' }]);
+        expect((result.fact.value as any).days.sat).toEqual([{ open: '08:00', close: '12:00' }]);
+        expect((result.fact.value as any).days.sun).toEqual([]);
+    });
+
+    it('ADR 0031 fricción 2: un contacto cuyo valor es el nombre del canal («WhatsApp») no se aprueba', async () => {
+        const kit = make();
+        const value = { points: [{ kind: 'whatsapp', value: 'WhatsApp' }, { kind: 'email', value: 'citas@sonrisa.co' }] };
+        const [p] = await kit.service.storeRun(TENANT, RUN, '11111111-1111-4111-8111-111111111111', [valueDraft(value, 'CORE.CONTACT.CHANNELS')]);
+        await expect(kit.service.approve(TENANT, p.id, {}, OWNER)).rejects.toBeInstanceOf(BadRequestException);
+        expect(kit.db.values.size).toBe(0);
+        const fixed = await kit.service.approve(TENANT, p.id, { value: { points: [{ kind: 'whatsapp', value: '+573001234567' }, { kind: 'email', value: 'citas@sonrisa.co' }] } }, OWNER);
+        expect(fixed.fact.value).toEqual({ points: [{ kind: 'whatsapp', value: '+573001234567' }, { kind: 'email', value: 'citas@sonrisa.co' }] });
+    });
+
     it('sin una persona no se aprueba (y la base tampoco admitiría copilot sin confirmed_by)', async () => {
         const kit = make();
         const [p] = await kit.service.storeRun(TENANT, RUN, '11111111-1111-4111-8111-111111111111', [valueDraft({ methods: ['efectivo'] })]);

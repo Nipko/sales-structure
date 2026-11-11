@@ -91,19 +91,57 @@ export function copilotActions(p: Pick<CopilotProposal, "kind" | "status" | "val
 const primitive = (v: unknown) => v === null || ["string", "number", "boolean"].includes(typeof v);
 const show = (v: unknown): string => (v === null || v === undefined ? "—" : typeof v === "boolean" ? (v ? "✓" : "✗") : String(v));
 
+/** Cómo nombrar las claves del valor en la tarjeta (las traducciones del cajón); sin ellas, la clave tal cual. */
+export interface ProposalValueLabels {
+    field?: (key: string) => string;
+    day?: (key: string) => string;
+    option?: (value: string) => string;
+    closed?: string;
+}
+
+const DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+const isRecord = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+
+/** Un tramo de horario, en la forma guardada (`{open, close}`) o en la que a veces propone el copiloto. */
+function spanText(span: unknown): string {
+    if (Array.isArray(span) && span.length === 2) return `${show(span[0])}–${show(span[1])}`;
+    if (isRecord(span)) return `${show(span.open ?? span.from)}–${show(span.close ?? span.to)}`;
+    return show(span);
+}
+
 /**
- * El valor propuesto como líneas legibles: `campo: valor` (las listas de texto separadas por comas); lo anidado, como
- * JSON compacto. Nunca se oculta una parte del valor: lo que se aprueba es exactamente lo que se ve.
+ * El valor propuesto como líneas legibles (ADR 0031, fricción 3: nada de JSON crudo en la tarjeta): `campo: valor`, el
+ * horario día por día, el contacto canal por canal y lo anidado como `campo: valor · campo: valor`. Nunca se oculta
+ * una parte del valor: lo que se aprueba es exactamente lo que se ve.
  */
-export function formatProposalValue(value: unknown): string[] {
+export function formatProposalValue(value: unknown, labels: ProposalValueLabels = {}): string[] {
+    const field = labels.field ?? ((k: string) => k);
+    const day = labels.day ?? ((k: string) => k);
+    const option = labels.option ?? ((v: string) => v);
+    const atom = (v: unknown): string => (typeof v === "string" ? option(v) : show(v));
+    const inline = (v: unknown): string => {
+        if (primitive(v)) return atom(v);
+        if (Array.isArray(v)) return v.every(primitive) ? v.map(atom).join(", ") : v.map(inline).join("; ");
+        return Object.entries(v as Record<string, unknown>).map(([k, x]) => `${field(k)}: ${inline(x)}`).join(" · ");
+    };
+    const hours = (days: Record<string, unknown>): string[] => [...DAY_ORDER.filter(d => d in days), ...Object.keys(days).filter(d => !DAY_ORDER.includes(d))]
+        .map(d => {
+            const spans = Array.isArray(days[d]) ? days[d] as unknown[] : [days[d]];
+            const isPair = spans.length === 2 && spans.every(x => typeof x === "string");
+            const list = isPair ? [spans] : spans;
+            return `${day(d)}: ${list.length ? list.map(spanText).join(", ") : labels.closed ?? "—"}`;
+        });
+    const point = (p: unknown): string => (isRecord(p)
+        ? `${atom(p.kind ?? "")}: ${show(p.value)}${p.label ? ` (${show(p.label)})` : ""}`
+        : inline(p));
+
     if (value === null || value === undefined) return [];
-    if (primitive(value)) return [show(value)];
-    if (Array.isArray(value)) {
-        return value.every(primitive) ? [value.map(show).join(", ")] : value.map(v => (primitive(v) ? show(v) : JSON.stringify(v)));
-    }
-    return Object.entries(value as Record<string, unknown>).map(([k, v]) => {
-        if (primitive(v)) return `${k}: ${show(v)}`;
-        if (Array.isArray(v) && v.every(primitive)) return `${k}: ${v.map(show).join(", ")}`;
-        return `${k}: ${JSON.stringify(v)}`;
+    if (primitive(value)) return [atom(value)];
+    if (Array.isArray(value)) return value.every(primitive) ? [value.map(atom).join(", ")] : value.map(inline);
+    return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) => {
+        if (k === "days" && isRecord(v)) return hours(v);
+        if (k === "points" && Array.isArray(v)) return v.length ? v.map(point) : [`${field(k)}: —`];
+        if (isRecord(v) && isRecord(v.days)) return [`${field(k)}:`, ...hours(v.days).map(line => `  ${line}`)];
+        return [`${field(k)}: ${inline(v)}`];
     });
 }

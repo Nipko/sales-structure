@@ -13,10 +13,11 @@ import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { CheckCircle2, History, Loader2 } from "lucide-react";
 import { api, type ApiEnvelope } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { gapAction, type PanelViewer, type ScreenAction } from "@/lib/readiness-panel";
 import {
-    formIssues, initialFormValue, submitValue,
+    formIssues, initialFormValue, submitValue, withPrefill,
     type BusinessFactVersion, type BusinessFactWriteResponse, type FormIssue, type RequirementDetailResponse,
 } from "@/lib/readiness-forms";
 import { FieldInput, ItemList, ObjectFields, type FieldContext } from "./FormFields";
@@ -53,6 +54,8 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
     const t = useTranslations("readinessForms");
     const tp = useTranslations("readinessPanel");
     const locale = useLocale();
+    // el vertical decide qué pantalla de catálogo existe para este tenant (ADR 0031, fricción 5)
+    const { verticalConfig } = useAuth();
     const [detail, setDetail] = useState<RequirementDetailResponse | null>(null);
     const [versions, setVersions] = useState<BusinessFactVersion[]>([]);
     const [value, setValue] = useState<unknown>(null);
@@ -69,7 +72,8 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
         if (res.success && res.data) {
             setDetail(res.data);
             // el valor guardado manda; si no hay, el que lee el motor (también heredado de una pantalla vieja)
-            setValue(initialFormValue(res.data.form, initialValue !== undefined ? initialValue : res.data.fact?.value ?? res.data.current.record?.value ?? null));
+            const start = initialValue !== undefined ? initialValue : res.data.fact?.value ?? res.data.current.record?.value ?? null;
+            setValue(initialFormValue(res.data.form, withPrefill(start, res.data.prefill)));
         } else setError(res.error || t("loadError"));
         setVersions(hist.success && Array.isArray(hist.data) ? hist.data : []);
         setLoading(false);
@@ -118,14 +122,14 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
     const form = detail?.form;
     const record = detail?.current.record ?? null;
     const screens: { href: string; action: ScreenAction }[] = (form?.mode === "screen" ? form.screens : [])
-        .map(s => ({ href: s.uiTarget, action: gapAction(s.uiTarget, viewer) }));
+        .map(s => ({ href: s.uiTarget, action: gapAction(s.uiTarget, { ...viewer, verticalConfig }) }));
 
     return (
         <Sheet open={Boolean(requirementId)} onOpenChange={open => { if (!open) onClose(); }}>
             <SheetContent side="right" closeLabel={t("close")} className="w-full overflow-y-auto sm:max-w-xl">
                 <SheetHeader className="border-b border-neutral-200 dark:border-neutral-800">
                     <SheetTitle>{detail?.definition.title ?? requirementId}</SheetTitle>
-                    <SheetDescription>{form?.help ?? t("loading")}</SheetDescription>
+                    <SheetDescription>{detail?.evaluation?.gap?.message ?? form?.help ?? t("loading")}</SheetDescription>
                 </SheetHeader>
 
                 <div className="space-y-4 px-4 pb-4">
@@ -214,7 +218,7 @@ export function RequirementDrawer({ tenantId, requirementId, viewer, canWrite, s
                                         {screens.map(s => (
                                             <li key={s.href}>
                                                 {s.action.kind === "link"
-                                                    ? <Link href={s.action.href} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">{s.href}</Link>
+                                                    ? <Link href={s.action.href} className="font-medium text-indigo-600 hover:underline dark:text-indigo-400">{s.action.href}</Link>
                                                     : <span>{s.href} — {tp("action.askAdmin")}</span>}
                                             </li>
                                         ))}

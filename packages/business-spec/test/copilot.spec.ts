@@ -4,7 +4,7 @@
  */
 import {
     checkCopilotProposal, figuresWithoutQuote, genericTextReason, isCopilotRequirement, normalizeQuoteText, quoteAppearsIn,
-    sameCopilotValue, type CopilotSource,
+    sameCopilotValue, normalizeCopilotValue, isPlaceholderContactPoint, type CopilotSource,
 } from '../src/copilot';
 import { evaluate } from '../src/engine/evaluate';
 import { NOW, base, spec } from './helpers';
@@ -128,5 +128,47 @@ describe('copiloto: contenido genérico', () => {
         expect(genericTextReason({ body: 'Abrimos de lunes a viernes de 8:00 a 18:00 en Chapinero.', contentStatus: 'seeded' })).toBe('seeded');
         expect(genericTextReason({ body: 'Abrimos de lunes a viernes de 8:00 a 18:00 en Chapinero.', contentStatus: 'example' })).toBe('example');
         expect(genericTextReason({ body: 'Abrimos de lunes a viernes de 8:00 a 18:00 en Chapinero.', contentStatus: 'confirmed' })).toBeNull();
+    });
+});
+
+describe('copiloto: forma del valor (ADR 0031, fricción 2)', () => {
+    const HOURS = 'CORE.HOURS.REGULAR';
+    const quote = 'Atendemos de lunes a viernes de 8:00 a 18:00 y los sábados de 9 a 13.';
+
+    it('un horario en tuplas o en texto se guarda como {open, close} por día', () => {
+        const check = checkCopilotProposal(spec, {
+            requirementId: HOURS,
+            value: { days: { monday: [['8:00', '18:00']], tue: ['08:00-18:00'], wed: [['08:00', '18:00']], thu: [['08:00', '18:00']], fri: [['08:00', '18:00']], sat: [['9', '13']], sun: [] } },
+            evidence: [{ source_ref: 'S1', quote }],
+        }, SOURCES);
+        expect(check.rejections).toEqual([]);
+        expect(check.value).toEqual({ days: {
+            mon: [{ open: '08:00', close: '18:00' }], tue: [{ open: '08:00', close: '18:00' }], wed: [{ open: '08:00', close: '18:00' }],
+            thu: [{ open: '08:00', close: '18:00' }], fri: [{ open: '08:00', close: '18:00' }], sat: [{ open: '09:00', close: '13:00' }], sun: [],
+        } });
+        // idempotente: un valor bien formado sale igual
+        expect(normalizeCopilotValue(spec, HOURS, check.value).value).toEqual(check.value);
+    });
+
+    it('un tramo que no es una hora se descarta (antes quedaba «tramo inválido» al aprobar)', () => {
+        const check = checkCopilotProposal(spec, {
+            requirementId: HOURS, value: { days: { mon: [{ open: 'mañana', close: 'tarde' }] } }, evidence: [{ source_ref: 'S1', quote }],
+        }, SOURCES);
+        expect(check.ok).toBe(false);
+        expect(check.rejections[0].code).toBe('invalid_hours');
+    });
+
+    it('contacto: un punto cuyo valor es el nombre del canal se quita; si no queda ninguno, se descarta', () => {
+        expect(isPlaceholderContactPoint({ kind: 'whatsapp', value: 'WhatsApp' })).toBe(true);
+        expect(isPlaceholderContactPoint({ kind: 'phone', value: 'Teléfono' })).toBe(true);
+        expect(isPlaceholderContactPoint({ kind: 'whatsapp', value: '+573001234567' })).toBe(false);
+        const out = normalizeCopilotValue(spec, 'CORE.CONTACT.CHANNELS', { points: [{ kind: 'whatsapp', value: 'WhatsApp' }, { kind: 'email', value: 'citas@sonrisa.co' }] });
+        expect(out.value).toEqual({ points: [{ kind: 'email', value: 'citas@sonrisa.co' }] });
+        expect(out.droppedPlaceholders).toEqual(['whatsapp: «WhatsApp»']);
+        const only = checkCopilotProposal(spec, {
+            requirementId: 'CORE.CONTACT.CHANNELS', value: { points: [{ kind: 'whatsapp', value: 'WhatsApp' }] },
+            evidence: [{ source_ref: 'S1', quote: 'Clínica Dental Sonrisa — Chapinero.' }],
+        }, SOURCES);
+        expect(only.rejections[0].code).toBe('placeholder_value');
     });
 });

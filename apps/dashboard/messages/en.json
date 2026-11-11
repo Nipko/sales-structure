@@ -15815,6 +15815,7 @@
     "readonly": {
       "empty": "no data",
       "ref": "edited in {ref}",
+      "elsewhere": "edited in another panel item",
       "platform": "not edited here"
     },
     "fixed": "always on",
@@ -15888,9 +15889,9 @@
       "photographs_minors": "Photographs minors",
       "simulates_financing": "Simulates loans or mortgages",
       "treats_minors": "Treats minors",
-      "operating_country": "Country (ISO, e.g. US)",
+      "operating_country": "Country",
       "timezone": "Time zone",
-      "currency": "Currency (ISO-4217)",
+      "currency": "Currency",
       "default_locale": "Default locale",
       "country_pack": "Country pack",
       "locations": "Locations",
@@ -15900,7 +15901,7 @@
       "line2": "Address line 2",
       "city": "City",
       "region": "State or region",
-      "country": "Country (ISO)",
+      "country": "Country",
       "postal_code": "Postal code",
       "map_url": "Map link",
       "is_main": "Main location",

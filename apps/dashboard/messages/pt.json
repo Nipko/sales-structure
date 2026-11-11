@@ -15815,6 +15815,7 @@
     "readonly": {
       "empty": "sem dado",
       "ref": "editado em {ref}",
+      "elsewhere": "editado em outro item do painel",
       "platform": "não é editado aqui"
     },
     "fixed": "sempre ativo",
@@ -15888,9 +15889,9 @@
       "photographs_minors": "Fotografa menores",
       "simulates_financing": "Simula créditos ou hipotecas",
       "treats_minors": "Atende menores",
-      "operating_country": "País (ISO, ex. BR)",
+      "operating_country": "País",
       "timezone": "Fuso horário",
-      "currency": "Moeda (ISO-4217)",
+      "currency": "Moeda",
       "default_locale": "Idioma padrão",
       "country_pack": "Pacote do país",
       "locations": "Unidades",
@@ -15900,7 +15901,7 @@
       "line2": "Complemento",
       "city": "Cidade",
       "region": "Estado",
-      "country": "País (ISO)",
+      "country": "País",
       "postal_code": "CEP",
       "map_url": "Link do mapa",
       "is_main": "Unidade principal",

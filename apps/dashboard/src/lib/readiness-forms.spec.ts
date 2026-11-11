@@ -2,7 +2,7 @@ import { formFor, formRequirementIds, type FormField as SpecFormField } from "..
 import { loadSpec } from "../../../../packages/business-spec/src/load";
 import { validateRequirementValue } from "../../../../packages/business-spec/src/validate-value";
 import {
-    formIssues, initialFormValue, isVisible, refValue, setAt, submitValue,
+    formIssues, initialFormValue, isVisible, refValue, setAt, submitValue, withPrefill,
     type FormDescriptor, type FormField,
 } from "./readiness-forms";
 
@@ -97,6 +97,16 @@ describe("formularios de R3", () => {
         expect(formIssues(d, { mode: "none" })).toEqual([]);
         const request = formIssues(d, { mode: "request_to_business", required_fields: ["nombre"], confirmation_terms: ["total"] }).map(i => i.path);
         expect(request).toEqual(["business_confirm_sla", "request_message"]);
+        expect(formIssues(d, { mode: "direct_commit", required_fields: ["nombre"], confirmation_terms: ["total"] })).toEqual([]);
+    });
+
+    it("WRITE_MODE: el plazo y el mensaje se ven desde que abre el formulario (ADR 0031, fricción 7)", () => {
+        const d = descriptor("OBJ.APPOINTMENT.WRITE_MODE");
+        const field = (key: string) => d.fields.find(f => f.key === key)!;
+        const blank = initialFormValue(d, null) as Record<string, unknown>;
+        expect(isVisible(field("business_confirm_sla"), blank)).toBe(true);
+        expect(isVisible(field("request_message"), blank)).toBe(true);
+        expect(isVisible(field("business_confirm_sla"), { mode: "direct_commit" })).toBe(false);
     });
 
     it("CHANGE_RULES: usar la política general o declarar plazo y cargo propios", () => {
@@ -128,5 +138,42 @@ describe("formularios de R3", () => {
         expect(after.list[0].a).toBe(2);
         expect(before.list[0].a).toBe(1);
         expect(setAt(after, ["cancel", "deadline"], { min: 1, unit: "h" })).toMatchObject({ cancel: { charge: "ninguno", deadline: { min: 1, unit: "h" } } });
+    });
+});
+
+describe("«Editar y aprobar» abre con la propuesta del copiloto (ADR 0031, fricción 4)", () => {
+    it("el contacto se edita canal por canal, no como JSON, y abre con los puntos propuestos", () => {
+        const form = descriptor("CORE.CONTACT.CHANNELS");
+        expect(form.root).toBe("object");
+        expect(form.fields[0]).toMatchObject({ key: "points", kind: "list" });
+        expect(form.fields[0].fields?.map(f => f.key)).toEqual(["kind", "value", "label", "hours"]);
+        const proposal = { points: [{ kind: "whatsapp", value: "+573001234567" }, { kind: "email", value: "citas@sonrisa.co" }] };
+        expect(initialFormValue(form, proposal)).toEqual(proposal);
+        // una lista suelta guardada antes también abre llena
+        expect(initialFormValue(form, proposal.points)).toEqual(proposal);
+        expect(server("CORE.CONTACT.CHANNELS", submitValue(form, initialFormValue(form, proposal)))).toEqual([]);
+    });
+
+    it("el horario propuesto en tuplas abre con sus tramos", () => {
+        const value = initialFormValue(descriptor("CORE.HOURS.REGULAR"), { days: { mon: [["08:00", "18:00"]], sun: [] } }) as { days: Record<string, unknown> };
+        expect(value.days.mon).toEqual([{ open: "08:00", close: "18:00" }]);
+    });
+});
+
+describe("el horario de atención humana parte del horario del negocio (ADR 0031, fricción 6)", () => {
+    const regular = { days: { mon: [{ open: "08:00", close: "18:00" }], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+
+    it("completa el campo sin declarar y no pisa lo que ya dice el valor", () => {
+        expect(withPrefill(null, { human_hours: regular })).toEqual({ human_hours: regular });
+        const closed = { days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+        expect(withPrefill({ human_hours: closed, callback_offered: true }, { human_hours: regular })).toEqual({ human_hours: regular, callback_offered: true });
+        const own = { days: { ...closed.days, sat: [{ open: "09:00", close: "12:00" }] } };
+        expect(withPrefill({ human_hours: own }, { human_hours: regular })).toEqual({ human_hours: own });
+        expect(withPrefill({ a: 1 }, undefined)).toEqual({ a: 1 });
+    });
+
+    it("el formulario abre con los tramos del horario del negocio", () => {
+        const value = initialFormValue(descriptor("CORE.HANDOFF.HOURS_SLA"), withPrefill(null, { human_hours: regular })) as { human_hours: { days: Record<string, unknown> } };
+        expect(value.human_hours.days.mon).toEqual([{ open: "08:00", close: "18:00" }]);
     });
 });

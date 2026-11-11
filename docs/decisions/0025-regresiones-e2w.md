@@ -143,3 +143,27 @@ Los agentes ya creados se actualizaron en la base: el umbral en los 24 y `polici
   - una negativa de teleconsulta sin respaldo (P08-9).
 
 Queda pendiente repetir el dental cuando haya crédito.
+
+## Adenda 8 (2026-11-10): correcciones sin medir (OpenAI sin crédito)
+
+Estas correcciones salen de los fallos de E2ai y E2aj. Se desplegaron sin medición porque la cuenta de OpenAI no tenía crédito. La próxima medición debe repetir el dental completo.
+
+1. **Datos confirmados del dueño (#430, C14 y P08-4/5).**
+   - **Problema:** el agente solo leía `RUNTIME_FACT_IDS`, es decir horario, identidad y políticas. Además, el guardia F4300-58 cambiaba «aceptamos tarjeta» por «No consta…», porque solo contaban como respaldo las lecturas de herramientas.
+   - **Decisión:**
+     - Los requisitos `always_in_context` y `read_on_intent` llegan al agente en el bloque `<confirmed_business_facts>`, con una lista derivada de la especificación que excluye seguridad, traspaso, datos sensibles, modo de escritura y catálogo.
+     - Solo entran valores confirmados y vigentes; lo sembrado nunca entra (opción B).
+     - Se sellan en `contextInputs` como campo opcional.
+     - Cuentan como respaldo para el guardia de pagos, el verificador de evidencia y `policy-grounding`.
+2. **Búsqueda automática de FAQ (#427).**
+   - **Problema:** el selector correctivo (hasta 2,5 s) cabía en el mismo plazo de 3 s que las lecturas. En una sesión, el error cortaba el turno.
+   - **Decisión:** el plazo de la búsqueda automática de FAQ es el del selector más 3 s. Las demás lecturas automáticas siguen en 3 s.
+   - Los tiempos agotados de lecturas obligatorias (hotel) se deben al entorno de medición: VPS de 2 CPU con el medidor compitiendo con la API. No hay cambio de código.
+3. **C16 (#428).**
+   - **Problema:** «Reservaremos {service}» y «agendaremos {service}» eran variantes fijas del motor de reservas al elegir el servicio.
+   - **Decisión:** elegir el servicio no promete nada; la promesa queda para el resultado de la escritura.
+   - `readiness.writeModeCapability` sigue en sombra: no registró ninguna diferencia, así que forzarla no cambiaba el caso.
+4. **Documento de identidad en plantillas (#429).**
+   - El piso L1 sigue prohibiendo pedir o recibir documentos por chat.
+   - Cada regla «NUNCA pidas cédula» de las 6 plantillas añade: si el negocio declara que se necesita un documento, el agente informa cuál y cuándo se presenta, y nunca dice que no se necesita.
+   - Se actualizaron los dos agentes de QA que tenían la regla vieja: dental y moda.

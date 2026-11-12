@@ -158,18 +158,18 @@ export class SamlService {
                 throw new ForbiddenException('User belongs to a different tenant');
             }
 
+            // A tenant's IdP certificate and email domains are set by that
+            // tenant's own admin with no proof of domain ownership, so an
+            // assertion only proves identity inside that tenant. Adopting an
+            // account that has no tenant (the platform super_admin is seeded
+            // that way, as are sign-ups that never finished onboarding) let a
+            // tenant_admin mint a session for someone else, including a
+            // platform role. Those accounts must sign in through their own flow.
             if (!user.tenantId) {
-                user = await this.prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        tenantId,
-                        authProvider: 'saml',
-                        emailVerified: true,
-                        emailVerificationState: 'verified',
-                    },
-                    include: { tenant: true },
-                });
-            } else if (user.authProvider !== 'saml') {
+                throw new ForbiddenException('This account is not managed by this SSO configuration');
+            }
+
+            if (user.authProvider !== 'saml') {
                 user = await this.prisma.user.update({
                     where: { id: user.id },
                     data: { authProvider: 'saml', emailVerified: true, emailVerificationState: 'verified' },

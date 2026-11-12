@@ -42,6 +42,8 @@ export interface KnowledgeHit {
     similarity: number;
     keywordHit: boolean;
     score: number;
+    /** `lexical_fallback` when no query vector was available (ADR-0033); `score` is then lexeme coverage. */
+    retrievalMode?: 'hybrid' | 'lexical_fallback';
     doc_language: string | null;
     doc_jurisdiction: string | null;
     doc_authority: string | null;

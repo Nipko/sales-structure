@@ -28,6 +28,9 @@ import type { ServiceExecutionContext } from '../../common/types/execution-conte
 import { persistenceDisabled } from '../../common/types/execution-context';
 import { AGENT_QUALITY_DEPENDENCIES_UPDATED } from '../quality/agent-quality-events';
 import { recordGapStatement } from '../pending-knowledge/pending-question-topic';
+import { classifyProviderError } from '../ai/health/llm-provider-error';
+import { llmBreakerOpenKey } from '../ai/health/llm-provider-health.service';
+import { EmbeddingBreaker, EmbeddingProviderUnavailable, isEmbeddingOutage, lexicalCoverage } from './embedding-fallback';
 // pdf-parse y mammoth son CommonJS sin tipos ESM utilizables: se cargan con
 // require a propósito. El disable apunta a `no-require-imports` porque
 // typescript-eslint 8 fusionó ahí la vieja `no-var-requires`.
@@ -48,6 +51,7 @@ const CRAWL_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 export class KnowledgeService {
     private readonly logger = new Logger(KnowledgeService.name);
     private openai: OpenAI | null = null;
+    private readonly embeddingBreaker = new EmbeddingBreaker();
     private currentKey = '';
     private attributionSchemas?: Map<string, Promise<void>>;
 
@@ -559,11 +563,18 @@ export class KnowledgeService {
         const schema = await this.tenantSchema(tenantId);
         const topK = filters.topK || 10;
 
-        const queryEmbedding = await this.generateEmbedding(query, tenantId);
-        const embeddingStr = `[${queryEmbedding.join(',')}]`;
+        let queryEmbedding: number[] | null = null;
+        try {
+            queryEmbedding = await this.generateEmbedding(query, tenantId);
+        } catch (error: any) {
+            // ADR-0033: an embeddings outage degrades to the lexical index.
+            if (!isEmbeddingOutage(error)) throw error;
+            this.logger.warn(`[KB] LEXICAL_FALLBACK filtered tenant=${tenantId} reason=${error?.kind || error?.message || 'unavailable'}`);
+            this.recordLexicalFallback(tenantId);
+        }
 
         const conditions: string[] = [`kd.status = 'ready'`];
-        const params: any[] = [embeddingStr];
+        const params: any[] = [queryEmbedding ? `[${queryEmbedding.join(',')}]` : query];
         let idx = 2;
 
         if (filters.category) {
@@ -593,6 +604,41 @@ export class KnowledgeService {
         }
 
         params.push(topK);
+
+        if (!queryEmbedding) {
+            const regconfig = this.pgRegconfig(filters.language && filters.language !== 'all' ? filters.language : undefined);
+            const lexical = await this.prisma.executeInTenantSchema<any[]>(
+                schema,
+                `WITH q AS (
+                     SELECT NULLIF(replace(plainto_tsquery('${regconfig}'::regconfig, $1)::text, ' & ', ' | '), '')::tsquery AS loose_q,
+                            tsvector_to_array(to_tsvector('${regconfig}'::regconfig, $1)) AS lexemes
+                 )
+                 SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index,
+                        kd.title, kd.id AS document_id, kd.category, kd.source_type, kd.language, kd.created_at,
+                        (SELECT count(*) FROM unnest(q.lexemes) lex WHERE lex = ANY(tsvector_to_array(ke.search_tsv)))::int AS matched_terms,
+                        cardinality(q.lexemes) AS total_terms
+                 FROM knowledge_embeddings ke
+                 JOIN knowledge_documents kd ON kd.id = ke.document_id
+                 CROSS JOIN q
+                 WHERE ${conditions.join(' AND ')} AND q.loose_q IS NOT NULL AND ke.search_tsv @@ q.loose_q
+                 ORDER BY matched_terms DESC, ts_rank_cd(ke.search_tsv, q.loose_q) DESC, ke.id
+                 LIMIT $${idx}`,
+                params,
+            );
+            return (lexical || []).map((r: any) => ({
+                id: r.chunk_id,
+                document_id: r.document_id,
+                title: r.title,
+                chunk_text: r.chunk_text,
+                chunk_index: r.chunk_index,
+                category: r.category,
+                sourceType: r.source_type,
+                language: r.language,
+                createdAt: r.created_at,
+                score: lexicalCoverage(r.matched_terms, r.total_terms),
+                retrievalMode: 'lexical_fallback' as const,
+            }));
+        }
 
         const results = await this.prisma.executeInTenantSchema<any[]>(
             schema,
@@ -638,8 +684,19 @@ export class KnowledgeService {
         if (!persistenceDisabled(options?.executionContext)) {
             await this.ensureKbSearchVector(schema);
         }
-        const queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext,options?.withDataSourceAuthority);
-        const embeddingStr = `[${queryEmbedding.join(',')}]`;
+        // Without a query vector (OpenAI out of credit, 429, down) the search
+        // degrades to the lexical index instead of failing (ADR-0033). A revoked
+        // data source is not an outage and still propagates.
+        let queryEmbedding: number[] | null = null;
+        try {
+            queryEmbedding = await this.embedQueryCached(query, tenantId, options?.executionContext,options?.withDataSourceAuthority);
+        } catch (error: any) {
+            if (!isEmbeddingOutage(error)) throw error;
+            this.logger.warn(`[KB] LEXICAL_FALLBACK tenant=${tenantId || '-'} reason=${error?.kind || error?.message || 'unavailable'}`);
+            this.recordLexicalFallback(tenantId, options?.executionContext);
+        }
+        const lexicalOnly = queryEmbedding === null;
+        const embeddingStr = queryEmbedding ? `[${queryEmbedding.join(',')}]` : null;
         const regconfig = this.pgRegconfig(options?.language);
 
         // Hybrid retrieval: a vector pool (semantic) + a BM25/tsvector pool
@@ -676,7 +733,7 @@ export class KnowledgeService {
                         COALESCE(kd.audience, 'customer')::text AS doc_audience, kd.agent_ids AS doc_agent_ids`;
 
         const [vectorPool, tsPool] = await Promise.all([
-            this.prisma.executeInTenantSchema<any[]>(schema,
+            lexicalOnly ? Promise.resolve([] as any[]) : this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
                         ${DOC_COLUMNS},
                         (ke.embedding <=> $1::vector) AS distance
@@ -688,7 +745,29 @@ export class KnowledgeService {
                  ORDER BY ke.embedding <=> $1::vector, ke.id
                  LIMIT $2`,
                 [embeddingStr, poolSize, jurisdiction, audience, agentId]),
-            this.prisma.executeInTenantSchema<any[]>(schema,
+            // Lexical-only pool: any query lexeme admits a chunk (OR), ordered by
+            // how many of them it holds; `all_terms` keeps the strict AND match
+            // that the threshold exception below is reserved for.
+            lexicalOnly ? this.prisma.executeInTenantSchema<any[]>(schema,
+                `WITH q AS (
+                     SELECT plainto_tsquery($1::regconfig, $2) AS strict_q,
+                            NULLIF(replace(plainto_tsquery($1::regconfig, $2)::text, ' & ', ' | '), '')::tsquery AS loose_q,
+                            tsvector_to_array(to_tsvector($1::regconfig, $2)) AS lexemes
+                 )
+                 SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
+                        ${DOC_COLUMNS},
+                        (ke.search_tsv @@ q.strict_q) AS all_terms,
+                        (SELECT count(*) FROM unnest(q.lexemes) lex WHERE lex = ANY(tsvector_to_array(ke.search_tsv)))::int AS matched_terms,
+                        cardinality(q.lexemes) AS total_terms
+                 FROM knowledge_embeddings ke
+                 JOIN knowledge_documents kd ON kd.id = ke.document_id
+                 CROSS JOIN q
+                 WHERE kd.status = 'ready' AND q.loose_q IS NOT NULL AND ke.search_tsv @@ q.loose_q
+                 ${REGULATED_GATE.replace(/\$JURISDICTION\$/g, '$4')}
+                 ${SCOPE_GATE.replace(/\$AUDIENCE\$/g, '$5').replace(/\$AGENT\$/g, '$6')}
+                 ORDER BY matched_terms DESC, ts_rank_cd(ke.search_tsv, q.loose_q) DESC, ke.id
+                 LIMIT $3`,
+                [regconfig, query, poolSize, jurisdiction, audience, agentId]) : this.prisma.executeInTenantSchema<any[]>(schema,
                 `SELECT ke.id AS chunk_id, ke.chunk_text, ke.chunk_index, ke.metadata,
                         ${DOC_COLUMNS}
                  FROM knowledge_embeddings ke
@@ -712,6 +791,8 @@ export class KnowledgeService {
 
         // RRF fuse by chunk_id (rank is 0-based position within each pool).
         const fused = new Map<string, { row: any; rrf: number; vecSim: number; inTs: boolean }>();
+        // In lexical-only mode `inTs` is the strict all-lexemes match, not mere
+        // membership in the (OR) pool, so the threshold exception keeps its meaning.
         vectorPool.forEach((r: any, i: number) => {
             const c = fused.get(r.chunk_id) || { row: r, rrf: 0, vecSim: 0, inTs: false };
             c.rrf += 1 / (RRF_K + i);
@@ -722,7 +803,7 @@ export class KnowledgeService {
         tsPool.forEach((r: any, i: number) => {
             const c = fused.get(r.chunk_id) || { row: r, rrf: 0, vecSim: 0, inTs: false };
             c.rrf += 1 / (RRF_K + i);
-            c.inTs = true;
+            c.inTs = lexicalOnly ? r.all_terms === true : true;
             c.row = { ...c.row, ...r };
             fused.set(r.chunk_id, c);
         });
@@ -740,7 +821,11 @@ export class KnowledgeService {
                 // `score` stays the vector-similarity-based scale for analytics
                 // continuity (trackRetrieval compares it to KB_RELEVANCE_THRESHOLD);
                 // ordering is by RRF.
-                const score = Math.min(1, Math.max(0, vecSim + keywordBoost + langBoost));
+                // Lexical-only: the share of query lexemes present stands in for
+                // vector similarity (no keyword boost on top: it IS the keyword signal).
+                const score = lexicalOnly
+                    ? Math.min(1, lexicalCoverage(row.matched_terms, row.total_terms) + langBoost)
+                    : Math.min(1, Math.max(0, vecSim + keywordBoost + langBoost));
                 return {
                     id: row.chunk_id,
                     document_id: row.document_id,
@@ -761,6 +846,7 @@ export class KnowledgeService {
                     similarity: vecSim,
                     keywordHit: inTs || keywordBoost > 0,
                     score,
+                    retrievalMode: lexicalOnly ? 'lexical_fallback' as const : 'hybrid' as const,
                     _rrf: rrf,
                     _bm25: inTs,
                 };
@@ -1541,6 +1627,11 @@ export class KnowledgeService {
         // actionable message instead of an opaque 401 from the SDK when the key
         // is missing (the platform contract only guarantees ≥1 provider of any kind).
         const openai = await this.ensureOpenAI(tenantId);
+        // During an outage (ADR-0033) skip the call: the in-process breaker
+        // covers rate limits and 5xx, the router's shared Redis breaker covers
+        // an account without credit or with a bad key (ADR-0026).
+        if (this.embeddingBreaker.isOpen()) throw new EmbeddingProviderUnavailable(this.embeddingBreaker.kind());
+        if (await this.sharedOpenAIBreakerOpen()) throw new EmbeddingProviderUnavailable('breaker_open');
         const input={model:'text-embedding-3-small',input:text};
         const request=async()=>{
             if(!sourceAuthority)return openai.embeddings.create(input);
@@ -1553,12 +1644,23 @@ export class KnowledgeService {
                     }));
                 }catch(error:any){
                     if(error instanceof LLMSourceAuthorityUnavailable||attempt>=2
+                        ||classifyProviderError(error,'openai')==='quota'
                         ||!(error instanceof OpenAI.APIConnectionError||[408,409,429].includes(error?.status)||error?.status>=500))throw error;
                     await new Promise(resolve=>setTimeout(resolve,200*2**attempt));
                 }
             }
         };
-        const response = await request();
+        let response: Awaited<ReturnType<typeof request>>;
+        try {
+            response = await request();
+        } catch (error: any) {
+            if (!isEmbeddingOutage(error)) throw error;
+            const kind = classifyProviderError(error, 'openai');
+            this.embeddingBreaker.trip(kind);
+            this.logger.warn(`[KB] EMBEDDING_UNAVAILABLE openai ${kind}: ${String(error?.message || error).slice(0, 160)}`);
+            throw Object.assign(new EmbeddingProviderUnavailable(kind, error), { status: error?.status });
+        }
+        this.embeddingBreaker.reset();
         if (tenantId && !persistenceDisabled(executionContext)) {
             const date = new Date().toISOString().slice(0, 10);
             const baseKey = `ai:stats:${tenantId}:${date}:embeddings`;
@@ -1581,6 +1683,28 @@ export class KnowledgeService {
             }).catch(() => {});
         }
         return response.data[0].embedding;
+    }
+
+    /** The router's shared breaker for OpenAI (ADR-0026). A Redis failure never blocks the call. */
+    private async sharedOpenAIBreakerOpen(): Promise<boolean> {
+        try {
+            return Boolean(await this.redis.get(llmBreakerOpenKey('openai')));
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Usage record for a search served without a query vector: no tokens were
+     * billed, so `:calls`/`:tokens` stay untouched and only this counter moves.
+     */
+    private recordLexicalFallback(tenantId: string | undefined, executionContext?: ServiceExecutionContext): void {
+        if (!tenantId || persistenceDisabled(executionContext)) return;
+        const key = `ai:stats:${tenantId}:${new Date().toISOString().slice(0, 10)}:embeddings:lexical_fallback`;
+        Promise.resolve()
+            .then(() => this.redis.incrBy(key, 1))
+            .then(() => this.redis.expire(key, 90 * 86400))
+            .catch(() => {});
     }
 
     /** Query-embedding cache (Redis) — the same question shouldn't re-hit OpenAI. */

@@ -138,6 +138,7 @@ jobs:
           apps/api/src/modules/crm/services/segments/segment-filter-validation.spec.ts
           apps/api/src/modules/knowledge/knowledge.controller-version-audit.spec.ts
           apps/api/src/modules/knowledge/knowledge-file-parsing.spec.ts
+          apps/api/src/modules/knowledge/knowledge-embedding-fallback.spec.ts
           apps/api/src/modules/tours/tours.service.spec.ts
           apps/api/src/modules/vacation-rental/properties.service.spec.ts
           apps/api/src/modules/restaurants/restaurants.service.spec.ts

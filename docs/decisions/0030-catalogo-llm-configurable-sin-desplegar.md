@@ -242,6 +242,22 @@ Decisiones tomadas al implementarla, que precisan lo de arriba:
     - los roles auxiliares solo dejan un aviso.
   - **Dónde queda.** La validación guarda en `promotion` las mediciones que usó. Si la tabla no responde, todo cambio de cabeza cuenta como sin medición.
 
+## Adenda — 12-nov-2026: `aux_reasoning` pasa a Claude Haiku 5.5 (versión 2 del catálogo)
+
+- **Qué se publicó.** La versión 2 de `llm_catalog_versions` está activa desde el 12-nov-2026 a las 04:50:33 UTC. Su único cambio frente a la versión 1 (la semilla) es `roles.aux_reasoning = ["claude-haiku-5-5", "gpt-6-luna"]`; antes era `["gpt-6-luna"]`. `conversation`, `tool_calling`, `classify` y los demás roles quedan iguales.
+- **Por qué.** OpenAI quedó sin créditos desde el 9-nov. El rol se llama por el camino directo, sin cadena de respaldo, así que el intérprete de intención, el clasificador de traspaso, el copiloto y los resúmenes fallaban o caían a reglas. Lo aprobó el dueño el 11-nov («Sí, pásalas», «Sí, publícala»).
+- **Cómo se publicó.** Con `LlmCatalogService.publish` sobre el borrador 2:
+  - pasó la validación completa, incluida la llamada real a Haiku (turno y herramienta);
+  - cambiar un rol auxiliar no exige medición: solo dejó el aviso `role_head_change_without_bench`;
+  - queda en `audit_logs` como `llm_catalog.published`;
+  - la API y el worker la cargaron en 6 s.
+- **Evidencia.** En un contexto aislado, `router.execute({ role: "aux_reasoning" })` respondió con claude-haiku-5-5 en 0,7 s y devolvió el JSON pedido. La confirmación firmada de Haiku 5.5 dio 26/28, a $0,00054 por caso; Sonnet 5.5 dio 28/28.
+- **Respaldo: ojo.** gpt-6-luna queda segundo en el rol, pero el camino directo usa solo la cabeza del rol: **no hay paso automático a gpt-6-luna** cuando vuelva el crédito de OpenAI. Volver a gpt-6-luna es una decisión explícita.
+- **Cómo se revierte** (sin desplegar):
+  - **Por el API:** `POST admin/llm-catalog/versions/1/restore` con `{ "reason": "..." }`. Publica una versión nueva con el contenido de la 1, y se aplica en ≤10 s.
+  - **Emergencia sin API:** `LLM_CATALOG_SOURCE=seed` en la API y el worker hace que rija la semilla, que es igual a la versión 1, e ignora las versiones publicadas.
+- **Pendiente.** Medir Haiku 5.5 en el ensayo de 7 tenants (`rehearsal_7t`). Hoy no se puede medir ningún modelo: la búsqueda de conocimiento calcula los embeddings con OpenAI (`knowledge.service.ts`), y cada caso que la usa falla con 429 mientras OpenAI no tenga crédito.
+
 ## Consecuencias
 
 - Una migración como la de ADR-0029 pasa de un PR de ~80 archivos a un borrador, una medición y una publicación.

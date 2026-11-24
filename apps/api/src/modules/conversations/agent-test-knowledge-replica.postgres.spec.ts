@@ -13,6 +13,7 @@ import { KnowledgeService } from '../knowledge/knowledge.service';
 import { KnowledgeConflictService } from '../kb-health/knowledge-conflict.service';
 import { KNOWLEDGE_CONFLICT_SCHEMA } from '../kb-health/knowledge-conflict.schema';
 import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
+import { UnwindowedRevisionService } from '../evaluation-revision/__fixtures__/unwindowed-revision-service';
 import { EvaluationKnowledgeService } from '../evaluation-revision/evaluation-knowledge.service';
 import { acquireKnowledgeReplica, bootstrapKnowledgeReplicaLifecycle, reapKnowledgeReplicas, releaseKnowledgeReplica, retireKnowledgeReplicasInTransaction } from '../evaluation-revision/evaluation-knowledge-lifecycle';
 import { knowledgeReplicaSchema } from '../evaluation-revision/evaluation-knowledge-replica';
@@ -134,7 +135,8 @@ const REGISTRY = 'public.evaluation_knowledge_usages';
         const router = new LLMRouterService([primary, fallback] as any, redis as any, keys as any, events as any);
         // Cost accounting is operational I/O, not authority/routing logic.
         jest.spyOn(router as any, 'trackStats').mockResolvedValue(undefined);
-        revisions = new EvaluationRevisionService(prisma, router);
+        // Unwindowed: these tests change a source and verify in the same instant (see the fixture).
+        revisions = new UnwindowedRevisionService(prisma, router);
         managed = new EvaluationKnowledgeService(prisma, revisions);
         const conflicts = new KnowledgeConflictService(prisma, {} as any);
         knowledge = new KnowledgeService(prisma, redis as any, {} as any, {} as any, {} as any, router, events as any, conflicts);

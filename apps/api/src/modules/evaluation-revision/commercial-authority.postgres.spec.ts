@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { EvaluationRevisionService } from './evaluation-revision.service';
+import { UnwindowedRevisionService } from './__fixtures__/unwindowed-revision-service';
 import { serviceCatalogCaptureDatabase } from './evaluation-service-catalog-capture';
 import { resolveStructuredKnowledgeCapture, structuredKnowledgeRelation } from './evaluation-structured-knowledge';
 import { commercialOnly } from './commercial-reader-inventory';
@@ -35,18 +36,6 @@ import { LoadMetrics } from '../../common/__fixtures__/load-metrics';
  *     refused. That is the legacy path, and it is the one that would make all
  *     of the above decorative.
  */
-
-/**
- * The 2 s freshness window of `assertCurrent` (ADR 0021) lets a verification reuse a capture that started
- * moments ago. These tests edit a table and verify in the same millisecond, so with the real clock a
- * verification would be answered by the capture of the PREVIOUS test and the edit would go unseen. Every
- * reading of this clock is later than the window, so each verification captures again: what is under test
- * here is what a capture measures, not the window (which `evaluation-revision.service` covers on its own).
- */
-class UnwindowedRevisionService extends EvaluationRevisionService {
-    private clock = 0;
-    protected now(): number { return this.clock += EvaluationRevisionService.FRESHNESS_WINDOW_MS + 1; }
-}
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 

@@ -3,22 +3,11 @@ import { Pool } from 'pg';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { EvaluationRevisionService } from './evaluation-revision.service';
+import { UnwindowedRevisionService } from './__fixtures__/unwindowed-revision-service';
 import { LodgingSourceOfTruthService } from '../channel-manager/lodging-source-of-truth.service';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 import { assertServiceCatalogCurrent, captureServiceCatalog, withCapturedServiceCatalog,
     serviceCatalogCaptureDatabase, type CaptureDatabase, type CaptureQuery } from './evaluation-service-catalog-capture';
-
-/**
- * The 2 s freshness window of `assertCurrent` (ADR 0021) lets a verification reuse a capture that started
- * moments ago. These tests edit a table and verify in the same millisecond, so with the real clock a
- * verification would be answered by the capture of the PREVIOUS test and the edit would go unseen. Every
- * reading of this clock is later than the window, so each verification captures again: what is under test
- * here is what a capture measures, not the window (which `evaluation-revision.service` covers on its own).
- */
-class UnwindowedRevisionService extends EvaluationRevisionService {
-    private clock = 0;
-    protected now(): number { return this.clock += EvaluationRevisionService.FRESHNESS_WINDOW_MS + 1; }
-}
 
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('candidate read capture under traffic in disposable PostgreSQL', () => {

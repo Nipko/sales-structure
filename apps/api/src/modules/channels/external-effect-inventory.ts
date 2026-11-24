@@ -2309,6 +2309,10 @@ export const EGRESS_INFRASTRUCTURE: readonly EgressInfrastructure[] = Object.fre
         reason: 'the Pipedrive client, behind `external_crm.sync`' },
 
     // -- Reads ---------------------------------------------------------------
+    { source: 'modules/ai/health/llm-provider-probe.service.ts', kind: 'read_only',
+        reason: 'the LLM provider probe (ADR 0026): every five minutes a one-token completion and, where '
+            + 'the provider exposes it, a balance or key-status GET, with the platform key. It carries no '
+            + 'tenant or customer data and changes nothing at the provider beyond the token it bills' },
     { source: 'modules/channels/channels.controller.ts', kind: 'read_only',
         reason: 'looks up a contact\'s display name and profile photo on the inbound path' },
     { source: 'modules/channels/whatsapp-token-health.service.ts', kind: 'read_only',

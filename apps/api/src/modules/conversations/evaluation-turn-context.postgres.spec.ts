@@ -7,7 +7,7 @@ import { RegionalProfileService } from '../tenants/regional-profile.service';
 import { BusinessInfoService } from '../business-info/business-info.service';
 import { VerticalsService } from '../verticals/verticals.service';
 import { VerticalTurnContextService } from './vertical-turn-context.service';
-import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
+import { UnwindowedRevisionService } from '../evaluation-revision/__fixtures__/unwindowed-revision-service';
 import { agentTurnFixture } from './__fixtures__/agent-turn.fixture';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { ensureSyntheticGlobalTables } from '../../common/__fixtures__/synthetic-global-tables';
@@ -57,7 +57,7 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         const verticals = new VerticalsService(prisma, redis as any, {} as any);
         fixture = agentTurnFixture({ prisma, redis, tenantsService: tenants, regionalProfile: regional,
             businessInfoService: business, verticalTurnContext: new VerticalTurnContextService(prisma, verticals) });
-        const revisions = new EvaluationRevisionService(prisma, { evaluationRoutingSignature: async () => 'synthetic-model-routing' } as any);
+        const revisions = new UnwindowedRevisionService(prisma, { evaluationRoutingSignature: async () => 'synthetic-model-routing' } as any);
         fixture.revisions.capture = revisions.capture.bind(revisions);
         fixture.revisions.assertCurrent = revisions.assertCurrent.bind(revisions);
         // The domain readers and dependency guard are real. Model/capability I/O

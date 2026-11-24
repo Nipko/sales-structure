@@ -19,7 +19,11 @@ export interface SharedTable {
     phase: 1 | 2 | 3;
 }
 
-export const SHARED_TABLES: readonly SharedTable[] = [];
+export const SHARED_TABLES: readonly SharedTable[] = [
+    // Batch 1 (pilot): traces. prisma/migrations/20261124160000_move_traces_to_shared
+    { name: 'conversation_traces', phase: 1 },
+    { name: 'turn_traces', phase: 1 },
+];
 
 export const SHARED_TABLE_NAMES: readonly string[] = SHARED_TABLES.map((table) => table.name);
 
@@ -28,4 +32,4 @@ export const SHARED_TABLE_NAMES: readonly string[] = SHARED_TABLES.map((table) =
  * (`CREATE TABLE IF NOT EXISTS`). The number can only go down: `shared-tables-style.spec.ts` fails when it
  * grows, and asks for this constant to be lowered when a site is removed.
  */
-export const LAZY_CREATE_TABLE_FILE_BASELINE = 60;
+export const LAZY_CREATE_TABLE_FILE_BASELINE = 59;

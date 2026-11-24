@@ -3844,33 +3844,8 @@ CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."saved_reports" (
 );
 
 -- ---- Observability: traces + quality scores ----
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_traces" (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL,
-    provider VARCHAR(40),
-    model VARCHAR(80),
-    tier VARCHAR(40),
-    task VARCHAR(40),
-    latency_ms INTEGER,
-    prompt_tokens INTEGER,
-    completion_tokens INTEGER,
-    total_tokens INTEGER,
-    fallback_used BOOLEAN DEFAULT false,
-    kb_sources JSONB DEFAULT '[]'::jsonb,
-    stage VARCHAR(40),
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON "{{SCHEMA_NAME}}"."conversation_traces"(conversation_id, created_at);
-CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."turn_traces" (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL,
-    message_id UUID NULL,
-    total_duration_ms INTEGER,
-    step_count INTEGER,
-    steps JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON "{{SCHEMA_NAME}}"."turn_traces"(conversation_id, created_at);
+-- `conversation_traces` and `turn_traces` live in the `shared` schema (ADR 0034): see
+-- prisma/migrations/20261124160000_move_traces_to_shared.
 CREATE TABLE IF NOT EXISTS "{{SCHEMA_NAME}}"."conversation_quality_scores" (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     conversation_id UUID NOT NULL,

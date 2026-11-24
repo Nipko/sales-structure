@@ -52,7 +52,7 @@ There is no reverse proxy config in the repo: production ingress is the Cloudfla
 ## Key conventions (CRITICAL — apply to every task)
 
 - **Language**: Code in English, user-facing strings in Spanish (Latin American market). ALL strings via i18n (next-intl, 4 languages: es/en/pt/fr). **Every page edit/creation MUST update all 4 JSON files**
-- **Multi-tenancy**: Schema-per-tenant in PostgreSQL. Schema name from `tenants.schema_name`
+- **Multi-tenancy**: Schema-per-tenant in PostgreSQL. Schema name from `tenants.schema_name`. **In transition (ADR 0034, approved 2026-11-24, not yet implemented):** tenant data moves to shared tables in a `shared` schema with `tenant_id` + forced row-level security. Do not add new per-tenant tables or new lazy `CREATE TABLE IF NOT EXISTS` sites
 - **Database queries**: `prisma.$queryRawUnsafe(sql, ...params)` — ALWAYS use `::uuid` casts. NO type arguments on `$queryRawUnsafe`. NEVER interpolate tenantId or user input into SQL strings: parameters only (`$N::uuid`)
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client. `users.name` is a generated column

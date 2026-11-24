@@ -40,6 +40,7 @@ describe('OffboardingService purge saga', () => {
             $queryRawUnsafe: jest.fn().mockResolvedValue([]),
             $executeRawUnsafe: jest.fn().mockImplementation(async () => { order.push('checkpoint'); return 1; }),
             dropTenantSchema: jest.fn().mockImplementation(async () => { order.push('drop'); }),
+            purgeTenantSharedData: jest.fn().mockResolvedValue({}),
             purgeTenantPublicDataAtomic: jest.fn().mockImplementation(async () => {
                 order.push('public-commit');
                 return { tenants: 1, fiscal_invoices_retained: 1 };

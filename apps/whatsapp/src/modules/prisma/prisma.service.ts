@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { TENANT_CONTEXT_SQL, tenantContextIdForSchema, tenantSearchPath } from './tenant-context';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -40,9 +41,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       throw new Error(`Invalid schema name: ${schemaName}`);
     }
 
-    // Scope search_path to the transaction to avoid leakage across pooled connections.
+    // search_path and the tenant context of the shared tables (ADR 0034), both scoped to the
+    // transaction to avoid leakage across pooled connections.
     return this.$transaction(async (tx: any) => {
-      await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}"`);
+      await tx.$executeRawUnsafe(TENANT_CONTEXT_SQL, tenantSearchPath(schemaName), tenantContextIdForSchema(schemaName));
       return tx.$queryRawUnsafe(query, ...params) as Promise<T>;
     });
   }

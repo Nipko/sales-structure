@@ -12,6 +12,18 @@ _Plan de trabajo de [ADR 0034](../../decisions/0034-tablas-compartidas-con-tenan
 
 ## Paso 0 — Preparación (sin mover ninguna tabla)
 
+**Estado (2026-11-24, rama `aws/shared-tables-step-0`):** hecho en código, pendiente de correr en la CI.
+
+| Punto | Estado | Dónde |
+|---|---|---|
+| 0.1 Rol sin privilegios | Hecho: la migración crea `parallext_app` sin acceso y sin contraseña. Falta, al aprovisionar AWS, darle acceso y apuntar `DATABASE_URL` a él | `prisma/migrations/20261124120000_add_shared_schema` |
+| 0.2 Schema `shared` y registro | Hecho. Además, la función `shared.apply_tenant_isolation(tabla)` concentra lo que hace compartida a una tabla | misma migración, `modules/prisma/shared-tables.ts` |
+| 0.3 Contexto de tenant | Hecho, sin resolvedor ni caché: el id se lee del nombre físico del schema (termina en el UUID del tenant) y el entorno de evaluación recibe un id sintético de sus 32 dígitos. Un nombre sin id deja el contexto vacío y las tablas compartidas fallan. API y servicio de WhatsApp | `modules/prisma/tenant-context.ts` (copia idéntica en `apps/whatsapp`) |
+| 0.4 Salvaguardas | Hecho: prueba de aislamiento como `parallext_app`, guardia de estilo, tope decreciente de archivos con creación perezosa (60) y detector de tablas que tapan en el arranque | `shared-tables-isolation.postgres.spec.ts`, `shared-tables-style.spec.ts`, `PrismaService.findShadowedSharedTables` |
+| 0.5 Borrado y respaldo | Borrado hecho (`purgeTenantSharedData`, llamado en la purga). El respaldo se define con RDS, ya no con `backup.sh` | `offboarding.service.ts` |
+
+Pendiente del paso 0: que toda la suite corra conectada como `parallext_app` (hoy la CI se conecta como dueño). Es lo que dirá qué más necesita el rol; se hace al montar la CI contra el entorno nuevo.
+
 Nada de este paso cambia el comportamiento visible. Todo debe estar desplegado antes de mover la primera tabla.
 
 ### 0.1 Rol de base de datos sin privilegios

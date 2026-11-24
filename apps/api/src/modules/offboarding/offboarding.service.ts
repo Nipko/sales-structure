@@ -1770,6 +1770,9 @@ export class OffboardingService {
                 await lease.assertOwned();
                 await this.prisma.dropTenantSchema(tenant.schemaName);
                 this.logger.log(`[Purge ${tenantId}] Schema "${tenant.schemaName}" dropped and verified`);
+                // Rows in shared tables do not go with the schema (ADR 0034).
+                const sharedRowsDeleted = await this.prisma.purgeTenantSharedData(tenantId);
+                this.logger.log(`[Purge ${tenantId}] Shared tables purged: ${JSON.stringify(sharedRowsDeleted)}`);
 
                 if (settings?.purgeSaga?.externalCompleted !== true) {
                     await lease.assertOwned();

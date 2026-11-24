@@ -184,10 +184,16 @@ describe('required reads through the turn: travel (PR7)', () => {
 
     it('availability of a named package on a date runs check_package_availability with the date and the group', async () => {
         const h = fixture('tours', { [REQUIRED_READS_TOURS_FLAG]: true }, '{"operationKey":"package_availability","confidence":0.92}');
-        const { result } = await h.turn('hay cupo en el Tour Cafetero para el 15 de noviembre para 4?');
+        // The 15th of a month that has not arrived, whenever this runs. A fixed «15 de noviembre» is a past departure
+        // from 16 November on, and a past date is answered before any availability read (catalog-first), so the
+        // test stopped measuring what it names.
+        const MONTHS = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        const next = new Date(); next.setUTCDate(1); next.setUTCMonth(next.getUTCMonth() + 2);
+        const month = String(next.getUTCMonth() + 1).padStart(2, '0');
+        const { result } = await h.turn(`hay cupo en el Tour Cafetero para el 15 de ${MONTHS[next.getUTCMonth()]} para 4?`);
         expect(result.debug.runtimeError).toBeUndefined();
         const check = h.executed().find(c => c.name === 'check_package_availability');
-        expect(check?.args).toMatchObject({ packageId: TOUR, partySize: 4, date: expect.stringMatching(/-11-15$/) });
+        expect(check?.args).toMatchObject({ packageId: TOUR, partySize: 4, date: expect.stringMatching(new RegExp(`-${month}-15$`)) });
         expect(result.reply).toBe('Sí, quedan 8 cupos.');
     });
 });

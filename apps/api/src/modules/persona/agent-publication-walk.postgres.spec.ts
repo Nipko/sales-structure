@@ -21,6 +21,7 @@ import { AgentReleaseController } from '../simulation/agent-release.controller';
 import { AgentReleaseStore } from '../simulation/agent-release-store';
 import { releaseRunContext, sealReleaseRun } from '../simulation/agent-release-policy';
 import { EvaluationRevisionService } from '../evaluation-revision/evaluation-revision.service';
+import { UnwindowedRevisionService } from '../evaluation-revision/__fixtures__/unwindowed-revision-service';
 import { revisionHash, sealRevision } from '../evaluation-revision/evaluation-revision';
 import { sealStructuredKnowledgeCapture } from '../evaluation-revision/evaluation-structured-knowledge';
 import { evaluationSnapshot, sealEvaluationSnapshot, resolveEvaluationSnapshot } from '../conversations/agent-evaluation-snapshot';
@@ -422,7 +423,7 @@ const url = process.env.AGENT_RELEASE_TEST_DATABASE_URL;
         const drafts = new AgentDraftService(prisma, personaService, throttle);
         draftController = new AgentDraftController(drafts);
 
-        const revisions = new EvaluationRevisionService(prisma, null as any);
+        const revisions = new UnwindowedRevisionService(prisma, null as any);
         jest.spyOn(revisions, 'capture').mockImplementation(async () => liveManifest);
         publicationController = new AgentPublicationController(
             new AgentPublicationService(prisma, personaService, revisions, events));

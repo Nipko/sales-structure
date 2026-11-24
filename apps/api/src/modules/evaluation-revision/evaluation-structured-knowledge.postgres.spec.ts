@@ -196,10 +196,19 @@ const url = process.env.PARALLLY_ISOLATION_TEST_URL;
         }) as AIToolExecutorService;
         f.toolExecutor.execute.mockImplementation(executor.execute.bind(executor));
         publishTools(f, ['search_faqs', 'get_policy']);
-        f.llmRouter.execute.mockResolvedValueOnce({ content: '', toolCalls: [
-            { id: 'faq', function: { name: 'search_faqs', arguments: JSON.stringify({ query: 'retour' }) } },
-            { id: 'policy', function: { name: 'get_policy', arguments: JSON.stringify({ type: 'return' }) } },
-        ] }).mockResolvedValue({ content: 'Información consultada.' });
+        // The tool calls answer the first request that actually OFFERS the two tools, not whichever request comes
+        // first: the turn makes auxiliary model calls before the main one, and a `mockResolvedValueOnce` handed
+        // the tool calls to one of those, so the readers under test never ran.
+        let requested = false;
+        f.llmRouter.execute.mockImplementation(async (request: any) => {
+            const offered = (request?.tools || []).map((tool: any) => tool?.function?.name ?? tool?.name);
+            if (requested || !offered.includes('search_faqs') || !offered.includes('get_policy')) return { content: 'Información consultada.' };
+            requested = true;
+            return { content: '', toolCalls: [
+                { id: 'faq', function: { name: 'search_faqs', arguments: JSON.stringify({ query: 'retour' }) } },
+                { id: 'policy', function: { name: 'get_policy', arguments: JSON.stringify({ type: 'return' }) } },
+            ] };
+        });
         const response = await f.service.test(tenantId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', { message: 'Consulta las preguntas y la política de cambios' });
         expect(response.debug.runtimeError).toBeUndefined();
         expect(response.debug.toolCalls.map((row: any) => row.result)).toEqual([

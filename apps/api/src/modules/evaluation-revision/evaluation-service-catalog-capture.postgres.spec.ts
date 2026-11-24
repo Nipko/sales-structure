@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { AGENT_TEST_EXECUTION_CONTEXT } from '../../common/types/execution-context';
 import { VerticalReadinessService } from '../verticals/vertical-readiness.service';
 import { EvaluationRevisionService } from './evaluation-revision.service';
+import { UnwindowedRevisionService } from './__fixtures__/unwindowed-revision-service';
 import { LodgingSourceOfTruthService } from '../channel-manager/lodging-source-of-truth.service';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 import { assertServiceCatalogCurrent, captureServiceCatalog, withCapturedServiceCatalog,
@@ -28,7 +29,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             duration_minutes integer,buffer_minutes integer,price numeric,currency text,is_active boolean,
             duration_type text,duration_minutes_max integer,payment_policy text,deposit_percent numeric,deposit_amount numeric,
             location_type text,location_address text,meeting_link text,is_public boolean,sort_order integer,price_status text,
-            includes jsonb,excludes jsonb,preparation text,preparation_required boolean)`);
+            includes jsonb,excludes jsonb,preparation text,preparation_required boolean,
+            content_status text DEFAULT 'confirmed',origin text,source_ref jsonb,updated_at timestamp DEFAULT NOW())`);
         await query(`INSERT INTO "${source}".services VALUES($1::uuid,'Consulta','Consulta general',30,0,100,'COP',true,
             'fixed',null,'none',null,null,'in_person','Sede principal',null,true,1,'confirmed','[]','[]',null,null)`, [serviceId]);
         await query(`CREATE TABLE "${source}".messages(id uuid PRIMARY KEY,content_text text)`);
@@ -53,7 +55,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
                 await client.query('COMMIT'); return result;
             } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
         } };
-        revision = new EvaluationRevisionService({ $transaction: async (work: any, options: any) => {
+        revision = new UnwindowedRevisionService({ $transaction: async (work: any, options: any) => {
             expect(options.isolationLevel).toBe('RepeatableRead');
             return database.readTransaction(q => work({ $queryRawUnsafe: (sql: string,...params: unknown[]) => q(sql,params) }));
         } } as any, { evaluationRoutingSignature: async () => 'fixed-routing' } as any);

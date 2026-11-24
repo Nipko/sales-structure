@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { EvaluationRevisionService } from './evaluation-revision.service';
+import { UnwindowedRevisionService } from './__fixtures__/unwindowed-revision-service';
 import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-database';
 
 const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
@@ -36,7 +37,7 @@ const connection=process.env.PARALLLY_ISOLATION_TEST_URL;
                 await client.query('COMMIT');return result;
             }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
         }};
-        service=new EvaluationRevisionService(prisma as any,{evaluationRoutingSignature:async()=> 'router-fixed'} as any);
+        service=new UnwindowedRevisionService(prisma as any,{evaluationRoutingSignature:async()=> 'router-fixed'} as any);
     },30000);
     afterAll(async()=>{
         if(!pool)return;

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { Pool } from 'pg';
 import { EvaluationRevisionService } from './evaluation-revision.service';
+import { UnwindowedRevisionService } from './__fixtures__/unwindowed-revision-service';
 import { serviceCatalogCaptureDatabase } from './evaluation-service-catalog-capture';
 import { resolveStructuredKnowledgeCapture, structuredKnowledgeRelation } from './evaluation-structured-knowledge';
 import { commercialOnly } from './commercial-reader-inventory';
@@ -107,7 +108,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
                 } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
             },
         };
-        service = new EvaluationRevisionService(prisma as any,
+        service = new UnwindowedRevisionService(prisma as any,
             { evaluationRoutingSignature: async () => 'router-fixed' } as any);
     }, 120_000);
 

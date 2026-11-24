@@ -528,16 +528,19 @@ jobs:
           JWT_REFRESH_SECRET: candidate-ci-only-refresh
           INTERNAL_JWT_SECRET: candidate-ci-only-internal
           MEDIA_STORAGE_PATH: ${{ runner.temp }}/candidate-media
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
           set -o pipefail
-          # A single in-band process reached the 6 GB heap limit inside shard 1.
+          # A single in-band process reached the 6 GB heap limit inside shard 1,
+          # and later a worker recycled at 5 GB still hit it while compiling one
+          # heavy spec. The heap is 8 GB (as in deploy.yml) and the worker is
+          # recycled at 4 GB.
           # Keep one database-owning worker and recycle it after each test file
           # whenever its used heap exceeds 5 GB. The reports cover all tests.
           for shard in 1 2 3 4; do
             report="${GITHUB_WORKSPACE}/api-shard-${shard}.json"
             npx jest --config apps/api/jest.config.js --ci --maxWorkers=1 \
-              --workerIdleMemoryLimit=5GB \
+              --workerIdleMemoryLimit=4GB \
               --shard="${shard}/4" --json --outputFile "${report}" || true
             node infra/scripts/assert-no-skipped-tests.cjs \
               --report "${report}" --label "API suite shard ${shard}/4"

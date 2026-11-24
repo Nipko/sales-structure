@@ -8,6 +8,18 @@ import { isDisposableDatabaseUrl } from '../../common/__fixtures__/disposable-da
 import { assertServiceCatalogCurrent, captureServiceCatalog, withCapturedServiceCatalog,
     serviceCatalogCaptureDatabase, type CaptureDatabase, type CaptureQuery } from './evaluation-service-catalog-capture';
 
+/**
+ * The 2 s freshness window of `assertCurrent` (ADR 0021) lets a verification reuse a capture that started
+ * moments ago. These tests edit a table and verify in the same millisecond, so with the real clock a
+ * verification would be answered by the capture of the PREVIOUS test and the edit would go unseen. Every
+ * reading of this clock is later than the window, so each verification captures again: what is under test
+ * here is what a capture measures, not the window (which `evaluation-revision.service` covers on its own).
+ */
+class UnwindowedRevisionService extends EvaluationRevisionService {
+    private clock = 0;
+    protected now(): number { return this.clock += EvaluationRevisionService.FRESHNESS_WINDOW_MS + 1; }
+}
+
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 (connection ? describe : describe.skip)('candidate read capture under traffic in disposable PostgreSQL', () => {
     const tenantId = randomUUID(), serviceId = randomUUID();
@@ -28,7 +40,8 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
             duration_minutes integer,buffer_minutes integer,price numeric,currency text,is_active boolean,
             duration_type text,duration_minutes_max integer,payment_policy text,deposit_percent numeric,deposit_amount numeric,
             location_type text,location_address text,meeting_link text,is_public boolean,sort_order integer,price_status text,
-            includes jsonb,excludes jsonb,preparation text,preparation_required boolean)`);
+            includes jsonb,excludes jsonb,preparation text,preparation_required boolean,
+            content_status text DEFAULT 'confirmed',origin text,source_ref jsonb,updated_at timestamp DEFAULT NOW())`);
         await query(`INSERT INTO "${source}".services VALUES($1::uuid,'Consulta','Consulta general',30,0,100,'COP',true,
             'fixed',null,'none',null,null,'in_person','Sede principal',null,true,1,'confirmed','[]','[]',null,null)`, [serviceId]);
         await query(`CREATE TABLE "${source}".messages(id uuid PRIMARY KEY,content_text text)`);
@@ -53,7 +66,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
                 await client.query('COMMIT'); return result;
             } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
         } };
-        revision = new EvaluationRevisionService({ $transaction: async (work: any, options: any) => {
+        revision = new UnwindowedRevisionService({ $transaction: async (work: any, options: any) => {
             expect(options.isolationLevel).toBe('RepeatableRead');
             return database.readTransaction(q => work({ $queryRawUnsafe: (sql: string,...params: unknown[]) => q(sql,params) }));
         } } as any, { evaluationRoutingSignature: async () => 'fixed-routing' } as any);

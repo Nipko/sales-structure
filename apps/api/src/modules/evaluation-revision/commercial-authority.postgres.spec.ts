@@ -36,6 +36,18 @@ import { LoadMetrics } from '../../common/__fixtures__/load-metrics';
  *     of the above decorative.
  */
 
+/**
+ * The 2 s freshness window of `assertCurrent` (ADR 0021) lets a verification reuse a capture that started
+ * moments ago. These tests edit a table and verify in the same millisecond, so with the real clock a
+ * verification would be answered by the capture of the PREVIOUS test and the edit would go unseen. Every
+ * reading of this clock is later than the window, so each verification captures again: what is under test
+ * here is what a capture measures, not the window (which `evaluation-revision.service` covers on its own).
+ */
+class UnwindowedRevisionService extends EvaluationRevisionService {
+    private clock = 0;
+    protected now(): number { return this.clock += EvaluationRevisionService.FRESHNESS_WINDOW_MS + 1; }
+}
+
 const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
 
 (connection ? describe : describe.skip)('what a commercial answer was measured against', () => {
@@ -107,7 +119,7 @@ const connection = process.env.PARALLLY_ISOLATION_TEST_URL;
                 } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
             },
         };
-        service = new EvaluationRevisionService(prisma as any,
+        service = new UnwindowedRevisionService(prisma as any,
             { evaluationRoutingSignature: async () => 'router-fixed' } as any);
     }, 120_000);
 

@@ -2,7 +2,7 @@
 
 _Plan de trabajo de [ADR 0034](../../decisions/0034-tablas-compartidas-con-tenant-id.md). Fecha: 2026-11-24. Documento de trabajo: se retira cuando la fase 1 esté cerrada._
 
-> **Cifras:** los conteos de este plan (249 tablas, 70 a mover, 166 restantes) se tomaron de una copia local 69 commits detrás de `main`. Sobre `main` actual la plantilla define 232 tablas distintas. Antes de cada lote hay que rehacer su inventario contra el código vigente.
+> **Cifras:** los conteos de este plan (249 tablas, 70 a mover, 166 restantes) se tomaron de una copia local 69 commits detrás de `main`. Sobre `main` actual la plantilla define 234 tablas distintas. Antes de cada lote hay que rehacer su inventario contra el código vigente.
 
 **Qué entrega la fase 1:** el mecanismo de tablas compartidas probado de punta a punta, 70 tablas operativas movidas a `shared`, y 13 tablas sin uso fuera de la plantilla. Las tablas por tenant bajan de 249 a 166.
 

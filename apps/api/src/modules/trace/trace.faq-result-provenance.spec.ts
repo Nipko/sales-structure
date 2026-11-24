@@ -7,7 +7,7 @@ describe('FAQ provenance within the persisted turn budget',()=>{
    ?{type:'tool_result',label:'search_faqs',metadata:{faqResultIds:[id],faqResultIdsComplete:true}}
    :{type:'decision',label:`synthetic-step-${index}`,metadata:{index}});
   const write=jest.fn().mockResolvedValue([]);
-  const service=Object.assign(Object.create(TraceService.prototype),{prisma:{getTenantSchemaName:jest.fn().mockResolvedValue('tenant_synthetic'),executeInTenantSchema:write},ensureTables:jest.fn().mockResolvedValue(undefined),logger:{warn:jest.fn()}})as TraceService;
+  const service=Object.assign(Object.create(TraceService.prototype),{prisma:{getTenantSchemaName:jest.fn().mockResolvedValue('tenant_synthetic'),executeInTenantSchema:write},logger:{warn:jest.fn()}})as TraceService;
   await service.recordTurn({tenantId:'synthetic',conversationId:'synthetic-conversation',totalDurationMs:1,stepCount:steps.length,steps});
   expect(write).toHaveBeenCalledTimes(1);const params=write.mock.calls[0][2],stored=JSON.parse(params[4]);
   expect(params[3]).toBe(100);expect(stored).toHaveLength(100);expect(stored[25].metadata).toEqual({faqResultIds:[id],faqResultIdsComplete:true});

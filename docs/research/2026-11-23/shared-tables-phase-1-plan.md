@@ -104,6 +104,8 @@ Para cada tabla que se mueve:
 
 ## Lotes
 
+**Estado:** paso 0 fusionado (PR 438, 2026-11-24; la prueba de aislamiento corrió en PostgreSQL real). Lote 1 hecho en la rama `aws/shared-tables-pilot-traces`: migración `20261124160000_move_traces_to_shared`, las dos tablas fuera de la plantilla y de la creación perezosa de `trace.service.ts`. Los lectores resultaron ser tres, no uno: `trace/`, `handoff/` (evidencia de la transferencia) y el mantenimiento de retención; ninguno escribía el schema a mano.
+
 Ordenados de menor a mayor riesgo. Cada lote es un cambio desplegable por sí solo.
 
 | Lote | Tablas | Contenido | Por qué en este orden |

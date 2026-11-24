@@ -1,5 +1,4 @@
 import { QualityService } from '../../modules/quality/quality.service';
-import { TraceService } from '../../modules/trace/trace.service';
 import { ProceduresService } from '../../modules/procedures/procedures.service';
 import { AttributionService } from '../../modules/attribution/attribution.service';
 import { ReviewsService } from '../../modules/reviews/reviews.service';
@@ -26,7 +25,6 @@ describe('DDL failure is not schema readiness', () => {
 
     it.each([
         ['quality', QualityService.prototype, 'ensureTables'],
-        ['trace', TraceService.prototype, 'ensureTables'],
         ['procedures', ProceduresService.prototype, 'ensureTables'],
         ['attribution', AttributionService.prototype, 'ensureTables'],
         ['reviews', ReviewsService.prototype, 'ensureTables'],

@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { RedisService } from '../redis/redis.service';
 import { redactTraceSteps } from './turn-trace-context';
 
 export interface LlmTurnEvent {
@@ -23,74 +22,15 @@ export interface LlmTurnEvent {
 export class TraceService {
     private readonly logger = new Logger(TraceService.name);
 
-    constructor(
-        private prisma: PrismaService,
-        private redis: RedisService,
-    ) {}
-
-    async ensureTables(schemaName: string): Promise<void> {
-        // v2 forces a one-time re-ensure on existing tenants so turn_traces appears.
-        const cacheKey = `trace_cols_v3:${schemaName}`;
-        if (await this.redis.get(cacheKey)) return;
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE TABLE IF NOT EXISTS conversation_traces (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    conversation_id UUID NOT NULL,
-                    provider VARCHAR(40),
-                    model VARCHAR(80),
-                    tier VARCHAR(40),
-                    task VARCHAR(40),
-                    latency_ms INTEGER,
-                    prompt_tokens INTEGER,
-                    completion_tokens INTEGER,
-                    total_tokens INTEGER,
-                    fallback_used BOOLEAN DEFAULT false,
-                    kb_sources JSONB DEFAULT '[]'::jsonb,
-                    stage VARCHAR(40),
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                )`,
-            [],
-        );
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE INDEX IF NOT EXISTS idx_ctrace_conversation ON conversation_traces(conversation_id, created_at)`,
-            [],
-        );
-
-        // Step-by-step turn traces (WS5 #1) — one row per turn, steps[] as JSONB.
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE TABLE IF NOT EXISTS turn_traces (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    conversation_id UUID NOT NULL,
-                    message_id UUID NULL,
-                    total_duration_ms INTEGER,
-                    step_count INTEGER,
-                    steps JSONB DEFAULT '[]'::jsonb,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                )`,
-            [],
-        );
-
-        await this.prisma.executeInTenantSchema(
-            schemaName,
-            `CREATE INDEX IF NOT EXISTS idx_turntrace_conv ON turn_traces(conversation_id, created_at)`,
-            [],
-        );
-
-        await this.redis.set(cacheKey, '1', 86400);
-    }
+    // `conversation_traces` and `turn_traces` are shared tables (ADR 0034): a migration defines them, the tenant
+    // helpers of PrismaService scope every statement to the tenant, and nothing is created at runtime.
+    constructor(private prisma: PrismaService) {}
 
     async record(event: LlmTurnEvent): Promise<void> {
         if (!event?.tenantId || !event?.conversationId) return;
         try {
             const schemaName = await this.prisma.getTenantSchemaName(event.tenantId);
             if (!schemaName) return;
-            await this.ensureTables(schemaName);
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `INSERT INTO conversation_traces
@@ -121,7 +61,6 @@ export class TraceService {
         const boundedLimit = Math.min(200, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 100));
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) return [];
-        await this.ensureTables(schemaName);
 
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
@@ -163,7 +102,6 @@ export class TraceService {
         try {
             const schemaName = await this.prisma.getTenantSchemaName(evt.tenantId);
             if (!schemaName) return;
-            await this.ensureTables(schemaName);
             await this.prisma.executeInTenantSchema(
                 schemaName,
                 `INSERT INTO turn_traces (conversation_id, message_id, total_duration_ms, step_count, steps)
@@ -185,7 +123,6 @@ export class TraceService {
         const boundedLimit = Math.min(100, Math.max(1, Number.isFinite(limit) ? Math.trunc(limit) : 50));
         const schemaName = await this.prisma.getTenantSchemaName(tenantId);
         if (!schemaName) return [];
-        await this.ensureTables(schemaName);
         const rows = await this.prisma.executeInTenantSchema<any[]>(
             schemaName,
             `SELECT message_id, total_duration_ms, step_count, steps, created_at
@@ -203,8 +140,7 @@ export class TraceService {
 
     /**
      * Delete turn traces older than `days` for one tenant. Step-by-step traces are
-     * voluminous (one row per turn) so retention is short. Best-effort — tolerates
-     * a missing table (tenant never traced) and never throws.
+     * voluminous (one row per turn) so retention is short. Best-effort: never throws.
      */
     async pruneTurnTraces(schemaName: string, days = 30): Promise<void> {
         try {

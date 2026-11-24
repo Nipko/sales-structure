@@ -463,6 +463,7 @@ jobs:
             apps/api/src/modules/ai/router/llm-spend-guard.postgres.spec.ts \
             apps/api/src/modules/simulation/eval-namespace-reaper.postgres.spec.ts \
             apps/api/src/modules/prisma/legacy-schema-repoint.postgres.spec.ts \
+            apps/api/src/modules/prisma/shared-tables-isolation.postgres.spec.ts \
             apps/api/src/modules/billing/stripe-refund.postgres.spec.ts \
             apps/api/src/modules/conversations/ai-tool-executor.product-lookup.postgres.spec.ts \
             apps/api/src/modules/knowledge/knowledge-file-type.postgres.spec.ts

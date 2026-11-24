@@ -436,6 +436,10 @@ jobs:
       # Five projects: the shared package plus the four applications whose source
       # ends up in the five images (the worker is built from the API tree).
       - name: Typecheck the five
+        # The API project no longer fits in Node's default 2 GB heap; deploy.yml
+        # typechecks with the same 8 GB.
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
           npx tsc -p packages/shared/tsconfig.json --noEmit --pretty false
           npx tsc -p packages/business-spec/tsconfig.json --noEmit --pretty false

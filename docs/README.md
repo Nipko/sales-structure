@@ -26,6 +26,7 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 | [0002](decisions/0002-decisiones-d1-d15-y-c0.md) | Decisiones D1–D15 y respuestas C0 §7 | aprobada | 2026-10-30 | `packages/business-spec/spec/` |
 | [0003](decisions/0003-subtipos-e-interpretaciones-r1.md) | Subtipos sin perfil e interpretaciones fijadas en R1 | aprobada | 2026-10-30 | `packages/business-spec/spec/` |
 | [0005](decisions/0005-base-de-conocimiento-y-limpieza-k3.md) | Estructura de la base de conocimiento aprobado y limpieza K3 | aprobada | 2026-10-30 | — |
+| [0034](decisions/0034-tablas-compartidas-con-tenant-id.md) | Tablas compartidas con `tenant_id` y seguridad por fila en lugar de un schema por tenant | aprobada | 2026-11-24 | `apps/api/prisma/tenant-schema.sql`, `modules/prisma/prisma.service.ts` (aún sin implementar) |
 | [previas/](decisions/previas/) | Registros de decisión anteriores al formato ADR: retiro de Mercado Pago, Email fuera del self-service, ledger de 34 decisiones de producto, registro de decisiones de verticales, decisiones de onboarding. Vigentes salvo que un ADR los reemplace; pendientes de convertir a ADR | vigente | 2026-08-08 … 2026-09-18 | `demo-allowance.service.ts` cita D19 |
 
 ## Dominio — [`domain/`](domain/)
@@ -95,4 +96,5 @@ Artefactos generados, su generador y su comprobación en CI. Los documentos gene
 | Carpeta | Qué es | Por qué sigue en el repositorio |
 |---|---|---|
 | [archive/](archive/README.md) | Históricos citados por un documento vivo o por código | Evidencia; no reflejan el estado actual |
+| [research/2026-11-23/](research/2026-11-23/aws-migration-analysis.md) | Análisis de arquitectura, servicios y costos para llevar la plataforma a AWS (**propuesta, no aprobada** salvo lo recogido en ADR 0034) y [plan de trabajo de la fase 1](research/2026-11-23/shared-tables-phase-1-plan.md) de las tablas compartidas | Insumo de decisiones pendientes y plan en curso; se retiran al cerrarse |
 | [vertical-competitive-matrix-2026-08.md](vertical-competitive-matrix-2026-08.md) · [vertical-competitive-evidence.json](vertical-competitive-evidence.json) | Evidencia competitiva de la landing | `Dockerfile.landing` y `validate-competitive-evidence.cjs` |

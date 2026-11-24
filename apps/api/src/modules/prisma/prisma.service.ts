@@ -4,6 +4,8 @@ import { acquireRuntimeSchemaLock, isRuntimeSchemaDdl, withRuntimeSchemaLock } f
 import { resolveMirroredDealStatus } from '../pipeline/pipeline-outcome.util';
 import { ensurePrimaryPipeline } from '../../common/utils/primary-pipeline.util';
 import { knowledgeFileTypeWidenSql } from './knowledge-file-type-schema';
+import { SHARED_SCHEMA, TENANT_CONTEXT_SETTING, TENANT_CONTEXT_SQL, tenantContextIdForSchema, tenantSearchPath } from './tenant-context';
+import { SHARED_TABLE_NAMES } from './shared-tables';
 
 const TENANT_PUBLIC_PURGE_ORDER = [
     'platform_communication_recipients',
@@ -123,6 +125,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                     this.logger.error(`Orphan tenant schema inventory failed (non-blocking): ${err.message}`);
                 });
 
+                // A tenant table with the name of a shared one wins by search_path
+                // and hides it without an error (ADR 0034). Report, never block.
+                await this.reportShadowedSharedTables().catch((err) => {
+                    this.logger.error(`Shadowed shared table inventory failed (non-blocking): ${err.message}`);
+                });
+
                 // Existing tenant schemas predate exact native-evidence
                 // ownership. Migrate them without inventing contact-only
                 // backfills; unresolved historical rows deliberately stay NULL.
@@ -200,7 +208,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         // Use a transaction + SET LOCAL so search_path is guaranteed to be scoped
         // to this query lifecycle and cannot leak across pooled connections.
         return this.$transaction(async (tx: any) => {
-            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
+            await tx.$executeRawUnsafe(TENANT_CONTEXT_SQL, tenantSearchPath(schemaName), tenantContextIdForSchema(schemaName));
             if (isRuntimeSchemaDdl(query)) await acquireRuntimeSchemaLock(tx, schemaName);
             return tx.$queryRawUnsafe(query, ...sanitizedParams) as Promise<T>;
         }, { timeout: options?.timeout ?? 15000, maxWait: options?.maxWait ?? 10000 });
@@ -221,7 +229,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     ): Promise<T> {
         this.validateSchemaName(schemaName);
         return this.$transaction(async (tx: any) => {
-            await tx.$executeRawUnsafe(`SET LOCAL search_path TO "${schemaName}", public`);
+            await tx.$executeRawUnsafe(TENANT_CONTEXT_SQL, tenantSearchPath(schemaName), tenantContextIdForSchema(schemaName));
             let schemaLocked = options?.schemaLock === true;
             if (schemaLocked) await acquireRuntimeSchemaLock(tx, schemaName);
             let hasExecutedQuery = false;
@@ -563,6 +571,63 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         if (await this.schemaExists(schemaName)) {
             throw new Error(`Tenant schema "${schemaName}" still exists after DROP SCHEMA`);
         }
+    }
+
+    /**
+     * Delete every row a tenant owns in the shared tables (ADR 0034).
+     *
+     * Dropping the tenant schema no longer removes all of a tenant's data: what
+     * lives in `shared` has to be deleted by `tenant_id`. One transaction, so a
+     * failure leaves nothing half deleted and the purge can be retried. The
+     * explicit WHERE is not redundant with the policy: the role that runs this
+     * may bypass row-level security.
+     */
+    async purgeTenantSharedData(tenantId: string): Promise<Record<string, number>> {
+        const deleted: Record<string, number> = {};
+        if (SHARED_TABLE_NAMES.length === 0) return deleted;
+        return this.$transaction(async (tx: any) => {
+            await tx.$executeRawUnsafe(`SELECT set_config('${TENANT_CONTEXT_SETTING}', $1::uuid::text, true)`, tenantId);
+            for (const table of SHARED_TABLE_NAMES) {
+                // `table` only comes from the registry constant; the tenant stays a parameter.
+                deleted[table] = await tx.$executeRawUnsafe(
+                    `DELETE FROM ${SHARED_SCHEMA}."${table}" WHERE tenant_id = $1::uuid`,
+                    tenantId,
+                );
+            }
+            return deleted;
+        }, { maxWait: 10_000, timeout: 60_000 });
+    }
+
+    /**
+     * Tenant schemas that still hold a table named like a shared one.
+     *
+     * The tenant schema precedes `shared` in `search_path`, so such a copy wins
+     * silently: the tenant reads and writes its private table and never reaches
+     * the shared one. It appears when a lazy `CREATE TABLE IF NOT EXISTS`
+     * survived the move, or when a schema predates it.
+     */
+    async findShadowedSharedTables(): Promise<Array<{ schemaName: string; tableName: string }>> {
+        if (SHARED_TABLE_NAMES.length === 0) return [];
+        const rows = await (super.$queryRawUnsafe as any)(
+            `SELECT n.nspname::text AS "schemaName", c.relname::text AS "tableName"
+               FROM pg_class c
+               JOIN pg_namespace n ON n.oid = c.relnamespace
+              WHERE c.relkind IN ('r', 'p', 'v', 'm')
+                AND n.nspname LIKE 'tenant\\_%'
+                AND c.relname = ANY($1::text[])
+              ORDER BY n.nspname, c.relname`,
+            [...SHARED_TABLE_NAMES],
+        ) as Array<{ schemaName: string; tableName: string }>;
+        return rows ?? [];
+    }
+
+    private async reportShadowedSharedTables(): Promise<void> {
+        const shadowed = await this.findShadowedSharedTables();
+        if (shadowed.length === 0) return;
+        this.logger.error(
+            `[Shared tables] ${shadowed.length} tenant table(s) shadow a shared table: `
+            + shadowed.slice(0, 20).map((row) => `${row.schemaName}.${row.tableName}`).join(', '),
+        );
     }
 
     /**

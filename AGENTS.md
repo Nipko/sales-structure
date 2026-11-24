@@ -52,7 +52,7 @@ There is no reverse proxy config in the repo: production ingress is the Cloudfla
 ## Key conventions (CRITICAL — apply to every task)
 
 - **Language**: Code in English, user-facing strings in Spanish (Latin American market). ALL strings via i18n (next-intl, 4 languages: es/en/pt/fr). **Every page edit/creation MUST update all 4 JSON files**
-- **Multi-tenancy**: Schema-per-tenant in PostgreSQL. Schema name from `tenants.schema_name`
+- **Multi-tenancy**: Schema-per-tenant in PostgreSQL. Schema name from `tenants.schema_name`. **In transition (ADR 0034, approved 2026-11-24):** tenant data moves to shared tables in a `shared` schema with `tenant_id` + forced row-level security. The scaffolding is in place and no table has moved yet: the tenant helpers of `PrismaService` set `search_path` to `<tenant schema>, shared, public` and the transaction-local `app.tenant_id` (`modules/prisma/tenant-context.ts`, derived from the schema name); the canonical list is `modules/prisma/shared-tables.ts`; a shared table is created only by a migration that calls `shared.apply_tenant_isolation`, and is always named unqualified through the helpers (`shared-tables-style.spec.ts` and `shared-tables-isolation.postgres.spec.ts` enforce it). The runtime role is the non-superuser `parallext_app` (created by the migration without login; the AWS environment will connect as it), and migrations run as the owner. Do not add new per-tenant tables or new lazy `CREATE TABLE IF NOT EXISTS` sites (the count of such files is a ratchet in `shared-tables.ts`)
 - **Database queries**: `prisma.$queryRawUnsafe(sql, ...params)` — ALWAYS use `::uuid` casts. NO type arguments on `$queryRawUnsafe`. NEVER interpolate tenantId or user input into SQL strings: parameters only (`$N::uuid`)
 - **Global tables**: Prisma client directly (`prisma.tenant.findUnique(...)`)
 - **Raw SQL column names**: snake_case (`is_active`, not `"isActive"`) — Prisma `@map` only applies to Prisma client. `users.name` is a generated column
@@ -208,6 +208,8 @@ See `.env.example`. Critical:
 **CRITICAL**: `.env` is regenerated on every deploy from GitHub Actions Secrets. New env vars MUST be added to BOTH GitHub Secrets AND `.github/workflows/deploy.yml` or they're lost on next deploy.
 
 ## Production
+
+> **2026-11-24: the VPS described below was retired and nothing was migrated.** The platform is being rebuilt on AWS (analysis and plan: `docs/research/2026-11-23/`). Until that environment exists there is no production: the `deploy` job of `deploy.yml` is skipped unless the repository variable `DEPLOY_TARGET` is `vps`, and a merge to `main` only validates and builds images. The rest of this section describes the retired setup and will be rewritten with the AWS deployment.
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)

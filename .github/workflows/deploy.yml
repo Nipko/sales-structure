@@ -698,6 +698,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build-and-push
+    # The VPS was retired on 2026-11-24 and the AWS environment does not exist yet
+    # (rebuild on AWS in progress). Until its deploy job
+    # replaces this one, a merge to main validates and builds but does not deploy:
+    # this job would only fail on SSH. Set the repository variable
+    # DEPLOY_TARGET=vps to run it again.
+    if: vars.DEPLOY_TARGET == 'vps'
     environment: production
     # The deploy job logs into GHCR on the VPS (GHCR_PAT = GITHUB_TOKEN) and pulls
     # the images, so its token MUST have packages:read. Without this the docker pull

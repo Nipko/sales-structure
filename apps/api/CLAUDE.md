@@ -22,7 +22,7 @@ await this.prisma.executeInTenantSchema(schemaName,
 // Global tables: the Prisma client (this.prisma.tenant.findUnique(...)).
 ```
 
-- A new tenant table goes in `prisma/tenant-schema.sql` (new tenants) **and** in an additive Prisma migration that creates it in every existing tenant schema (pattern: `prisma/migrations/20261030160000_add_go_live_gate`). Older modules still create tables lazily (`ensure*Tables`, tolerating `23505`/`42P07`); do not add new lazy tables.
+- **Do not add per-tenant tables (ADR 0034).** New tenant data goes in a shared table: a Prisma migration creates it in the `shared` schema with `tenant_id uuid NOT NULL DEFAULT current_setting('app.tenant_id')::uuid` and calls `shared.apply_tenant_isolation('<table>')`, and the table is listed in `src/modules/prisma/shared-tables.ts`. Query it unqualified through `executeInTenantSchema`/`transactionInTenantSchema`, which set the tenant context. Existing tables are still per tenant (`prisma/tenant-schema.sql`) until their batch moves them. Older modules still create tables lazily (`ensure*Tables`, tolerating `23505`/`42P07`); do not add new lazy tables.
 - `COUNT(*)` returns BigInt; the `BigInt.toJSON` polyfill lives in `main.ts` and `worker.main.ts`.
 
 ## Adding a module

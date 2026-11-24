@@ -2,6 +2,8 @@
 
 _Plan de trabajo de [ADR 0034](../../decisions/0034-tablas-compartidas-con-tenant-id.md). Fecha: 2026-11-24. Documento de trabajo: se retira cuando la fase 1 esté cerrada._
 
+> **Cifras:** los conteos de este plan (249 tablas, 70 a mover, 166 restantes) se tomaron de una copia local 69 commits detrás de `main`. Sobre `main` actual la plantilla define 232 tablas distintas. Antes de cada lote hay que rehacer su inventario contra el código vigente.
+
 **Qué entrega la fase 1:** el mecanismo de tablas compartidas probado de punta a punta, 70 tablas operativas movidas a `shared`, y 13 tablas sin uso fuera de la plantilla. Las tablas por tenant bajan de 249 a 166.
 
 **Dónde se hace:** el VPS ya no existe (2026-11-24) y no hay datos que conservar. Hasta que el entorno de AWS esté en pie, cada cambio se prueba en la base de PostgreSQL de la CI; la prueba de punta a punta con un tenant real queda para el primer despliegue en AWS. Consecuencias sobre este plan: no hay tenants ni schemas previos que dar de baja, el rol `parallext` del contenedor desaparece (el dueño de la base será el usuario maestro de RDS) y la regla de dos despliegues para quitar tablas no aplica hasta el lanzamiento.
@@ -126,6 +128,8 @@ Total: 70.
 ---
 
 ## Limpieza: las 13 tablas sin uso
+
+> **Ya resuelto en `main` (ADR 0019, 2026-11-05):** la plantilla dejó de crear estas tablas y `kb_unanswered_queries`. Sin VPS no queda ninguna copia que borrar. Lo que sigue se conserva solo como registro de lo que se pensaba hacer.
 
 `business_rules`, `tool_configs`, `carla_personality_profiles`, `carla_prompt_templates`, `carla_conversation_context`, `campaign_courses`, `intake_sources`, `wait_jobs`, `knowledge_chunks`, `knowledge_approvals`, `kb_health_issues`, `dashboard_preferences`, `conversation_memory`.
 

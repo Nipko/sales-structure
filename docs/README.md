@@ -78,7 +78,6 @@ Dueño de todos los documentos: el dueño del producto, salvo los **generados**,
 | [backup-restore-runbook.md](operations/backup-restore-runbook.md) | Backup, restore, simulacros y postmortem del exec-bit | **revisar** (>90 días) | 2026-07-23 | `infra/backup/` |
 | [backup-offsite-setup.md](operations/backup-offsite-setup.md) | Copia offsite (R2/S3) con rclone | **revisar** (>90 días) | 2026-07-21 | `infra/backup/backup.sh` |
 | [deploy-hardening-runbook.md](operations/deploy-hardening-runbook.md) | SSH solo con llave, throttling por IP real, backup previo a migrar, expand-contract (§6) | **revisar** (>90 días) | 2026-07-24 | `.github/workflows/deploy.yml` |
-| [mac-mini-interim.md](operations/mac-mini-interim.md) | Ambiente provisional en un Mac mini detrás de Cloudflare Tunnel, mientras se monta AWS | vigente | 2026-11-27 | `infra/docker/docker-compose.mac.yml` |
 | [server-installation.md](operations/server-installation.md) | Instalación de un servidor nuevo y GitHub Secrets | vigente | 2026-10-30 | `infra/scripts/setup-vps.sh` |
 | [billing-runbook.md](operations/billing-runbook.md) | Wompi, DIAN y enlaces de cobro del tenant | vigente | 2026-09-30 | `modules/billing/` |
 | [offboarding-manual.md](operations/offboarding-manual.md) | Baja de tenants | vigente | 2026-08-15 | `modules/offboarding/` |

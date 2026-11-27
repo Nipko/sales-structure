@@ -50,16 +50,21 @@ infra/scripts/mac/dc.sh run --rm -e ADMIN_EMAIL=<correo> -e ADMIN_PASSWORD='<12+
 
 ## Túnel
 
-El túnel es *locally managed*: la configuración vive en `~/.cloudflared-parallly/` (montado en el contenedor `tunnel`), separada de `~/.cloudflared/`, que puede pertenecer a otra cuenta de Cloudflare.
+Es el mismo túnel `parallext` que usaba el VPS. Es **remotely managed**: las rutas (hostname → servicio) se editan en el panel de Cloudflare (Zero Trust → Networks → Tunnels → parallext → Public hostnames) y el panel prevalece sobre el `ingress` local. Como las rutas apuntan a nombres de servicio de compose (`api:3000`, `dashboard:3001`, `whatsapp:3002`, `landing:80`), sirven igual en el Mac sin cambios.
+
+El contenedor `tunnel` monta `~/.cloudflared-parallly/` (separado de `~/.cloudflared/`, que puede ser de otra cuenta de Cloudflare) y solo necesita las credenciales:
 
 ```
 ~/.cloudflared-parallly/
-  cert.pem            # de `cloudflared tunnel login` en la cuenta de parallly-chat.cloud
   <tunnel-id>.json    # credenciales del túnel
-  config.yml
+  config.yml          # tunnel + credentials-file; el ingress es solo respaldo
 ```
 
-`config.yml`:
+El `cert.pem` de la cuenta (de `cloudflared tunnel login`) da permisos de administración sobre toda la cuenta: guárdalo fuera de la carpeta montada (por ejemplo `HOME=~/.cf-parallly-home cloudflared tunnel login`) y úsalo solo con `--origincert` para generar credenciales.
+
+Rutas del panel que sobran desde que no hay observabilidad: `status.`, `grafana.` y `logs.parallly-chat.cloud` (dan 502). `www.parallly-chat.cloud` no tiene ruta y responde 404.
+
+`config.yml` de respaldo:
 
 ```yaml
 tunnel: <tunnel-id>
@@ -78,7 +83,7 @@ ingress:
   - service: http_status:404
 ```
 
-Si los registros DNS ya apuntan a un túnel existente, basta con generar sus credenciales (`cloudflared --origincert ~/.cloudflared-parallly/cert.pem tunnel token --cred-file ~/.cloudflared-parallly/<id>.json <nombre>`). Con un túnel nuevo hay que apuntar cada hostname con `tunnel route dns --overwrite-dns`.
+Credenciales del túnel existente: `cloudflared --origincert ~/.cf-parallly-home/.cloudflared/cert.pem tunnel token --cred-file ~/.cloudflared-parallly/<id>.json parallext`.
 
 ## Actualizar
 

@@ -209,7 +209,7 @@ See `.env.example`. Critical:
 
 ## Production
 
-> **2026-11-24: the VPS described below was retired and nothing was migrated.** The platform is being rebuilt on AWS (analysis and plan: `docs/research/2026-11-23/`). Until that environment exists there is no production: the `deploy` job of `deploy.yml` is skipped unless the repository variable `DEPLOY_TARGET` is `vps`, and a merge to `main` only validates and builds images. The rest of this section describes the retired setup and will be rewritten with the AWS deployment.
+> **2026-11-24: the VPS described below was retired and nothing was migrated.** The platform is being rebuilt on AWS (analysis and plan: `docs/research/2026-11-23/`). Until that environment exists there is no production: the `deploy` job of `deploy.yml` is skipped unless the repository variable `DEPLOY_TARGET` is `vps`, and a merge to `main` only validates and builds images. The rest of this section describes the retired setup and will be rewritten with the AWS deployment. Meanwhile the public domains are served from an interim test environment on a Mac mini behind Cloudflare Tunnel (`docs/operations/mac-mini-interim.md`, `infra/docker/docker-compose.mac.yml`): not production, no offsite backup, updated by hand.
 
 - Landing: https://parallly-chat.cloud (static, nginx, 4-lang i18n)
 - Dashboard: https://admin.parallly-chat.cloud (Next.js)

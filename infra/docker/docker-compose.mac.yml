@@ -1,0 +1,285 @@
+# Parallext Engine - interim environment on a Mac mini (Apple Silicon)
+#
+# Temporary home for the platform between the retired VPS and the AWS rebuild
+# (docs/operations/mac-mini-interim.md). Same services as docker-compose.prod.yml
+# minus the observability stack (dozzle, uptime-kuma, grafana, loki, promtail):
+# errors still go to Sentry. Images are BUILT here from the checkout, because
+# the ghcr.io images are built for amd64 and would run emulated on arm64.
+#
+# Always run it through infra/scripts/mac/dc.sh, which pins the project name
+# and reads the repository-root .env (build args included).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DIRECT_DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@postgres:5432/parallext_engine
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  MEDIA_STORAGE_PATH: /data/media
+  GIT_SHA: ${GIT_SHA:-unknown}
+
+services:
+  # ---- Cloudflare Tunnel (named tunnel, locally managed ingress) ----
+  tunnel:
+    image: cloudflare/cloudflared:2025.11.1
+    container_name: parallext-tunnel
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ${PARALLLY_TUNNEL_DIR:-${HOME}/.cloudflared-parallly}:/etc/cloudflared:ro
+    depends_on:
+      - api
+      - dashboard
+      - whatsapp
+      - landing
+    logging: *default-logging
+
+  # ---- Landing Page (static site) ----
+  landing:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.landing
+    image: parallext-landing:local
+    container_name: parallext-landing
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 64m
+    logging: *default-logging
+
+  # ---- PgBouncer (Connection Pooler) ----
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: parallext-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: parallext
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: parallext_engine
+      # A fresh PostgreSQL 16 stores scram-sha-256 passwords; md5 fails with
+      # "server login failed: wrong password type".
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      DEFAULT_POOL_SIZE: "30"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "5"
+      MAX_CLIENT_CONN: "500"
+      SERVER_IDLE_TIMEOUT: "600"
+      QUERY_TIMEOUT: "120"
+      QUERY_WAIT_TIMEOUT: "60"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+    expose:
+      - "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "5432", "-U", "parallext"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+
+  # ---- API Server ----
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+      args: &heap-args
+        # Colima's 10 GB VM leaves V8 a ~2 GB default heap: nest build needs more.
+        BUILD_NODE_OPTIONS: --max-old-space-size=6144
+    image: parallext-api:local
+    container_name: parallext-api
+    restart: unless-stopped
+    stop_grace_period: 160s
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
+      INBOUND_CONCURRENCY: "1"
+    env_file:
+      - ../../.env
+    volumes:
+      - media_data:/data/media
+      - api_logs:/data/logs
+      - fiscal_data:/data/invoices
+    expose:
+      - "3000"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/api/v1/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    mem_limit: 1g
+    logging: *default-logging
+
+  # ---- Dashboard ----
+  dashboard:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_BASE:-https://api.parallly-chat.cloud}/api/v1
+        NEXT_PUBLIC_WA_SERVICE_URL: ${PUBLIC_WA_BASE:-https://wa.parallly-chat.cloud}/api/v1
+        NEXT_PUBLIC_META_APP_ID: ${META_APP_ID:-}
+        NEXT_PUBLIC_META_CONFIG_ID: ${META_CONFIG_ID:-}
+        NEXT_PUBLIC_META_SOLUTION_ID: ${META_SOLUTION_ID:-}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+        NEXT_PUBLIC_MESSENGER_FB_LOGIN_CONFIG_ID: ${MESSENGER_FB_LOGIN_CONFIG_ID:-}
+        NEXT_PUBLIC_INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID:-}
+        NEXT_PUBLIC_INSTAGRAM_REDIRECT_URI: ${INSTAGRAM_REDIRECT_URI:-}
+        NEXT_PUBLIC_APP_VERSION: ${GIT_SHA:-mac}
+        NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    image: parallext-dashboard:local
+    container_name: parallext-dashboard
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${PUBLIC_API_BASE:-https://api.parallly-chat.cloud}
+    expose:
+      - "3001"
+    depends_on:
+      - api
+    mem_limit: 512m
+    logging: *default-logging
+
+  # ---- Background Worker (BullMQ processors + cron jobs) ----
+  worker:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker
+      args: *heap-args
+    image: parallext-worker:local
+    container_name: parallext-worker
+    restart: unless-stopped
+    stop_grace_period: 150s
+    environment:
+      <<: *app-env
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=8
+      INBOUND_CONCURRENCY: "4"
+    env_file:
+      - ../../.env
+    volumes:
+      - worker_logs:/data/logs
+      - fiscal_data:/data/invoices
+      # Same media volume as the API: daily archiving writes {convId}.json.gz
+      # here and then deletes the rows (see docker-compose.prod.yml).
+      - media_data:/data/media
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 768m
+    logging: *default-logging
+
+  # ---- WhatsApp Onboarding Service ----
+  whatsapp:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.whatsapp
+    image: parallext-whatsapp:local
+    container_name: parallext-whatsapp
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 384m
+    environment:
+      <<: *app-env
+      PORT: "3002"
+      DATABASE_URL: postgresql://parallext:${DB_PASSWORD}@pgbouncer:5432/parallext_engine?pgbouncer=true&connection_limit=4
+    env_file:
+      - ../../.env
+    expose:
+      - "3002"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3002/api/v1/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    logging: *default-logging
+
+  # ---- PostgreSQL + pgvector ----
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: parallext-postgres
+    restart: unless-stopped
+    command: >
+      postgres
+      -c max_connections=200
+      -c max_locks_per_transaction=256
+      -c shared_buffers=512MB
+      -c work_mem=8MB
+      -c effective_cache_size=1GB
+    environment:
+      POSTGRES_USER: parallext
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: parallext_engine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U parallext -d parallext_engine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ---- Redis (noeviction: BullMQ jobs must never be evicted) ----
+  redis:
+    image: redis:7-alpine
+    container_name: parallext-redis
+    restart: unless-stopped
+    command: >-
+      sh -c 'exec redis-server --appendonly yes --maxmemory 512mb
+      --maxmemory-policy noeviction --requirepass "$$REDIS_PASSWORD"'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+volumes:
+  postgres_data:
+    name: parallly-mac-postgres-data
+  redis_data:
+    name: parallly-mac-redis-data
+  media_data:
+    name: parallly-mac-media-data
+  fiscal_data:
+    name: parallly-mac-fiscal-data
+  api_logs:
+    name: parallly-mac-api-logs
+  worker_logs:
+    name: parallly-mac-worker-logs

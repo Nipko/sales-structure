@@ -30,8 +30,10 @@ COPY apps/api/ ./apps/api/
 # Generate Prisma client for linux-musl (Alpine)
 RUN cd apps/api && npx prisma generate
 
-# Build
-RUN npx turbo build --filter=@parallext/api
+# Build. NODE_OPTIONS is empty by default (CI runners give V8 enough heap);
+# smaller builders, such as a 10 GB Colima VM, pass --max-old-space-size.
+ARG BUILD_NODE_OPTIONS=""
+RUN NODE_OPTIONS="$BUILD_NODE_OPTIONS" npx turbo build --filter=@parallext/api
 
 # ---- Production image ----
 FROM node:20-alpine AS runner

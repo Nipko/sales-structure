@@ -20,7 +20,9 @@ COPY packages/business-spec/ ./packages/business-spec/
 COPY apps/api/ ./apps/api/
 
 RUN cd apps/api && npx prisma generate
-RUN npx turbo build --filter=@parallext/api
+# NODE_OPTIONS is empty by default; see Dockerfile.api.
+ARG BUILD_NODE_OPTIONS=""
+RUN NODE_OPTIONS="$BUILD_NODE_OPTIONS" npx turbo build --filter=@parallext/api
 
 # ---- Production image ----
 FROM node:20-alpine AS runner

@@ -62,7 +62,7 @@ El contenedor `tunnel` monta `~/.cloudflared-parallly/` (separado de `~/.cloudfl
 
 El `cert.pem` de la cuenta (de `cloudflared tunnel login`) da permisos de administración sobre toda la cuenta: guárdalo fuera de la carpeta montada (por ejemplo `HOME=~/.cf-parallly-home cloudflared tunnel login`) y úsalo solo con `--origincert` para generar credenciales.
 
-Rutas del panel que sobran desde que no hay observabilidad: `status.`, `grafana.` y `logs.parallly-chat.cloud` (dan 502). `www.parallly-chat.cloud` no tiene ruta y responde 404.
+Rutas del panel que sobran desde que no hay observabilidad: `status.`, `grafana.` y `logs.parallly-chat.cloud` (apuntan a contenedores que no existen). `www.parallly-chat.cloud` es un CNAME a la raíz y tiene su propia ruta a `http://landing:80` (agregada el 2026-11-27; sin ella el túnel respondía 404).
 
 `config.yml` de respaldo:
 

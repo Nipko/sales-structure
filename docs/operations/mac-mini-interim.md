@@ -45,8 +45,10 @@ El `.env` vive solo en el Mac. Respalda `ENCRYPTION_KEY` fuera del equipo: sin e
 Usuario super_admin (lo crea el dueño, con su propia contraseña):
 
 ```bash
-infra/scripts/mac/dc.sh run --rm -e ADMIN_EMAIL=<correo> -e ADMIN_PASSWORD='<12+ caracteres>' api npx ts-node prisma/seed-admin.ts
+infra/scripts/mac/create-admin.sh <correo>   # pide la contraseña sin mostrarla
 ```
+
+`prisma/seed-admin.ts` no corre dentro de la imagen (ts-node falla con `ERR_UNKNOWN_FILE_EXTENSION`); el script hace lo mismo en JavaScript.
 
 ## Túnel
 
